@@ -172,6 +172,39 @@
     .tree-node.selected { border-color: var(--accent); background: var(--accent-dim); color: var(--text-primary); }
     .tree-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-node.expanded {
+      max-width: 320px;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 8px 14px;
+    }
+    .tree-node.expanded .tree-node-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+    .tree-node-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-top: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .tree-node-user {
+      background: var(--bg-active);
+      padding: 4px 8px;
+      border-radius: 4px;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .tree-node-assistant {
+      padding: 4px 8px;
+      border-left: 2px solid var(--accent);
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .react-flow__handle { width: 6px !important; height: 6px !important; background: var(--text-muted) !important; border: none !important; }
     .react-flow__edge path { stroke: var(--border-visible) !important; }
 

@@ -12,7 +12,7 @@ import { useStore, type CNode } from "../store";
 
 const nodeTypes = { tree: TreeNode };
 
-function layoutTree(nodes: Record<string, CNode>) {
+function layoutTree(nodes: Record<string, CNode>, expandedNodes: Record<string, boolean>) {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[] };
@@ -30,16 +30,17 @@ function layoutTree(nodes: Record<string, CNode>) {
   };
 
   const pos: Record<string, { x: number; y: number }> = {};
-  const X = 180, Y = 90;
+  const X = 180, Y_COLLAPSED = 90, Y_EXPANDED = 200;
 
   const place = (id: string, x: number, y: number) => {
     pos[id] = { x, y };
     const c = children[id] || [];
     const total = c.reduce((s, cid) => s + width(cid), 0);
     let cx = x - ((total - 1) * X) / 2;
+    const yStep = expandedNodes[id] ? Y_EXPANDED : Y_COLLAPSED;
     for (const cid of c) {
       const w = width(cid);
-      place(cid, cx + ((w - 1) * X) / 2, y + Y);
+      place(cid, cx + ((w - 1) * X) / 2, y + yStep);
       cx += w * X;
     }
   };
@@ -66,7 +67,11 @@ function layoutTree(nodes: Record<string, CNode>) {
 
 export default function Canvas() {
   const nodes = useStore((s) => s.nodes);
-  const { flowNodes, flowEdges } = useMemo(() => layoutTree(nodes), [nodes]);
+  const expandedNodes = useStore((s) => s.expandedNodes);
+  const { flowNodes, flowEdges } = useMemo(
+    () => layoutTree(nodes, expandedNodes),
+    [nodes, expandedNodes]
+  );
 
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;

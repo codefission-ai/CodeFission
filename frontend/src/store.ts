@@ -37,6 +37,7 @@ interface Store {
   selectedNodeId: string | null;
   streaming: Record<string, boolean>;
   toolCalls: Record<string, ToolCall[]>;  // nodeId -> tool calls during streaming
+  expandedNodes: Record<string, boolean>;
 }
 
 export const useStore = create<Store>(() => ({
@@ -47,6 +48,7 @@ export const useStore = create<Store>(() => ({
   selectedNodeId: null,
   streaming: {},
   toolCalls: {},
+  expandedNodes: {},
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -135,4 +137,9 @@ export const actions = {
       );
       return { toolCalls: { ...s.toolCalls, [nodeId]: updated } };
     }),
+
+  toggleExpand: (id: string) =>
+    useStore.setState((s) => ({
+      expandedNodes: { ...s.expandedNodes, [id]: !s.expandedNodes[id] },
+    })),
 };
