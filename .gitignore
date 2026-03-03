@@ -1,0 +1,10 @@
+venv/
+ref_repos/
+__pycache__/
+*.pyc
+data/*.db
+data/*.db-wal
+data/*.db-shm
+node_modules/
+frontend/dist/
+.DS_Store
