@@ -1,20 +1,25 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { send } from "../ws";
+import { send, WS } from "../ws";
 
-export default function TreeList() {
+export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
   const trees = useStore((s) => s.trees);
   const currentTreeId = useStore((s) => s.currentTreeId);
   const [name, setName] = useState("");
 
   const create = () => {
-    send({ type: "create_tree", name: name.trim() || "Untitled" });
+    send({ type: WS.CREATE_TREE, name: name.trim() || "Untitled" });
     setName("");
   };
 
   return (
     <div className="tree-list">
-      <div className="tree-list-header">clawtree</div>
+      <div className="tree-list-header">
+        <span>clawtree</span>
+        <button className="branch-btn" onClick={onCollapse} title="Collapse sidebar">
+          ✕
+        </button>
+      </div>
       <div className="tree-list-create">
         <input
           placeholder="New tree..."
@@ -31,7 +36,7 @@ export default function TreeList() {
             className={`tree-item ${t.id === currentTreeId ? "active" : ""}`}
             onClick={() => {
               useStore.setState({ currentTreeId: t.id });
-              send({ type: "load_tree", tree_id: t.id });
+              send({ type: WS.LOAD_TREE, tree_id: t.id });
             }}
           >
             <span>{t.name}</span>
@@ -39,10 +44,10 @@ export default function TreeList() {
               className="delete-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                send({ type: "delete_tree", tree_id: t.id });
+                send({ type: WS.DELETE_TREE, tree_id: t.id });
               }}
             >
-              &times;
+              ×
             </button>
           </div>
         ))}

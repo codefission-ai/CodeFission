@@ -72,5 +72,7 @@ class WS:
     NODE_DATA = "node_data"
     STATUS = "status"
     CHUNK = "chunk"
+    TOOL_START = "tool_start"
+    TOOL_END = "tool_end"
     DONE = "done"
     ERROR = "error"

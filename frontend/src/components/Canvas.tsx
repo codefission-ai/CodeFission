@@ -58,7 +58,7 @@ function layoutTree(nodes: Record<string, CNode>) {
       id: `${n.parent_id}-${n.id}`,
       source: n.parent_id!,
       target: n.id,
-      style: { stroke: "#ccc" },
+      style: { stroke: "rgba(255,255,255,0.12)" },
     }));
 
   return { flowNodes, flowEdges };
@@ -84,7 +84,7 @@ export default function Canvas() {
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} color="#ddd" gap={20} />
+      <Background variant={BackgroundVariant.Dots} color="#2a2a30" gap={20} />
     </ReactFlow>
   );
 }

@@ -20,6 +20,15 @@ export interface CTree {
   model: string;
 }
 
+export interface ToolCall {
+  tool_call_id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  status: "running" | "done" | "error";
+  result: string;
+  is_error: boolean;
+}
+
 interface Store {
   connected: boolean;
   trees: CTree[];
@@ -27,6 +36,7 @@ interface Store {
   nodes: Record<string, CNode>;
   selectedNodeId: string | null;
   streaming: Record<string, boolean>;
+  toolCalls: Record<string, ToolCall[]>;  // nodeId -> tool calls during streaming
 }
 
 export const useStore = create<Store>(() => ({
@@ -36,6 +46,7 @@ export const useStore = create<Store>(() => ({
   nodes: {},
   selectedNodeId: null,
   streaming: {},
+  toolCalls: {},
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -61,7 +72,6 @@ export const actions = {
   upsertNode: (node: CNode) =>
     useStore.setState((s) => {
       const nodes = { ...s.nodes, [node.id]: node };
-      // Update parent's children_ids
       if (node.parent_id && nodes[node.parent_id]) {
         const p = nodes[node.parent_id];
         if (!p.children_ids.includes(node.id)) {
@@ -90,5 +100,39 @@ export const actions = {
       return { nodes: { ...s.nodes, [nodeId]: { ...node, status } } };
     }),
   setStreaming: (nodeId: string, on: boolean) =>
-    useStore.setState((s) => ({ streaming: { ...s.streaming, [nodeId]: on } })),
+    useStore.setState((s) => {
+      const streaming = { ...s.streaming, [nodeId]: on };
+      // Clear tool calls when streaming ends
+      if (!on) {
+        return { streaming, toolCalls: { ...s.toolCalls, [nodeId]: [] } };
+      }
+      return { streaming };
+    }),
+
+  // ── Tool call tracking ────────────────────────────────────────
+  addToolCall: (nodeId: string, tc: ToolCall) =>
+    useStore.setState((s) => {
+      const existing = s.toolCalls[nodeId] || [];
+      // Update if same tool_call_id exists, otherwise append
+      const idx = existing.findIndex((t) => t.tool_call_id === tc.tool_call_id);
+      let updated: ToolCall[];
+      if (idx >= 0) {
+        updated = [...existing];
+        updated[idx] = { ...updated[idx], ...tc };
+      } else {
+        updated = [...existing, tc];
+      }
+      return { toolCalls: { ...s.toolCalls, [nodeId]: updated } };
+    }),
+
+  completeToolCall: (nodeId: string, toolCallId: string, result: string, isError: boolean) =>
+    useStore.setState((s) => {
+      const existing = s.toolCalls[nodeId] || [];
+      const updated = existing.map((tc) =>
+        tc.tool_call_id === toolCallId
+          ? { ...tc, status: (isError ? "error" : "done") as ToolCall["status"], result, is_error: isError }
+          : tc
+      );
+      return { toolCalls: { ...s.toolCalls, [nodeId]: updated } };
+    }),
 };

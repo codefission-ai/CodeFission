@@ -21,6 +21,8 @@ export const WS = {
   NODE_DATA: "node_data",
   STATUS: "status",
   CHUNK: "chunk",
+  TOOL_START: "tool_start",
+  TOOL_END: "tool_end",
   DONE: "done",
   ERROR: "error",
 } as const;
@@ -80,6 +82,24 @@ function handle(data: any) {
       break;
     case WS.CHUNK:
       actions.appendChunk(data.node_id, data.text);
+      break;
+    case WS.TOOL_START:
+      actions.addToolCall(data.node_id, {
+        tool_call_id: data.tool_call_id,
+        name: data.name,
+        arguments: data.arguments || {},
+        status: "running",
+        result: "",
+        is_error: false,
+      });
+      break;
+    case WS.TOOL_END:
+      actions.completeToolCall(
+        data.node_id,
+        data.tool_call_id,
+        data.result || "",
+        data.is_error || false,
+      );
       break;
     case WS.DONE:
       actions.setNodeStatus(data.node_id, "done");

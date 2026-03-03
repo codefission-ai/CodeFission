@@ -9,10 +9,10 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const selected = selectedId === node.id;
 
   const dot =
-    isStreaming ? "#22c55e" :
-    node.status === "error" ? "#ef4444" :
-    node.status === "done" ? "#333" :
-    "#bbb";
+    isStreaming ? "#34d399" :
+    node.status === "error" ? "#f87171" :
+    node.status === "done" ? "#6366f1" :
+    "#5c5c66";
 
   return (
     <div

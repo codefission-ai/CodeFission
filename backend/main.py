@@ -21,7 +21,7 @@ from tree_service import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, delete_tree,
 )
-from chat_service import stream_chat
+from chat_service import stream_chat, TextDelta, ToolStart, ToolEnd
 
 app = FastAPI(title="Clawtree")
 
@@ -124,13 +124,37 @@ async def websocket_endpoint(ws: WebSocket):
                 await bus.emit(STREAM_START, node_id=nid)
                 await send(WS.STATUS, node_id=nid, status="active")
 
-                # Stream response
-                async for chunk in stream_chat(nid, msg):
-                    _streams[nid].text += chunk
-                    await bus.emit(STREAM_DELTA, node_id=nid, text=chunk)
-                    await send(WS.CHUNK, node_id=nid, text=chunk)
+                # Track tool names for pairing start→end
+                tool_names: dict[str, str] = {}
 
-                # Finalise
+                # Stream response (structured events)
+                async for event in stream_chat(nid, msg):
+                    if isinstance(event, TextDelta):
+                        _streams[nid].text += event.text
+                        await bus.emit(STREAM_DELTA, node_id=nid, text=event.text)
+                        await send(WS.CHUNK, node_id=nid, text=event.text)
+
+                    elif isinstance(event, ToolStart):
+                        if event.name:
+                            tool_names[event.tool_call_id] = event.name
+                        await send(WS.TOOL_START,
+                            node_id=nid,
+                            tool_call_id=event.tool_call_id,
+                            name=event.name,
+                            arguments=event.arguments,
+                        )
+
+                    elif isinstance(event, ToolEnd):
+                        name = event.name or tool_names.get(event.tool_call_id, "")
+                        await send(WS.TOOL_END,
+                            node_id=nid,
+                            tool_call_id=event.tool_call_id,
+                            name=name,
+                            result=event.result,
+                            is_error=event.is_error,
+                        )
+
+                # Finalise (generator returns when SDK is done)
                 full_response = _streams[nid].text
                 _streams[nid].status = "done"
                 await update_node(nid, assistant_response=full_response, status="done")
