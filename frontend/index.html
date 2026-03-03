@@ -205,6 +205,41 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+    .tree-node-input {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      width: 100%;
+    }
+    .tree-node-textarea {
+      flex: 1;
+      padding: 4px 8px;
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      resize: none;
+      outline: none;
+      line-height: 1.4;
+      min-height: 24px;
+    }
+    .tree-node-textarea::placeholder { color: var(--text-muted); }
+    .tree-node-textarea:focus { border-color: var(--accent); }
+    .tree-node-send {
+      padding: 4px 8px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+      align-self: flex-end;
+    }
+    .tree-node-send:hover { filter: brightness(1.15); }
+    .tree-node-send:disabled { opacity: 0.3; cursor: default; filter: none; }
     .react-flow__handle { width: 6px !important; height: 6px !important; background: var(--text-muted) !important; border: none !important; }
     .react-flow__edge path { stroke: var(--border-visible) !important; }
 
