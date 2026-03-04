@@ -12,7 +12,7 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [chatWidth, setChatWidth] = useState(380);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(true);
 
   // Drag state
   const dragging = useRef<"sidebar" | "chat" | null>(null);

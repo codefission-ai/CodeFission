@@ -142,4 +142,8 @@ export const actions = {
     useStore.setState((s) => ({
       expandedNodes: { ...s.expandedNodes, [id]: !s.expandedNodes[id] },
     })),
+  setExpanded: (id: string, v: boolean) =>
+    useStore.setState((s) => ({
+      expandedNodes: { ...s.expandedNodes, [id]: v },
+    })),
 };

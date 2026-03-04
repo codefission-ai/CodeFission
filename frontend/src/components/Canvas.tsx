@@ -9,47 +9,21 @@ import {
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
 import { useStore, type CNode } from "../store";
+import { layoutTree } from "../layout";
 
 const nodeTypes = { tree: TreeNode };
 
-function layoutTree(nodes: Record<string, CNode>, expandedNodes: Record<string, boolean>) {
+function buildFlow(nodes: Record<string, CNode>, expandedNodes: Record<string, boolean>) {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[] };
 
-  const children: Record<string, string[]> = {};
-  for (const n of list) {
-    if (n.parent_id) {
-      (children[n.parent_id] ??= []).push(n.id);
-    }
-  }
-
-  const width = (id: string): number => {
-    const c = children[id];
-    return c ? c.reduce((s, cid) => s + width(cid), 0) : 1;
-  };
-
-  const pos: Record<string, { x: number; y: number }> = {};
-  const X = 180, Y_COLLAPSED = 90, Y_EXPANDED = 200;
-
-  const place = (id: string, x: number, y: number) => {
-    pos[id] = { x, y };
-    const c = children[id] || [];
-    const total = c.reduce((s, cid) => s + width(cid), 0);
-    let cx = x - ((total - 1) * X) / 2;
-    const yStep = expandedNodes[id] ? Y_EXPANDED : Y_COLLAPSED;
-    for (const cid of c) {
-      const w = width(cid);
-      place(cid, cx + ((w - 1) * X) / 2, y + yStep);
-      cx += w * X;
-    }
-  };
-  place(root.id, 400, 40);
+  const { positions } = layoutTree(nodes, expandedNodes);
 
   const flowNodes: Node[] = list.map((n) => ({
     id: n.id,
     type: "tree",
-    position: pos[n.id] || { x: 0, y: 0 },
+    position: positions[n.id] || { x: 0, y: 0 },
     data: { node: n },
   }));
 
@@ -69,7 +43,7 @@ export default function Canvas() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
   const { flowNodes, flowEdges } = useMemo(
-    () => layoutTree(nodes, expandedNodes),
+    () => buildFlow(nodes, expandedNodes),
     [nodes, expandedNodes]
   );
 

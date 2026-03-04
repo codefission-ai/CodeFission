@@ -71,7 +71,6 @@ function handle(data: any) {
       break;
     case WS.NODE_CREATED:
       actions.upsertNode(data.node);
-      actions.selectNode(data.node.id);
       break;
     case WS.NODE_DATA:
       actions.upsertNode(data.node);
@@ -79,6 +78,7 @@ function handle(data: any) {
     case WS.STATUS:
       actions.setNodeStatus(data.node_id, "active");
       actions.setStreaming(data.node_id, true);
+      actions.setExpanded(data.node_id, true);
       break;
     case WS.CHUNK:
       actions.appendChunk(data.node_id, data.text);

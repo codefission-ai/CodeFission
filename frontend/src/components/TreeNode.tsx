@@ -14,6 +14,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
   const selected = selectedId === node.id;
+  const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
 
   const dot =
@@ -28,6 +29,29 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     setInput("");
   }, [input, isStreaming, node.id]);
 
+  // Root with no message yet: just a textbox
+  if (isRoot && !node.user_message) {
+    return (
+      <div className="tree-node tree-node-root" onClick={(e) => e.stopPropagation()}>
+        <Handle type="source" position={Position.Bottom} />
+        <textarea
+          className="tree-node-root-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder="Ask a question..."
+          rows={1}
+        />
+      </div>
+    );
+  }
+
+  // All nodes (including root once it has a message): collapsible
   return (
     <div
       className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""}`}
@@ -36,41 +60,47 @@ function TreeNode({ data }: { data: { node: CNode } }) {
         actions.toggleExpand(node.id);
       }}
     >
-      {node.parent_id && <Handle type="target" position={Position.Top} />}
+      {!isRoot && <Handle type="target" position={Position.Top} />}
       <Handle type="source" position={Position.Bottom} />
       <span className="tree-node-dot" style={{ background: dot }} />
-      <span className="tree-node-label">{node.label || "root"}</span>
+      <span className="tree-node-label">
+        {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
+      </span>
       {isExpanded && (
         <div className="tree-node-preview" onClick={(e) => e.stopPropagation()}>
           {node.user_message && (
             <div className="tree-node-user">{truncate(node.user_message, 150)}</div>
           )}
-          {node.assistant_response && (
-            <div className="tree-node-assistant">{truncate(node.assistant_response, 150)}</div>
+          {(node.assistant_response || isStreaming) && (
+            <div className="tree-node-assistant">
+              {truncate(node.assistant_response, 150)}
+              {isStreaming && <span className="stream-cursor" />}
+            </div>
           )}
-          <div className="tree-node-input">
-            <textarea
-              className="tree-node-textarea"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Follow up..."
-              rows={1}
-              disabled={isStreaming}
-            />
-            <button
-              className="tree-node-send"
-              onClick={handleSend}
-              disabled={!input.trim() || isStreaming}
-            >
-              Send
-            </button>
-          </div>
+          {!isStreaming && (
+            <div className="tree-node-input">
+              <textarea
+                className="tree-node-textarea"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Follow up..."
+                rows={1}
+              />
+              <button
+                className="tree-node-send"
+                onClick={handleSend}
+                disabled={!input.trim() || isStreaming}
+              >
+                Send
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
