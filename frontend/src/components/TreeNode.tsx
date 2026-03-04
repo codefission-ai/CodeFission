@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, type ChangeEvent } from "react";
+import { memo, useState, useCallback, useRef, type ChangeEvent } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore, actions, type CNode } from "../store";
 import { send, WS } from "../ws";
@@ -25,6 +25,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const dot =
     isStreaming ? "#34d399" :
@@ -36,6 +37,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     if (!input.trim() || isStreaming) return;
     send({ type: WS.CHAT, node_id: node.id, content: input.trim() });
     setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "";
   }, [input, isStreaming, node.id]);
 
   // Root with no message yet: just a textbox
@@ -44,9 +46,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       <div className="tree-node tree-node-root" onClick={(e) => e.stopPropagation()}>
         <Handle type="source" position={Position.Bottom} />
         <textarea
+          ref={textareaRef}
           className="tree-node-root-input"
           value={input}
           onChange={(e) => { setInput(e.target.value); autoResize(e); }}
+          onFocus={() => actions.selectNode(node.id)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -96,9 +100,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           {!isStreaming && (
             <div className="tree-node-input">
               <textarea
+                ref={textareaRef}
                 className="tree-node-textarea"
                 value={input}
                 onChange={(e) => { setInput(e.target.value); autoResize(e); }}
+                onFocus={() => actions.selectNode(node.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
