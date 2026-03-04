@@ -220,29 +220,31 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               {isStreaming && <span className="stream-cursor" />}
             </div>
           )}
-          {!isStreaming && (
-            <div className="tree-node-input">
-              <textarea
-                ref={textareaRef}
-                className="tree-node-textarea"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onFocus={() => actions.selectNode(node.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Follow up..."
-                rows={1}
-              />
-            </div>
-          )}
-          {node.git_commit && !isStreaming && (
-            <button className="tree-node-files-btn" onClick={handleOpenFiles}>
-              Files
-            </button>
+          {!isStreaming && selected && (
+            <>
+              <div className="tree-node-input">
+                <textarea
+                  ref={textareaRef}
+                  className="tree-node-textarea"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onFocus={() => actions.selectNode(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder="Follow up..."
+                  rows={1}
+                />
+              </div>
+              {node.git_commit && (
+                <button className="tree-node-files-btn" onClick={handleOpenFiles}>
+                  Files
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
