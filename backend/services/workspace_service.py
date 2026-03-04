@@ -1,8 +1,7 @@
 """Workspace service — git worktree management for per-node isolation.
 
-Each tree with a git-enabled repo_mode gets a main repo at the root node's
-workspace directory. Child nodes get git worktrees branched from their parent's
-commit. Trees with repo_mode="none" fall back to a flat shared directory.
+Every tree gets a git repo at the root node's workspace directory.
+Child nodes get git worktrees branched from their parent's commit.
 """
 
 from __future__ import annotations
@@ -41,6 +40,8 @@ async def _run_git(cwd: Path, *args: str, check: bool = True) -> tuple[int, str,
 async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: str | None) -> Path:
     """Initialise the main git repo for a tree. Returns the root workspace path.
 
+    Idempotent — returns immediately if a git repo already exists in root_dir.
+
     Modes:
       "new"   — git init + initial commit
       "local" — git clone from local path
@@ -48,6 +49,10 @@ async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: st
     """
     root_dir = WORKSPACES_DIR / tree_id / root_id
     root_dir.mkdir(parents=True, exist_ok=True)
+
+    # Idempotent: if .git already exists, skip initialisation
+    if (root_dir / ".git").exists():
+        return root_dir
 
     if repo_mode == "new":
         await _run_git(root_dir, "init")
@@ -157,17 +162,41 @@ async def auto_commit(worktree_path: Path, message: str) -> tuple[str, int]:
 
 # ── Workspace resolution ─────────────────────────────────────────────
 
-def resolve_workspace(tree_id: str, root_id: str, node_id: str, repo_mode: str) -> Path:
-    """Return the workspace path for a node.
-
-    - repo_mode == "none": flat shared directory (legacy)
-    - otherwise: per-node directory (worktree or main repo)
-    """
-    if repo_mode == "none":
-        ws = WORKSPACES_DIR / tree_id
-        ws.mkdir(parents=True, exist_ok=True)
-        return ws
+def resolve_workspace(tree_id: str, root_id: str, node_id: str) -> Path:
+    """Return the workspace path for a node (per-node directory)."""
     return WORKSPACES_DIR / tree_id / node_id
+
+
+# ── Session portability ───────────────────────────────────────────
+
+CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+
+
+def _claude_project_dir(workspace: Path) -> Path:
+    """Return the Claude Code project dir for a workspace path.
+
+    Claude Code encodes the cwd as: slashes → dashes, leading dash.
+    E.g. /home/user/foo → -home-user-foo
+    """
+    return CLAUDE_PROJECTS_DIR / str(workspace.resolve()).replace("/", "-")
+
+
+def copy_session(parent_workspace: Path, child_workspace: Path, session_id: str):
+    """Copy a session file from the parent's project dir to the child's.
+
+    This allows the SDK to fork a session that was created with a
+    different cwd (i.e. a different worktree).
+    """
+    src_dir = _claude_project_dir(parent_workspace)
+    dst_dir = _claude_project_dir(child_workspace)
+    src_file = src_dir / f"{session_id}.jsonl"
+    if not src_file.exists():
+        log.warning("Parent session file not found: %s", src_file)
+        return
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst_file = dst_dir / f"{session_id}.jsonl"
+    if not dst_file.exists():
+        shutil.copy2(str(src_file), str(dst_file))
 
 
 # ── File browsing / diff ──────────────────────────────────────────

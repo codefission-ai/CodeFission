@@ -10,7 +10,7 @@ async def create_tree(
     name: str,
     provider: str = DEFAULT_PROVIDER,
     model: str = DEFAULT_MODEL,
-    repo_mode: str = "none",
+    repo_mode: str = "new",
     repo_source: str | None = None,
 ) -> tuple[Tree, Node]:
     tree_id = str(uuid.uuid4())[:8]
@@ -92,6 +92,7 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
             children_ids=parent_to_children.get(r["id"], []),
             git_branch=r["git_branch"],
             git_commit=r["git_commit"],
+            session_id=r["session_id"],
         ))
     return nodes
 
@@ -116,6 +117,7 @@ async def get_node(node_id: str) -> Node | None:
         children_ids=[c["id"] for c in children],
         git_branch=row["git_branch"],
         git_commit=row["git_commit"],
+        session_id=row["session_id"],
     )
 
 
@@ -161,7 +163,7 @@ async def update_node(node_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit"):
+        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:

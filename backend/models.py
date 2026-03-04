@@ -18,6 +18,7 @@ class Node(BaseModel):
     children_ids: list[str] = []
     git_branch: str | None = None
     git_commit: str | None = None
+    session_id: str | None = None
 
 
 class Tree(BaseModel):
@@ -27,5 +28,5 @@ class Tree(BaseModel):
     root_node_id: str | None = None
     provider: str = DEFAULT_PROVIDER
     model: str = DEFAULT_MODEL
-    repo_mode: str = "none"
+    repo_mode: str = "new"
     repo_source: str | None = None

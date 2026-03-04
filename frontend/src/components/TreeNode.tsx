@@ -47,7 +47,8 @@ function RepoSelector({ treeId }: { treeId: string }) {
 
   if (!tree) return null;
 
-  if (tree.repo_mode !== "none") {
+  // If tree is configured with a local/url source, just show the badge
+  if (tree.repo_mode !== "new") {
     return <RepoBadge tree={tree} />;
   }
 
@@ -119,19 +120,12 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     node.status === "done" ? "#6366f1" :
     "#5c5c66";
 
-  // Check if tree has repo configured
-  const tree = useStore((s) => s.trees.find((t) => t.id === node.tree_id));
-
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
-    // Auto-set "new" repo if none configured when user sends first message
-    if (isRoot && tree && tree.repo_mode === "none") {
-      send({ type: WS.SET_REPO, tree_id: tree.id, repo_mode: "new" });
-    }
     send({ type: WS.CHAT, node_id: node.id, content: input.trim() });
     setInput("");
     if (textareaRef.current) textareaRef.current.style.height = "";
-  }, [input, isStreaming, node.id, isRoot, tree]);
+  }, [input, isStreaming, node.id]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

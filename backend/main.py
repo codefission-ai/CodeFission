@@ -21,10 +21,10 @@ from services.tree_service import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, update_tree, delete_tree,
 )
-from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd
+from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
     setup_repo, create_worktree, ensure_worktree, auto_commit,
-    resolve_workspace, cleanup_tree_workspace,
+    resolve_workspace, cleanup_tree_workspace, copy_session,
     list_files, get_diff, read_file, _run_git, WORKSPACES_DIR,
 )
 
@@ -48,8 +48,18 @@ _streams: dict[str, StreamState] = {}
 
 # ── WebSocket handler ───────────────────────────────────────────────────
 
+def _silence_asyncgen_gc(loop, context):
+    """Suppress RuntimeError from anyio cancel scopes during GC of SDK generators."""
+    exc = context.get("exception")
+    if isinstance(exc, RuntimeError) and "cancel scope" in str(exc):
+        return
+    loop.default_exception_handler(context)
+
+
 @app.on_event("startup")
 async def startup():
+    loop = asyncio.get_running_loop()
+    loop.set_exception_handler(_silence_asyncgen_gc)
     await init_db()
 
 
@@ -73,7 +83,14 @@ async def websocket_endpoint(ws: WebSocket):
         provider = data.get("provider", "anthropic")
         model = data.get("model", "claude-sonnet-4-6")
         tree, root = await create_tree(name, provider=provider, model=model,
-                                       repo_mode="none")
+                                       repo_mode="new")
+        # Auto-init git repo for root node
+        await setup_repo(tree.id, root.id, "new", None)
+        root_dir = WORKSPACES_DIR / tree.id / root.id
+        _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+        _, branch, _ = await _run_git(root_dir, "rev-parse", "--abbrev-ref", "HEAD")
+        await update_node(root.id, git_branch=branch, git_commit=head_sha)
+        root = await get_node(root.id)
         await send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
 
     async def handle_load_tree(data: dict):
@@ -97,11 +114,11 @@ async def websocket_endpoint(ws: WebSocket):
         label = data.get("label", "")
         node = await create_child_node(parent_id, label)
 
-        # Set up git worktree if tree is git-enabled
+        # Set up git worktree for child node
         parent = await get_node(parent_id)
         if parent:
             tree = await get_tree(parent.tree_id)
-            if tree and tree.repo_mode != "none":
+            if tree:
                 try:
                     await create_worktree(
                         tree.id, tree.root_node_id, node.id,
@@ -136,25 +153,9 @@ async def websocket_endpoint(ws: WebSocket):
                 if not tree:
                     return
 
-                git_enabled = tree.repo_mode != "none"
-
                 # If this node already has a completed turn, auto-create a child
                 if node.assistant_response:
                     child = await create_child_node(nid, label=msg[:40])
-
-                    if git_enabled:
-                        try:
-                            await create_worktree(
-                                tree.id, tree.root_node_id, child.id,
-                                node.git_commit or "HEAD",
-                            )
-                            branch_name = f"ct-{child.id}"
-                            await update_node(child.id, git_branch=branch_name)
-                            child = await get_node(child.id)
-                        except Exception as e:
-                            import logging
-                            logging.getLogger(__name__).warning("Worktree creation failed: %s", e)
-
                     await send(WS.NODE_CREATED, node=child.model_dump())
                     nid = child.id
 
@@ -164,18 +165,27 @@ async def websocket_endpoint(ws: WebSocket):
                 await update_node(nid, user_message=msg, label=label, status="active")
                 await send(WS.NODE_DATA, node=(await get_node(nid)).model_dump())
 
-                # Resolve workspace
-                workspace = resolve_workspace(tree.id, tree.root_node_id, nid, tree.repo_mode)
+                # Resolve workspace and ensure worktree exists
+                workspace = resolve_workspace(tree.id, tree.root_node_id, nid)
+                current = await get_node(nid)
+                parent_node = await get_node(current.parent_id) if current.parent_id else None
+                await ensure_worktree(
+                    tree.id, tree.root_node_id, nid,
+                    current.parent_id,
+                    parent_node.git_commit if parent_node else None,
+                )
 
-                # Ensure worktree exists for git-enabled trees
-                if git_enabled:
-                    current = await get_node(nid)
-                    parent_node = await get_node(current.parent_id) if current.parent_id else None
-                    await ensure_worktree(
-                        tree.id, tree.root_node_id, nid,
-                        current.parent_id,
-                        parent_node.git_commit if parent_node else None,
-                    )
+                # Resolve parent's session_id for forking
+                current = await get_node(nid)
+                parent_session_id = None
+                if current and current.parent_id:
+                    parent_node = await get_node(current.parent_id)
+                    if parent_node and parent_node.session_id:
+                        parent_session_id = parent_node.session_id
+                        # Copy session file to child's project dir so the SDK
+                        # can find it (sessions are stored per-cwd)
+                        parent_ws = resolve_workspace(tree.id, tree.root_node_id, parent_node.id)
+                        copy_session(parent_ws, workspace, parent_session_id)
 
                 # Init streaming state
                 _streams[nid] = StreamState(node_id=nid)
@@ -184,10 +194,38 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # Track tool names for pairing start→end
                 tool_names: dict[str, str] = {}
+                node_session_id: str | None = None
 
-                # Stream response (structured events)
-                async for event in stream_chat(nid, msg, workspace):
-                    if isinstance(event, TextDelta):
+                # Run streaming in a separate task so the SDK's anyio
+                # cancel scope is bound to that task, not ours.  When
+                # the SDK generator is GC'd, it cancels the stream task
+                # (already done) instead of our finalization task.
+                event_queue: asyncio.Queue = asyncio.Queue()
+
+                async def _pump_stream():
+                    try:
+                        async for event in stream_chat(nid, msg, workspace, parent_session_id):
+                            await event_queue.put(event)
+                    except Exception as exc:
+                        await event_queue.put(exc)
+                    finally:
+                        await event_queue.put(None)  # sentinel
+
+                stream_task = asyncio.create_task(_pump_stream())
+
+                # Consume events from the queue
+                while True:
+                    event = await event_queue.get()
+                    if event is None:
+                        break
+                    if isinstance(event, Exception):
+                        raise event
+
+                    if isinstance(event, SessionInit):
+                        node_session_id = event.session_id
+                        await update_node(nid, session_id=node_session_id)
+
+                    elif isinstance(event, TextDelta):
                         _streams[nid].text += event.text
                         await bus.emit(STREAM_DELTA, node_id=nid, text=event.text)
                         await send(WS.CHUNK, node_id=nid, text=event.text)
@@ -212,21 +250,26 @@ async def websocket_endpoint(ws: WebSocket):
                             is_error=event.is_error,
                         )
 
-                # Finalise (generator returns when SDK is done)
+                # Wait for stream task cleanup (cancel scope exit etc.)
+                try:
+                    await stream_task
+                except BaseException:
+                    pass
+
+                # Finalise
                 full_response = _streams[nid].text
                 _streams[nid].status = "done"
                 await update_node(nid, assistant_response=full_response, status="done")
 
-                # Auto-commit for git-enabled trees
+                # Auto-commit
                 git_commit = None
-                if git_enabled:
-                    try:
-                        commit_sha, files_changed = await auto_commit(workspace, msg)
-                        await update_node(nid, git_commit=commit_sha)
-                        git_commit = commit_sha
-                    except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).warning("Auto-commit failed: %s", e)
+                try:
+                    commit_sha, files_changed = await auto_commit(workspace, msg)
+                    await update_node(nid, git_commit=commit_sha)
+                    git_commit = commit_sha
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning("Auto-commit failed: %s", e)
 
                 await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
                 done_payload = {"node_id": nid, "full_response": full_response}
@@ -258,6 +301,11 @@ async def websocket_endpoint(ws: WebSocket):
             await send(WS.ERROR, error="Tree not found")
             return
         try:
+            # If re-configuring (e.g. "new" → "local"), wipe old workspace first
+            root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
+            if root_dir.exists() and repo_mode != tree.repo_mode:
+                import shutil
+                shutil.rmtree(root_dir, ignore_errors=True)
             await setup_repo(tree.id, tree.root_node_id, repo_mode, repo_source)
             root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
             _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
@@ -278,10 +326,10 @@ async def websocket_endpoint(ws: WebSocket):
             await send(WS.ERROR, error="Node not found")
             return
         tree = await get_tree(node.tree_id)
-        if not tree or tree.repo_mode == "none":
-            await send(WS.ERROR, error="No repo configured")
+        if not tree:
+            await send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id, tree.repo_mode)
+        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
         if not ws_path.exists():
             await send(WS.NODE_FILES, node_id=node_id, files=[])
             return
@@ -295,10 +343,10 @@ async def websocket_endpoint(ws: WebSocket):
             await send(WS.ERROR, error="Node not found")
             return
         tree = await get_tree(node.tree_id)
-        if not tree or tree.repo_mode == "none":
-            await send(WS.ERROR, error="No repo configured")
+        if not tree:
+            await send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id, tree.repo_mode)
+        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
         if not ws_path.exists():
             await send(WS.NODE_DIFF, node_id=node_id, diff="")
             return
@@ -318,10 +366,10 @@ async def websocket_endpoint(ws: WebSocket):
             await send(WS.ERROR, error="Node not found")
             return
         tree = await get_tree(node.tree_id)
-        if not tree or tree.repo_mode == "none":
-            await send(WS.ERROR, error="No repo configured")
+        if not tree:
+            await send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id, tree.repo_mode)
+        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
         try:
             content = read_file(ws_path, file_path)
             await send(WS.FILE_CONTENT, node_id=node_id, file_path=file_path, content=content)
