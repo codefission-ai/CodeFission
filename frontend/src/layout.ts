@@ -41,6 +41,7 @@ export function nodeH(n: CNode | undefined, expanded: boolean): number {
 export function layoutTree(
   nodes: Record<string, CNode>,
   expandedNodes: Record<string, boolean>,
+  measured?: Record<string, { width: number; height: number }>,
 ): LayoutResult {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
@@ -53,8 +54,8 @@ export function layoutTree(
     }
   }
 
-  const w = (id: string) => nodeW(nodes[id], !!expandedNodes[id]);
-  const h = (id: string) => nodeH(nodes[id], !!expandedNodes[id]);
+  const w = (id: string) => measured?.[id]?.width ?? nodeW(nodes[id], !!expandedNodes[id]);
+  const h = (id: string) => measured?.[id]?.height ?? nodeH(nodes[id], !!expandedNodes[id]);
 
   // ── Contour-based subtree shape ──────────────────────────────
   // left[d] / right[d] = leftmost / rightmost x extent at depth d,

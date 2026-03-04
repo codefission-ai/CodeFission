@@ -245,6 +245,26 @@
       max-height: 55px;
       overflow: hidden;
     }
+    .tree-node-user-clickable {
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+    .tree-node-user-clickable:hover {
+      background: #2e2e38;
+    }
+    .tree-node-user-clickable .collapse-hint {
+      display: none;
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 9px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+    .tree-node-user-clickable:hover .collapse-hint {
+      display: block;
+    }
     .tree-node-assistant {
       padding: 4px 8px;
       border-left: 2px solid var(--accent);
@@ -716,6 +736,8 @@
       opacity: 0.6; transition: opacity 0.15s;
     }
     .repo-badge-copy:hover { opacity: 1; background: rgba(99,102,241,0.15); }
+    .repo-badge-browsable { cursor: pointer; transition: color 0.15s; }
+    .repo-badge-browsable:hover { color: var(--text-primary); text-decoration: underline; }
 
     /* ── Files button on tree nodes ────────────────────────────── */
     .tree-node-files-btn {

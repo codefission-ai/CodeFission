@@ -16,7 +16,10 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max) + "...";
 }
 
-function RepoBadge({ tree }: { tree: { repo_mode: string; repo_source: string | null } }) {
+function RepoBadge({ tree, onBrowse }: {
+  tree: { repo_mode: string; repo_source: string | null };
+  onBrowse?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const label = tree.repo_mode === "new"
     ? "empty repo"
@@ -31,7 +34,13 @@ function RepoBadge({ tree }: { tree: { repo_mode: string; repo_source: string | 
 
   return (
     <div className="repo-badge" onClick={(e) => e.stopPropagation()}>
-      <span className="repo-badge-text" title={label}>{label}</span>
+      <span
+        className={`repo-badge-text ${onBrowse ? "repo-badge-browsable" : ""}`}
+        title={label}
+        onClick={onBrowse}
+      >
+        {label}
+      </span>
       <button className="repo-badge-copy" onClick={handleCopy} title="Copy path">
         {copied ? "ok" : "cp"}
       </button>
@@ -39,7 +48,11 @@ function RepoBadge({ tree }: { tree: { repo_mode: string; repo_source: string | 
   );
 }
 
-function RepoSelector({ treeId }: { treeId: string }) {
+function RepoSelector({ treeId, locked, onBrowse }: {
+  treeId: string;
+  locked?: boolean;
+  onBrowse?: () => void;
+}) {
   const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
   const [mode, setMode] = useState("new");
   const [source, setSource] = useState("");
@@ -47,9 +60,9 @@ function RepoSelector({ treeId }: { treeId: string }) {
 
   if (!tree) return null;
 
-  // If tree is configured with a local/url source, just show the badge
-  if (tree.repo_mode !== "new") {
-    return <RepoBadge tree={tree} />;
+  // Locked once children exist, or already configured with a source
+  if (locked || tree.repo_mode !== "new") {
+    return <RepoBadge tree={tree} onBrowse={onBrowse} />;
   }
 
   const needsSource = mode === "local" || mode === "url";
@@ -108,6 +121,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const selectedId = useStore((s) => s.selectedNodeId);
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
+  const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const selected = selectedId === node.id;
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
@@ -133,12 +147,18 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     send({ type: WS.GET_NODE_FILES, node_id: node.id });
   }, [node.id]);
 
-  // Root with no message yet: repo selector + textbox
+  const handleBrowseRepo = useCallback(() => {
+    actions.openFilesPanel(node.id);
+    send({ type: WS.GET_NODE_FILES, node_id: node.id });
+  }, [node.id]);
+
+  // Root hub: repo selector (locks once children exist) + textbox
   if (isRoot && !node.user_message) {
+    const hasChildren = node.children_ids.length > 0;
     return (
       <div className="tree-node tree-node-root" onClick={(e) => e.stopPropagation()}>
         <Handle type="source" position={Position.Bottom} />
-        <RepoSelector treeId={node.tree_id} />
+        <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
         <textarea
           ref={textareaRef}
           className="tree-node-root-input"
@@ -151,7 +171,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               handleSend();
             }
           }}
-          placeholder="/init"
+          placeholder="Type a message..."
           rows={1}
         />
       </div>
@@ -164,7 +184,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""}`}
       onClick={() => {
         actions.selectNode(node.id);
-        actions.toggleExpand(node.id);
+        if (!isExpanded) actions.setExpanded(node.id, true);
       }}
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
@@ -176,9 +196,18 @@ function TreeNode({ data }: { data: { node: CNode } }) {
         </span>
       )}
       {isExpanded && (
-        <div className="tree-node-preview" onClick={(e) => e.stopPropagation()}>
+        <div className="tree-node-preview" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
+          {isRoot && tree && (
+            <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
+          )}
           {node.user_message && (
-            <div className="tree-node-user">{truncate(node.user_message, 150)}</div>
+            <div
+              className="tree-node-user tree-node-user-clickable"
+              onClick={() => actions.setExpanded(node.id, false)}
+            >
+              {truncate(node.user_message, 150)}
+              <span className="collapse-hint">&#x25B2;</span>
+            </div>
           )}
           {(node.assistant_response || isStreaming) && (
             <div
