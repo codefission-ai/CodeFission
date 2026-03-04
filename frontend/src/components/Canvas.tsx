@@ -83,21 +83,32 @@ export default function Canvas() {
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [ready, setReady] = useState(false);
 
+  const heightTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    let changed = false;
+    let needsLayout = false;
+    let heightChanged = false;
     for (const change of changes) {
       if (change.type === "dimensions" && (change as NodeDimensionChange).dimensions) {
         const dim = (change as NodeDimensionChange).dimensions!;
         const prev = measuredRef.current[change.id];
+        if (!prev || prev.width !== dim.width) needsLayout = true;
+        if (prev && prev.width === dim.width && prev.height !== dim.height) heightChanged = true;
         if (!prev || prev.width !== dim.width || prev.height !== dim.height) {
           measuredRef.current[change.id] = { width: dim.width, height: dim.height };
-          changed = true;
         }
       }
     }
-    if (changed) {
+    if (needsLayout) {
+      clearTimeout(heightTimerRef.current);
       setLayoutVersion((v) => v + 1);
       setReady(true);
+    } else if (heightChanged) {
+      // Debounce height-only changes to avoid stealing focus on every keystroke
+      clearTimeout(heightTimerRef.current);
+      heightTimerRef.current = setTimeout(() => {
+        setLayoutVersion((v) => v + 1);
+      }, 200);
     }
   }, []);
 

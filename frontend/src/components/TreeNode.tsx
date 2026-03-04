@@ -1,15 +1,8 @@
-import { memo, useState, useCallback, useRef, type ChangeEvent } from "react";
+import { memo, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore, actions, type CNode } from "../store";
 import { send, WS } from "../ws";
 import NodeModal from "./NodeModal";
-
-/** Auto-resize a textarea to fit its content */
-function autoResize(e: ChangeEvent<HTMLTextAreaElement>) {
-  const ta = e.target;
-  ta.style.height = "auto";
-  ta.style.height = ta.scrollHeight + "px";
-}
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text || "";
@@ -128,6 +121,14 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  useLayoutEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "auto";
+      ta.style.height = ta.scrollHeight + "px";
+    }
+  }, [input]);
+
   const dot =
     isStreaming ? "#16a34a" :
     node.status === "error" ? "#dc2626" :
@@ -138,7 +139,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     if (!input.trim() || isStreaming) return;
     send({ type: WS.CHAT, node_id: node.id, content: input.trim() });
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "";
   }, [input, isStreaming, node.id]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {
@@ -156,14 +156,14 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   if (isRoot && !node.user_message) {
     const hasChildren = node.children_ids.length > 0;
     return (
-      <div className="tree-node tree-node-root" onClick={() => actions.selectNode(node.id)}>
+      <div className="tree-node tree-node-root" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
         <Handle type="source" position={Position.Bottom} />
         <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
         <textarea
           ref={textareaRef}
           className="tree-node-root-input"
           value={input}
-          onChange={(e) => { setInput(e.target.value); autoResize(e); }}
+          onChange={(e) => setInput(e.target.value)}
           onFocus={() => actions.selectNode(node.id)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -226,7 +226,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                 ref={textareaRef}
                 className="tree-node-textarea"
                 value={input}
-                onChange={(e) => { setInput(e.target.value); autoResize(e); }}
+                onChange={(e) => setInput(e.target.value)}
                 onFocus={() => actions.selectNode(node.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {

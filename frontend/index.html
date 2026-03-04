@@ -197,7 +197,7 @@
       overflow-y: auto;
     }
     .tree-node-root-input {
-      flex: 1; min-width: 0; width: 100%;
+      min-width: 0; width: 100%;
       padding: 6px 10px; font-size: 12px;
       font-family: var(--font-mono);
       background: var(--bg-surface);
@@ -206,7 +206,7 @@
       border-radius: 4px; outline: none;
       resize: none; line-height: 1.4;
       overflow: hidden;
-      min-height: 28px;
+      min-height: 28px; max-height: 200px;
     }
     .tree-node-root-input::placeholder { color: var(--text-muted); }
     .tree-node-root-input:focus {
@@ -299,7 +299,7 @@
       resize: none;
       outline: none;
       line-height: 1.4;
-      min-height: 24px;
+      min-height: 24px; max-height: 150px;
       overflow: hidden;
     }
     .tree-node-textarea::placeholder { color: var(--text-muted); }
@@ -549,6 +549,7 @@
       color: var(--text-primary);
       line-height: 1.5;
       min-height: 38px; max-height: 160px;
+      field-sizing: content;
       transition: border-color 0.15s;
     }
     .chat-input textarea::placeholder { color: var(--text-muted); }

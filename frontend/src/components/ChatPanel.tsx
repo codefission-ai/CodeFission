@@ -118,15 +118,6 @@ export default function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, node?.assistant_response, activeToolCalls.length]);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (ta) {
-      ta.style.height = "38px";
-      ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
-    }
-  }, [input]);
-
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
     send({ type: WS.CHAT, node_id: selectedId, content: input.trim() });
