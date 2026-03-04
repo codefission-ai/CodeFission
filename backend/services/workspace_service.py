@@ -12,9 +12,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from config import DATA_DIR
+
 log = logging.getLogger(__name__)
 
-WORKSPACES_DIR = Path(__file__).parent.parent / "data" / "workspaces"
+WORKSPACES_DIR = DATA_DIR / "workspaces"
 
 
 # ── Low-level git helper ─────────────────────────────────────────────
@@ -179,6 +181,11 @@ def _claude_project_dir(workspace: Path) -> Path:
     E.g. /home/user/foo → -home-user-foo
     """
     return CLAUDE_PROJECTS_DIR / str(workspace.resolve()).replace("/", "-")
+
+
+def session_file_exists(workspace: Path, session_id: str) -> bool:
+    """Check if a session file exists for the given workspace and session_id."""
+    return (_claude_project_dir(workspace) / f"{session_id}.jsonl").exists()
 
 
 def copy_session(parent_workspace: Path, child_workspace: Path, session_id: str):

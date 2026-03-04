@@ -3,8 +3,9 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from models import DEFAULT_PROVIDER, DEFAULT_MODEL
+from config import DATA_DIR
 
-DB_PATH = Path(__file__).parent.parent / "data" / "repoevolve.db"
+DB_PATH = DATA_DIR / "repoevolve.db"
 
 
 @asynccontextmanager
@@ -67,5 +68,7 @@ async def init_db():
             await db.execute("ALTER TABLE nodes ADD COLUMN git_branch TEXT")
         if "git_commit" not in node_columns:
             await db.execute("ALTER TABLE nodes ADD COLUMN git_commit TEXT")
+        if "session_id" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN session_id TEXT")
 
         await db.commit()

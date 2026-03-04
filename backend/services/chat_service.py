@@ -175,10 +175,14 @@ async def stream_chat(
         debug_stderr=open(os.devnull, "w"),
     )
 
-    # Session forking: if parent has a session, fork from it
+    # Session forking: if parent has a session file, fork from it
     if parent_session_id:
-        options.resume = parent_session_id
-        options.fork_session = True
+        from services.workspace_service import session_file_exists
+        if session_file_exists(workspace, parent_session_id):
+            options.resume = parent_session_id
+            options.fork_session = True
+        else:
+            log.info("Parent session file missing, starting fresh session for node %s", node_id)
 
     # Track pending tool calls to pair start/end
     _pending_tool: dict | None = None
