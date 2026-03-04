@@ -153,11 +153,10 @@ async def websocket_endpoint(ws: WebSocket):
                 if not tree:
                     return
 
-                # If this node already has a completed turn, auto-create a child
-                if node.assistant_response:
-                    child = await create_child_node(nid, label=msg[:40])
-                    await send(WS.NODE_CREATED, node=child.model_dump())
-                    nid = child.id
+                # Always create a child node (root stays as a clean hub)
+                child = await create_child_node(nid, label=msg[:40])
+                await send(WS.NODE_CREATED, node=child.model_dump())
+                nid = child.id
 
                 # Save user message and set label
                 current = await get_node(nid)

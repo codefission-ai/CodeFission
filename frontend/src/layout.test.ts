@@ -249,6 +249,17 @@ describe("layoutTree", () => {
     assertNoOverlap(layoutTree(nodes, { a: true, b1: true }));
   });
 
+  it("root hub (no message) doesn't overlap children", () => {
+    const nodes = toRecord([
+      mkNode("r", null, { children_ids: ["a", "b"] }),
+      mkNode("a", "r"),
+      mkNode("b", "r"),
+    ]);
+    assertNoOverlap(layoutTree(nodes, {}));
+    assertNoOverlap(layoutTree(nodes, { a: true }));
+    assertNoOverlap(layoutTree(nodes, { a: true, b: true }));
+  });
+
   it("all nodes expanded in a 3-level tree", () => {
     const nodes = toRecord([
       mkNode("r", null, { children_ids: ["a", "b"], user_message: "q" }),

@@ -151,7 +151,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               handleSend();
             }
           }}
-          placeholder="Ask a question..."
+          placeholder="/init"
           rows={1}
         />
       </div>
