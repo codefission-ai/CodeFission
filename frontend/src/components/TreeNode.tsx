@@ -156,7 +156,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   if (isRoot && !node.user_message) {
     const hasChildren = node.children_ids.length > 0;
     return (
-      <div className="tree-node tree-node-root" onClick={(e) => e.stopPropagation()}>
+      <div className="tree-node tree-node-root" onClick={() => actions.selectNode(node.id)}>
         <Handle type="source" position={Position.Bottom} />
         <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
         <textarea

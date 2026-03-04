@@ -15,11 +15,23 @@ import { layoutTree } from "../layout";
 
 const nodeTypes = { tree: TreeNode };
 
+function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null): Set<string> {
+  const edgeIds = new Set<string>();
+  if (!selectedId) return edgeIds;
+  let cur = nodes[selectedId];
+  while (cur?.parent_id) {
+    edgeIds.add(`${cur.parent_id}-${cur.id}`);
+    cur = nodes[cur.parent_id];
+  }
+  return edgeIds;
+}
+
 function buildFlow(
   nodes: Record<string, CNode>,
   expandedNodes: Record<string, boolean>,
   measured: Record<string, { width: number; height: number }>,
   ready: boolean,
+  selectedNodeId: string | null,
 ) {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
@@ -40,14 +52,23 @@ function buildFlow(
     style: { opacity: ready ? 1 : 0 },
   }));
 
+  const pathEdges = getAncestorPath(nodes, selectedNodeId);
+
   const flowEdges: Edge[] = list
     .filter((n) => n.parent_id)
-    .map((n) => ({
-      id: `${n.parent_id}-${n.id}`,
-      source: n.parent_id!,
-      target: n.id,
-      style: { stroke: "rgba(0,0,0,0.12)" },
-    }));
+    .map((n) => {
+      const edgeId = `${n.parent_id}-${n.id}`;
+      const onPath = pathEdges.has(edgeId);
+      return {
+        id: edgeId,
+        source: n.parent_id!,
+        target: n.id,
+        style: {
+          stroke: onPath ? "rgba(0,0,0,0.45)" : "rgba(0,0,0,0.10)",
+          strokeWidth: onPath ? 2 : 1,
+        },
+      };
+    });
 
   return { flowNodes, flowEdges };
 }
@@ -56,6 +77,7 @@ export default function Canvas() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
   const currentTreeId = useStore((s) => s.currentTreeId);
+  const selectedNodeId = useStore((s) => s.selectedNodeId);
 
   const measuredRef = useRef<Record<string, { width: number; height: number }>>({});
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -80,9 +102,9 @@ export default function Canvas() {
   }, []);
 
   const { flowNodes, flowEdges } = useMemo(
-    () => buildFlow(nodes, expandedNodes, measuredRef.current, ready),
+    () => buildFlow(nodes, expandedNodes, measuredRef.current, ready, selectedNodeId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, expandedNodes, layoutVersion, ready],
+    [nodes, expandedNodes, layoutVersion, ready, selectedNodeId],
   );
 
   if (flowNodes.length === 0) {
