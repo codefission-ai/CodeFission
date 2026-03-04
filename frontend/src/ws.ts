@@ -58,7 +58,7 @@ function handle(data: any) {
     case WS.TREE_CREATED:
       actions.addTree(data.tree);
       actions.selectTree(data.tree.id);
-      actions.upsertNode(data.root);
+      actions.setNodes([data.root]);
       actions.selectNode(data.root.id);
       break;
     case WS.TREE_DELETED:
