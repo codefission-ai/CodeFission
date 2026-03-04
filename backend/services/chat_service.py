@@ -136,6 +136,10 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
         parts.append(
             "\n\nAll your file changes are automatically committed after each response. "
             "Focus on writing code and making changes — git operations are handled for you."
+            "\n\nIMPORTANT: Other branches in this repo belong to sibling conversation nodes "
+            "and are completely independent. Do NOT use `git log --all`, `git branch`, "
+            "`git show` on other branches, or reference any branch other than your own. "
+            "Only interact with files in your working directory."
         )
 
     return "".join(parts)

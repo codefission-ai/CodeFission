@@ -177,10 +177,11 @@ CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 def _claude_project_dir(workspace: Path) -> Path:
     """Return the Claude Code project dir for a workspace path.
 
-    Claude Code encodes the cwd as: slashes → dashes, leading dash.
-    E.g. /home/user/foo → -home-user-foo
+    Claude Code encodes the cwd by replacing both / and . with dashes.
+    E.g. /home/user/.foo/bar → -home-user--foo-bar
     """
-    return CLAUDE_PROJECTS_DIR / str(workspace.resolve()).replace("/", "-")
+    encoded = str(workspace.resolve()).replace("/", "-").replace(".", "-")
+    return CLAUDE_PROJECTS_DIR / encoded
 
 
 def session_file_exists(workspace: Path, session_id: str) -> bool:
