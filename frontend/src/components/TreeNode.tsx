@@ -237,13 +237,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                 placeholder="Follow up..."
                 rows={1}
               />
-              <button
-                className="tree-node-send"
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming}
-              >
-                Send
-              </button>
             </div>
           )}
           {node.git_commit && !isStreaming && (
