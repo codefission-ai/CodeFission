@@ -1,7 +1,15 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, type ChangeEvent } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore, actions, type CNode } from "../store";
 import { send, WS } from "../ws";
+import NodeModal from "./NodeModal";
+
+/** Auto-resize a textarea to fit its content */
+function autoResize(e: ChangeEvent<HTMLTextAreaElement>) {
+  const ta = e.target;
+  ta.style.height = "auto";
+  ta.style.height = ta.scrollHeight + "px";
+}
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text || "";
@@ -16,6 +24,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const selected = selectedId === node.id;
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
+  const [showModal, setShowModal] = useState(false);
 
   const dot =
     isStreaming ? "#34d399" :
@@ -37,7 +46,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
         <textarea
           className="tree-node-root-input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); autoResize(e); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -62,7 +71,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
       <Handle type="source" position={Position.Bottom} />
-      <span className="tree-node-dot" style={{ background: dot }} />
+      {!isExpanded && <span className="tree-node-dot" style={{ background: dot }} />}
       {!isExpanded && (
         <span className="tree-node-label">
           {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
@@ -74,7 +83,12 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             <div className="tree-node-user">{truncate(node.user_message, 150)}</div>
           )}
           {(node.assistant_response || isStreaming) && (
-            <div className="tree-node-assistant">
+            <div
+              className={`tree-node-assistant ${!isStreaming && node.assistant_response ? "clickable" : ""}`}
+              onClick={() => {
+                if (!isStreaming && node.assistant_response) setShowModal(true);
+              }}
+            >
               {truncate(node.assistant_response, 150)}
               {isStreaming && <span className="stream-cursor" />}
             </div>
@@ -84,7 +98,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               <textarea
                 className="tree-node-textarea"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => { setInput(e.target.value); autoResize(e); }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -104,6 +118,13 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             </div>
           )}
         </div>
+      )}
+      {showModal && (
+        <NodeModal
+          userMessage={node.user_message}
+          assistantResponse={node.assistant_response}
+          onClose={() => setShowModal(false)}
+        />
       )}
     </div>
   );

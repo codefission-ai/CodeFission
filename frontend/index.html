@@ -196,6 +196,7 @@
       border: 1px solid var(--border-dim);
       border-radius: 4px; outline: none;
       resize: none; line-height: 1.4;
+      overflow: hidden;
       min-height: 28px;
     }
     .tree-node-root-input::placeholder { color: var(--text-muted); }
@@ -228,8 +229,6 @@
       flex-direction: column;
       gap: 6px;
       width: 100%;
-      max-height: 200px;
-      overflow-y: auto;
       margin-top: 6px;
       font-size: 11px;
       line-height: 1.4;
@@ -268,6 +267,7 @@
       outline: none;
       line-height: 1.4;
       min-height: 24px;
+      overflow: hidden;
     }
     .tree-node-textarea::placeholder { color: var(--text-muted); }
     .tree-node-textarea:focus { border-color: var(--accent); }
@@ -566,9 +566,102 @@
       50% { opacity: 1; }
     }
 
+    /* ── Clickable assistant response in tree node ──────────────── */
+    .tree-node-assistant.clickable {
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    .tree-node-assistant.clickable:hover {
+      background: var(--bg-hover);
+    }
+
+    /* ── Node response modal ─────────────────────────────────────── */
+    .node-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: modal-fade-in 150ms ease-out;
+    }
+    @keyframes modal-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .node-modal {
+      position: relative;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-visible);
+      border-radius: var(--radius-md);
+      width: 90vw; max-width: 720px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 24px 28px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .node-modal-close {
+      position: absolute; top: 10px; right: 14px;
+      background: none; border: none; color: var(--text-muted);
+      font-size: 22px; cursor: pointer; line-height: 1;
+    }
+    .node-modal-close:hover { color: var(--text-primary); }
+    .node-modal-user {
+      background: var(--bg-active);
+      padding: 8px 12px; border-radius: var(--radius-sm);
+      color: var(--text-primary); font-size: 13px;
+      margin-bottom: 16px; white-space: pre-wrap; word-break: break-word;
+    }
+    .node-modal-response {
+      color: var(--text-secondary);
+      font-size: 14px; line-height: 1.7;
+    }
+    .node-modal-response p { margin: 0 0 10px 0; }
+    .node-modal-response p:last-child { margin-bottom: 0; }
+    .node-modal-response code {
+      padding: 2px 6px; background: var(--bg-raised); border-radius: 4px;
+      font-family: var(--font-mono); font-size: 13px;
+      border: 1px solid var(--border-subtle);
+    }
+    .node-modal-response pre {
+      background: var(--bg-deep); padding: 14px 16px;
+      border-radius: var(--radius-sm); overflow-x: auto;
+      margin: 10px 0; border: 1px solid var(--border-dim);
+    }
+    .node-modal-response pre code {
+      padding: 0; background: none; border: none; font-size: 13px; line-height: 1.5;
+    }
+    .node-modal-response blockquote {
+      border-left: 3px solid var(--accent-dim); padding-left: 14px;
+      color: var(--text-muted); margin: 10px 0;
+    }
+    .node-modal-response ul, .node-modal-response ol { padding-left: 22px; margin: 6px 0 10px; }
+    .node-modal-response h1, .node-modal-response h2, .node-modal-response h3 {
+      color: var(--text-primary); margin: 16px 0 8px 0;
+    }
+    .node-modal-response h1 { font-size: 18px; }
+    .node-modal-response h2 { font-size: 16px; }
+    .node-modal-response h3 { font-size: 14px; }
+    .node-modal-response a { color: var(--accent); text-decoration: none; }
+    .node-modal-response a:hover { text-decoration: underline; }
+    .node-modal-response table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+    .node-modal-response th, .node-modal-response td {
+      padding: 6px 12px; border: 1px solid var(--border-dim); font-size: 13px;
+    }
+    .node-modal-response th { background: var(--bg-raised); color: var(--text-primary); font-weight: 600; }
+    .node-modal-response img { max-width: 100%; border-radius: 4px; }
+    .node-modal-response hr { border: none; border-top: 1px solid var(--border-dim); margin: 14px 0; }
+
+    /* KaTeX overrides for dark theme */
+    .katex { color: var(--text-primary); }
+    .katex-display { margin: 12px 0; overflow-x: auto; }
+
     /* ── Selection highlight ────────────────────────────────────── */
     ::selection { background: var(--accent-dim); color: var(--text-primary); }
   </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>
 <body>
   <div id="root"></div>

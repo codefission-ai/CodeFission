@@ -42,6 +42,7 @@ function buildFlow(nodes: Record<string, CNode>, expandedNodes: Record<string, b
 export default function Canvas() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
+  const currentTreeId = useStore((s) => s.currentTreeId);
   const { flowNodes, flowEdges } = useMemo(
     () => buildFlow(nodes, expandedNodes),
     [nodes, expandedNodes]
@@ -53,6 +54,7 @@ export default function Canvas() {
 
   return (
     <ReactFlow
+      key={currentTreeId}
       nodes={flowNodes}
       edges={flowEdges}
       nodeTypes={nodeTypes}
