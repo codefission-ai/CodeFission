@@ -63,9 +63,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       {!isRoot && <Handle type="target" position={Position.Top} />}
       <Handle type="source" position={Position.Bottom} />
       <span className="tree-node-dot" style={{ background: dot }} />
-      <span className="tree-node-label">
-        {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
-      </span>
+      {!isExpanded && (
+        <span className="tree-node-label">
+          {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
+        </span>
+      )}
       {isExpanded && (
         <div className="tree-node-preview" onClick={(e) => e.stopPropagation()}>
           {node.user_message && (

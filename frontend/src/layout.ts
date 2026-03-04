@@ -7,7 +7,7 @@ export interface LayoutResult {
 }
 
 const GAP_X = 40;
-const GAP_Y = 40;
+const GAP_Y = 16;
 const MIN_LEVEL_H = 36 + GAP_Y; // collapsed node + gap = minimum height of one tree level
 
 /** Pixel width of a node based on its state */
