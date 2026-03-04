@@ -46,7 +46,7 @@ function buildFlow(
       id: `${n.parent_id}-${n.id}`,
       source: n.parent_id!,
       target: n.id,
-      style: { stroke: "rgba(255,255,255,0.12)" },
+      style: { stroke: "rgba(0,0,0,0.12)" },
     }));
 
   return { flowNodes, flowEdges };
@@ -103,7 +103,7 @@ export default function Canvas() {
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
     >
-      <Background variant={BackgroundVariant.Dots} color="#2a2a30" gap={20} />
+      <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
     </ReactFlow>
   );
 }

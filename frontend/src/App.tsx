@@ -16,34 +16,34 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(true);
 
-  // Drag state
-  const dragging = useRef<"sidebar" | "chat" | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { connectWs(); }, []);
 
-  const onMouseMove = useCallback((e: MouseEvent) => {
-    if (dragging.current === "sidebar") {
-      setSidebarWidth(Math.max(120, Math.min(400, e.clientX)));
-    } else if (dragging.current === "chat") {
-      setChatWidth(Math.max(240, Math.min(600, window.innerWidth - e.clientX)));
-    }
-  }, []);
-
-  const onMouseUp = useCallback(() => {
-    dragging.current = null;
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-    window.removeEventListener("mousemove", onMouseMove);
-    window.removeEventListener("mouseup", onMouseUp);
-  }, [onMouseMove]);
-
   const startDrag = useCallback((panel: "sidebar" | "chat") => {
-    dragging.current = panel;
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }, [onMouseMove, onMouseUp]);
+    const onMove = (e: MouseEvent) => {
+      if (panel === "sidebar") {
+        const w = Math.max(120, Math.min(400, e.clientX));
+        if (sidebarRef.current) sidebarRef.current.style.width = w + "px";
+      } else {
+        const w = Math.max(240, Math.min(600, window.innerWidth - e.clientX));
+        if (chatRef.current) chatRef.current.style.width = w + "px";
+      }
+    };
+    const onUp = (e: MouseEvent) => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (panel === "sidebar") setSidebarWidth(Math.max(120, Math.min(400, e.clientX)));
+      else setChatWidth(Math.max(240, Math.min(600, window.innerWidth - e.clientX)));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
 
   return (
     <div className="app">
@@ -56,6 +56,7 @@ export default function App() {
 
       {/* Sidebar */}
       <div
+        ref={sidebarRef}
         className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
         style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
       >
@@ -64,32 +65,36 @@ export default function App() {
 
       {/* Sidebar resize handle */}
       {!sidebarCollapsed && (
-        <div
-          className={`resize-handle ${dragging.current === "sidebar" ? "dragging" : ""}`}
-          onMouseDown={() => startDrag("sidebar")}
-        />
+        <div className="resize-handle" onMouseDown={() => startDrag("sidebar")} />
       )}
 
       {/* Canvas */}
       <div className="canvas">
         {hasTree ? <Canvas /> : (
           <div className="canvas-empty">
+            <div className="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="20" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                <circle cx="12" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                <circle cx="36" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                <line x1="20" y1="25" x2="14" y2="34" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="28" y1="25" x2="34" y2="34" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+            </div>
             <div className="logo">RepoEvolve</div>
-            <p>Create a tree to start exploring.</p>
+            <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
           </div>
         )}
       </div>
 
       {/* Chat resize handle */}
       {!chatCollapsed && (
-        <div
-          className={`resize-handle ${dragging.current === "chat" ? "dragging" : ""}`}
-          onMouseDown={() => startDrag("chat")}
-        />
+        <div className="resize-handle" onMouseDown={() => startDrag("chat")} />
       )}
 
       {/* Right panel: FilesPanel or ChatPanel */}
       <div
+        ref={chatRef}
         className={`chat ${chatCollapsed && !filesPanel ? "collapsed" : ""}`}
         style={chatCollapsed && !filesPanel ? undefined : { width: chatWidth }}
       >

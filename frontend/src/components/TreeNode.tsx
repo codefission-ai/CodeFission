@@ -129,10 +129,10 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const dot =
-    isStreaming ? "#34d399" :
-    node.status === "error" ? "#f87171" :
-    node.status === "done" ? "#6366f1" :
-    "#5c5c66";
+    isStreaming ? "#16a34a" :
+    node.status === "error" ? "#dc2626" :
+    node.status === "done" ? "#8a8a96" :
+    "#b0b0ba";
 
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
