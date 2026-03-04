@@ -1,6 +1,6 @@
 """Async event bus for decoupled communication between services and WebSocket layer.
 
-Adapted from WhatTheBot's core/events.py — same pub/sub pattern, Clawtree-specific events.
+Adapted from WhatTheBot's core/events.py — same pub/sub pattern, RepoEvolve-specific events.
 """
 
 from __future__ import annotations
@@ -62,14 +62,22 @@ class WS:
     BRANCH = "branch"
     CHAT = "chat"
     GET_NODE = "get_node"
+    SET_REPO = "set_repo"
+    GET_NODE_FILES = "get_node_files"
+    GET_NODE_DIFF = "get_node_diff"
+    GET_FILE_CONTENT = "get_file_content"
 
     # Outbound (server → client)
     TREES = "trees"
     TREE_CREATED = "tree_created"
     TREE_LOADED = "tree_loaded"
     TREE_DELETED = "tree_deleted"
+    TREE_UPDATED = "tree_updated"
     NODE_CREATED = "node_created"
     NODE_DATA = "node_data"
+    NODE_FILES = "node_files"
+    NODE_DIFF = "node_diff"
+    FILE_CONTENT = "file_content"
     STATUS = "status"
     CHUNK = "chunk"
     TOOL_START = "tool_start"

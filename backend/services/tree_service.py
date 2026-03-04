@@ -3,12 +3,15 @@ from datetime import datetime, timezone
 
 from db import get_db
 from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
+from services.workspace_service import cleanup_tree_workspace
 
 
 async def create_tree(
     name: str,
     provider: str = DEFAULT_PROVIDER,
     model: str = DEFAULT_MODEL,
+    repo_mode: str = "none",
+    repo_source: str | None = None,
 ) -> tuple[Tree, Node]:
     tree_id = str(uuid.uuid4())[:8]
     root_id = str(uuid.uuid4())[:8]
@@ -16,8 +19,8 @@ async def create_tree(
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO trees (id, name, created_at, provider, model) VALUES (?, ?, ?, ?, ?)",
-            (tree_id, name, now, provider, model),
+            "INSERT INTO trees (id, name, created_at, provider, model, repo_mode, repo_source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (tree_id, name, now, provider, model, repo_mode, repo_source),
         )
         await db.execute(
             "INSERT INTO nodes (id, tree_id, parent_id, user_message, assistant_response, label, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -25,7 +28,8 @@ async def create_tree(
         )
         await db.commit()
 
-    tree = Tree(id=tree_id, name=name, created_at=now, root_node_id=root_id, provider=provider, model=model)
+    tree = Tree(id=tree_id, name=name, created_at=now, root_node_id=root_id,
+                provider=provider, model=model, repo_mode=repo_mode, repo_source=repo_source)
     node = Node(id=root_id, tree_id=tree_id, label="root", created_at=now)
     return tree, node
 
@@ -36,7 +40,8 @@ async def list_trees() -> list[Tree]:
         rows = await cursor.fetchall()
     return [
         Tree(id=r["id"], name=r["name"], created_at=r["created_at"],
-             provider=r["provider"], model=r["model"])
+             provider=r["provider"], model=r["model"],
+             repo_mode=r["repo_mode"], repo_source=r["repo_source"])
         for r in rows
     ]
 
@@ -56,6 +61,7 @@ async def get_tree(tree_id: str) -> Tree | None:
         id=row["id"], name=row["name"], created_at=row["created_at"],
         root_node_id=root_id,
         provider=row["provider"], model=row["model"],
+        repo_mode=row["repo_mode"], repo_source=row["repo_source"],
     )
 
 
@@ -84,6 +90,8 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
             status=r["status"],
             created_at=r["created_at"],
             children_ids=parent_to_children.get(r["id"], []),
+            git_branch=r["git_branch"],
+            git_commit=r["git_commit"],
         ))
     return nodes
 
@@ -106,6 +114,8 @@ async def get_node(node_id: str) -> Node | None:
         status=row["status"],
         created_at=row["created_at"],
         children_ids=[c["id"] for c in children],
+        git_branch=row["git_branch"],
+        git_commit=row["git_commit"],
     )
 
 
@@ -151,7 +161,7 @@ async def update_node(node_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("user_message", "assistant_response", "label", "status"):
+        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
@@ -163,8 +173,25 @@ async def update_node(node_id: str, **kwargs):
             await db.commit()
 
 
+async def update_tree(tree_id: str, **kwargs):
+    sets = []
+    vals = []
+    for k, v in kwargs.items():
+        if k in ("repo_mode", "repo_source"):
+            sets.append(f"{k} = ?")
+            vals.append(v)
+    if sets:
+        vals.append(tree_id)
+        async with get_db() as db:
+            await db.execute(
+                f"UPDATE trees SET {', '.join(sets)} WHERE id = ?", vals
+            )
+            await db.commit()
+
+
 async def delete_tree(tree_id: str):
     async with get_db() as db:
         await db.execute("DELETE FROM nodes WHERE tree_id = ?", (tree_id,))
         await db.execute("DELETE FROM trees WHERE id = ?", (tree_id,))
         await db.commit()
+    cleanup_tree_workspace(tree_id)

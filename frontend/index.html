@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>clawtree</title>
+  <title>RepoEvolve</title>
   <style>
     /* ── Design tokens (adapted from WhatTheBot) ──────────────── */
     :root {
@@ -164,9 +164,17 @@
     .tree-node {
       background: var(--bg-raised); border: 1.5px solid var(--border-visible); border-radius: var(--radius-sm);
       padding: 6px 14px; cursor: pointer; display: flex; align-items: center;
+      flex-direction: row;
       gap: 6px; font-size: 11px; min-width: 80px; max-width: 180px;
       color: var(--text-secondary);
       transition: border-color 0.15s, background 0.15s;
+    }
+    .tree-node.tree-node-root {
+      flex-direction: column;
+      align-items: stretch;
+      min-width: 240px; max-width: 360px;
+      padding: 8px 10px;
+      cursor: default;
     }
     .tree-node:hover { background: var(--bg-hover); border-color: var(--text-muted); }
     .tree-node.selected { border-color: var(--accent); background: var(--accent-dim); color: var(--text-primary); }
@@ -174,13 +182,7 @@
     .tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Root node */
-    .tree-node-root {
-      cursor: default;
-      min-width: 240px; max-width: 360px;
-      padding: 8px 10px;
-      gap: 6px;
-    }
-    .tree-node-root:hover { background: var(--bg-raised); border-color: var(--border-visible); }
+    .tree-node.tree-node-root:hover { background: var(--bg-raised); border-color: var(--border-visible); }
     .tree-node-root-active {
       flex-direction: column;
       align-items: stretch;
@@ -657,6 +659,144 @@
     /* KaTeX overrides for dark theme */
     .katex { color: var(--text-primary); }
     .katex-display { margin: 12px 0; overflow-x: auto; }
+
+    /* ── Repo selector (inline in root node) ──────────────────── */
+    .repo-selector {
+      display: flex; flex-direction: column; gap: 4px;
+      width: 100%; margin-bottom: 4px;
+    }
+    .repo-selector-row {
+      display: flex; gap: 4px; align-items: center;
+    }
+    .repo-selector-select {
+      flex: 1; padding: 3px 6px; font-size: 10px;
+      background: var(--bg-surface); color: var(--text-secondary);
+      border: 1px solid var(--border-dim); border-radius: 4px;
+      outline: none; cursor: pointer;
+      font-family: var(--font-sans);
+    }
+    .repo-selector-select:focus { border-color: var(--accent); }
+    .repo-selector-input {
+      width: 100%; padding: 4px 8px; font-size: 11px;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--border-dim); border-radius: 4px;
+      outline: none; font-family: var(--font-mono);
+    }
+    .repo-selector-input::placeholder { color: var(--text-muted); }
+    .repo-selector-input:focus { border-color: var(--accent); }
+    .repo-selector-btn {
+      padding: 3px 10px; font-size: 10px; font-weight: 600;
+      background: var(--accent); color: #fff; border: none;
+      border-radius: 4px; cursor: pointer; white-space: nowrap;
+    }
+    .repo-selector-btn:hover { filter: brightness(1.15); }
+    .repo-selector-btn:disabled { opacity: 0.4; cursor: default; }
+    .repo-selector-hint {
+      font-size: 9px; color: var(--amber); padding: 0 2px;
+    }
+    .repo-badge {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 10px; padding: 2px 6px 2px 8px;
+      background: var(--accent-dim); color: var(--accent);
+      border-radius: 4px; border: 1px solid rgba(99,102,241,0.2);
+      width: 100%; margin-bottom: 4px;
+      font-family: var(--font-mono);
+    }
+    .repo-badge-text {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .repo-badge-copy {
+      background: none; border: none; color: var(--accent);
+      cursor: pointer; font-size: 9px; font-family: var(--font-mono);
+      padding: 1px 4px; border-radius: 3px; flex-shrink: 0;
+      opacity: 0.6; transition: opacity 0.15s;
+    }
+    .repo-badge-copy:hover { opacity: 1; background: rgba(99,102,241,0.15); }
+
+    /* ── Files button on tree nodes ────────────────────────────── */
+    .tree-node-files-btn {
+      padding: 2px 8px; font-size: 10px; font-weight: 600;
+      background: transparent; color: var(--text-muted);
+      border: 1px solid var(--border-dim); border-radius: 4px;
+      cursor: pointer; align-self: flex-start; margin-top: 2px;
+      transition: all 0.15s;
+    }
+    .tree-node-files-btn:hover {
+      background: var(--accent-dim); border-color: var(--accent); color: var(--text-primary);
+    }
+
+    /* ── Files panel ───────────────────────────────────────────── */
+    .files-panel { display: flex; flex-direction: column; height: 100%; }
+    .files-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px; border-bottom: 1px solid var(--border-dim); flex-shrink: 0;
+      min-height: 40px;
+    }
+    .files-title {
+      font-size: 13px; font-weight: 600; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--text-primary);
+    }
+    .files-tabs { display: flex; gap: 2px; }
+    .files-tab {
+      padding: 3px 10px; font-size: 11px;
+      border: 1px solid var(--border-visible);
+      background: transparent; border-radius: var(--radius-sm);
+      cursor: pointer; color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+    .files-tab:hover { background: var(--bg-hover); }
+    .files-tab.active {
+      background: var(--accent-dim); border-color: var(--accent); color: var(--text-primary);
+    }
+
+    .files-body { flex: 1; overflow-y: auto; padding: 0; }
+    .files-loading, .files-empty {
+      padding: 40px 16px; text-align: center; color: var(--text-muted); font-size: 13px;
+    }
+
+    /* File list */
+    .file-list { padding: 4px 0; }
+    .file-entry {
+      padding: 5px 16px; font-size: 12px; cursor: pointer;
+      font-family: var(--font-mono); color: var(--text-secondary);
+      transition: background 0.1s;
+    }
+    .file-entry:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* File content viewer */
+    .file-viewer { display: flex; flex-direction: column; height: 100%; }
+    .file-viewer-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 16px; border-bottom: 1px solid var(--border-subtle);
+      flex-shrink: 0;
+    }
+    .file-viewer-back {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 11px; padding: 2px 4px;
+    }
+    .file-viewer-back:hover { color: var(--text-primary); }
+    .file-viewer-name {
+      font-size: 11px; font-family: var(--font-mono); color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-viewer-content {
+      flex: 1; overflow: auto; padding: 12px 16px; margin: 0;
+      font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+      color: var(--text-secondary); white-space: pre-wrap; word-break: break-all;
+    }
+
+    /* Diff viewer */
+    .diff-viewer { height: 100%; overflow: auto; }
+    .diff-content {
+      padding: 12px 16px; margin: 0;
+      font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+      color: var(--text-secondary); white-space: pre;
+    }
+    .diff-add { color: var(--green); background: var(--green-dim); display: inline-block; width: 100%; }
+    .diff-del { color: var(--red); background: var(--red-dim); display: inline-block; width: 100%; }
+    .diff-hunk { color: var(--accent); }
+    .diff-meta { color: var(--text-muted); }
 
     /* ── Selection highlight ────────────────────────────────────── */
     ::selection { background: var(--accent-dim); color: var(--text-primary); }

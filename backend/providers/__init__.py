@@ -1,7 +1,7 @@
 """LLM provider abstraction layer.
 
 Adapted from WhatTheBot's core/providers — normalises Anthropic and OpenAI
-streaming behind a single ProviderBase interface so Clawtree can swap models
+streaming behind a single ProviderBase interface so RepoEvolve can swap models
 per tree or per branch.
 """
 

@@ -22,15 +22,12 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
-from tree_service import get_path_to_root, get_tree, get_node
+from services.tree_service import get_path_to_root, get_tree, get_node
 
 log = logging.getLogger(__name__)
 
 # When True, uses ANTHROPIC_API_KEY; when False, uses Claude Code subscription.
 USE_API = False
-
-# Base directory for per-tree workspaces
-WORKSPACES_DIR = Path(__file__).parent.parent / "data" / "workspaces"
 
 
 # ── Structured events yielded to caller ──────────────────────────────
@@ -98,8 +95,49 @@ def _sdk_env() -> dict[str, str]:
     return env
 
 
-def _build_system_prompt(path_nodes) -> str:
-    parts = ["You are a helpful AI assistant in Clawtree, a tree-structured conversation tool. Be concise and helpful."]
+def _build_system_prompt(path_nodes, tree=None, workspace: Path | None = None) -> str:
+    parts = [
+        "You are a helpful AI coding assistant in RepoEvolve, a tree-structured "
+        "development tool where each node is an isolated git worktree. "
+        "Be concise and helpful."
+    ]
+
+    # Repo / workspace context
+    if tree and tree.repo_mode != "none" and workspace:
+        parts.append("\n\n## Workspace")
+        parts.append(f"\nYour working directory is: {workspace}")
+        parts.append(f"\nYou MUST NOT write files outside this directory.")
+        parts.append(f"\nYou may read files anywhere on the system for reference.")
+        if tree.repo_source:
+            parts.append(f"\nThis project was cloned from: {tree.repo_source}")
+            parts.append(f"\nYou can read files in {tree.repo_source} for reference, but write only in your working directory.")
+        if tree.repo_mode == "new":
+            parts.append("\nThis is a fresh empty repository — create any files needed from scratch.")
+
+        current_node = path_nodes[-1] if path_nodes else None
+        is_root = current_node and not current_node.parent_id
+        if is_root:
+            parts.append(
+                "\nYou are working on the root node (main branch). "
+                "Your changes here form the base that child branches evolve from."
+            )
+        else:
+            parts.append(
+                "\nYou are working on a branch node (git worktree). "
+                "This worktree was forked from the parent node's commit. "
+                "Your changes here are isolated and do not affect the parent or sibling branches."
+            )
+        if current_node and current_node.git_branch:
+            parts.append(f"\nGit branch: {current_node.git_branch}")
+        if current_node and current_node.git_commit:
+            parts.append(f"\nCurrent commit: {current_node.git_commit}")
+
+        parts.append(
+            "\n\nAll your file changes are automatically committed after each response. "
+            "Focus on writing code and making changes — git operations are handled for you."
+        )
+
+    # Conversation history from ancestor nodes
     ancestors = path_nodes[:-1] if len(path_nodes) > 1 else []
     if ancestors:
         history_parts = []
@@ -109,20 +147,13 @@ def _build_system_prompt(path_nodes) -> str:
             if node.assistant_response:
                 history_parts.append(f"Assistant: {node.assistant_response}")
         if history_parts:
-            parts.append("\n\nConversation history (continue naturally from here):\n\n" + "\n\n".join(history_parts))
+            parts.append("\n\n## Conversation history (continue naturally from here)\n\n" + "\n\n".join(history_parts))
     return "".join(parts)
-
-
-def _get_workspace(tree_id: str) -> Path:
-    """Return (and create) a per-tree working directory."""
-    ws = WORKSPACES_DIR / tree_id
-    ws.mkdir(parents=True, exist_ok=True)
-    return ws
 
 
 # ── Main streaming function ──────────────────────────────────────────
 
-async def stream_chat(node_id: str, user_message: str) -> AsyncGenerator[ChatEvent, None]:
+async def stream_chat(node_id: str, user_message: str, workspace: Path) -> AsyncGenerator[ChatEvent, None]:
     """Stream a chat response for a node, yielding structured ChatEvents."""
     node = await get_node(node_id)
     if not node:
@@ -133,8 +164,7 @@ async def stream_chat(node_id: str, user_message: str) -> AsyncGenerator[ChatEve
         return
 
     path = await get_path_to_root(node_id)
-    system_prompt = _build_system_prompt(path)
-    workspace = _get_workspace(tree.id)
+    system_prompt = _build_system_prompt(path, tree=tree, workspace=workspace)
 
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,

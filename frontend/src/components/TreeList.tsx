@@ -8,14 +8,17 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
   const [name, setName] = useState("");
 
   const create = () => {
-    send({ type: WS.CREATE_TREE, name: name.trim() || "Untitled" });
+    send({
+      type: WS.CREATE_TREE,
+      name: name.trim() || "Untitled",
+    });
     setName("");
   };
 
   return (
     <div className="tree-list">
       <div className="tree-list-header">
-        <span>clawtree</span>
+        <span>RepoEvolve</span>
         <button className="branch-btn" onClick={onCollapse} title="Collapse sidebar">
           ✕
         </button>

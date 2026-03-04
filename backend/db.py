@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from models import DEFAULT_PROVIDER, DEFAULT_MODEL
 
-DB_PATH = Path(__file__).parent.parent / "data" / "clawtree.db"
+DB_PATH = Path(__file__).parent.parent / "data" / "repoevolve.db"
 
 
 @asynccontextmanager
@@ -53,4 +53,19 @@ async def init_db():
             await db.execute(
                 f"ALTER TABLE trees ADD COLUMN model TEXT NOT NULL DEFAULT '{DEFAULT_MODEL}'"
             )
+
+        # Migrate: add repo_mode, repo_source to trees
+        if "repo_mode" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN repo_mode TEXT NOT NULL DEFAULT 'none'")
+        if "repo_source" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN repo_source TEXT")
+
+        # Migrate: add git_branch, git_commit to nodes
+        cursor2 = await db.execute("PRAGMA table_info(nodes)")
+        node_columns = {row[1] for row in await cursor2.fetchall()}
+        if "git_branch" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN git_branch TEXT")
+        if "git_commit" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN git_commit TEXT")
+
         await db.commit()

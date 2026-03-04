@@ -16,6 +16,8 @@ function mkNode(
     label: opts.label ?? id,
     status: opts.status ?? "done",
     children_ids: opts.children_ids ?? [],
+    git_branch: opts.git_branch ?? null,
+    git_commit: opts.git_commit ?? null,
     ...opts,
   };
 }

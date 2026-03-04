@@ -2,11 +2,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import TreeList from "./components/TreeList";
 import Canvas from "./components/Canvas";
 import ChatPanel from "./components/ChatPanel";
+import FilesPanel from "./components/FilesPanel";
 import { connectWs } from "./ws";
 import { useStore } from "./store";
 
 export default function App() {
   const hasTree = useStore((s) => !!s.currentTreeId);
+  const filesPanel = useStore((s) => s.filesPanel);
 
   // Panel widths & collapsed state
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -72,7 +74,7 @@ export default function App() {
       <div className="canvas">
         {hasTree ? <Canvas /> : (
           <div className="canvas-empty">
-            <div className="logo">clawtree</div>
+            <div className="logo">RepoEvolve</div>
             <p>Create a tree to start exploring.</p>
           </div>
         )}
@@ -86,16 +88,20 @@ export default function App() {
         />
       )}
 
-      {/* Chat panel */}
+      {/* Right panel: FilesPanel or ChatPanel */}
       <div
-        className={`chat ${chatCollapsed ? "collapsed" : ""}`}
-        style={chatCollapsed ? undefined : { width: chatWidth }}
+        className={`chat ${chatCollapsed && !filesPanel ? "collapsed" : ""}`}
+        style={chatCollapsed && !filesPanel ? undefined : { width: chatWidth }}
       >
-        <ChatPanel onCollapse={() => setChatCollapsed(true)} />
+        {filesPanel ? (
+          <FilesPanel />
+        ) : (
+          <ChatPanel onCollapse={() => setChatCollapsed(true)} />
+        )}
       </div>
 
       {/* Chat toggle when collapsed */}
-      {chatCollapsed && (
+      {chatCollapsed && !filesPanel && (
         <button className="panel-toggle right" onClick={() => setChatCollapsed(false)}>
           ◀
         </button>

@@ -1,0 +1,212 @@
+"""Workspace service — git worktree management for per-node isolation.
+
+Each tree with a git-enabled repo_mode gets a main repo at the root node's
+workspace directory. Child nodes get git worktrees branched from their parent's
+commit. Trees with repo_mode="none" fall back to a flat shared directory.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import shutil
+import tempfile
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+WORKSPACES_DIR = Path(__file__).parent.parent / "data" / "workspaces"
+
+
+# ── Low-level git helper ─────────────────────────────────────────────
+
+async def _run_git(cwd: Path, *args: str, check: bool = True) -> tuple[int, str, str]:
+    """Run a git command asynchronously, return (returncode, stdout, stderr)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_bytes, stderr_bytes = await proc.communicate()
+    stdout = stdout_bytes.decode(errors="replace").strip()
+    stderr = stderr_bytes.decode(errors="replace").strip()
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed (rc={proc.returncode}): {stderr}")
+    return proc.returncode, stdout, stderr
+
+
+# ── Repo setup ────────────────────────────────────────────────────────
+
+async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: str | None) -> Path:
+    """Initialise the main git repo for a tree. Returns the root workspace path.
+
+    Modes:
+      "new"   — git init + initial commit
+      "local" — git clone from local path
+      "url"   — git clone from URL
+    """
+    root_dir = WORKSPACES_DIR / tree_id / root_id
+    root_dir.mkdir(parents=True, exist_ok=True)
+
+    if repo_mode == "new":
+        await _run_git(root_dir, "init")
+        gitignore = root_dir / ".gitignore"
+        gitignore.write_text(".claude/\n")
+        await _run_git(root_dir, "add", "-A")
+        await _run_git(root_dir, "commit", "-m", "ct: initial commit")
+
+    elif repo_mode in ("local", "url"):
+        if not repo_source:
+            raise ValueError(f"repo_source required for mode '{repo_mode}'")
+        # Clone to a temp dir then move contents into root_dir
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_clone = Path(tmp) / "clone"
+            await _run_git(Path(tmp), "clone", repo_source, str(tmp_clone))
+            # Move everything (including .git) into root_dir
+            for item in tmp_clone.iterdir():
+                dest = root_dir / item.name
+                shutil.move(str(item), str(dest))
+        # Ensure .claude/ is gitignored
+        gitignore = root_dir / ".gitignore"
+        existing = gitignore.read_text() if gitignore.exists() else ""
+        if ".claude/" not in existing:
+            with open(gitignore, "a") as f:
+                f.write("\n.claude/\n")
+            await _run_git(root_dir, "add", ".gitignore")
+            rc, _, _ = await _run_git(root_dir, "diff", "--cached", "--quiet", check=False)
+            if rc != 0:
+                await _run_git(root_dir, "commit", "-m", "ct: add .claude/ to .gitignore")
+
+    else:
+        raise ValueError(f"Unknown repo_mode: {repo_mode}")
+
+    # Configure committer identity (inherited by worktrees)
+    await _run_git(root_dir, "config", "user.email", "repoevolve@local")
+    await _run_git(root_dir, "config", "user.name", "RepoEvolve")
+
+    return root_dir
+
+
+# ── Worktree management ──────────────────────────────────────────────
+
+async def create_worktree(tree_id: str, root_id: str, node_id: str, from_commit: str) -> Path:
+    """Create a git worktree for a node, branching from the given commit."""
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    worktree_path = WORKSPACES_DIR / tree_id / node_id
+    branch_name = f"ct-{node_id}"
+    await _run_git(
+        main_repo,
+        "worktree", "add",
+        str(worktree_path),
+        "-b", branch_name,
+        from_commit,
+    )
+    return worktree_path
+
+
+async def ensure_worktree(
+    tree_id: str, root_id: str, node_id: str,
+    parent_id: str | None, parent_commit: str | None,
+) -> Path:
+    """Ensure a worktree exists for the node, creating it if needed."""
+    worktree_path = WORKSPACES_DIR / tree_id / node_id
+
+    # Already exists
+    if worktree_path.exists():
+        return worktree_path
+
+    # Root node — should already exist from setup_repo
+    if node_id == root_id:
+        if not worktree_path.exists():
+            raise RuntimeError(f"Root workspace missing: {worktree_path}")
+        return worktree_path
+
+    # Determine parent's commit
+    if not parent_commit:
+        # Read HEAD from parent's worktree
+        parent_dir = WORKSPACES_DIR / tree_id / (parent_id or root_id)
+        _, parent_commit, _ = await _run_git(parent_dir, "rev-parse", "HEAD")
+
+    return await create_worktree(tree_id, root_id, node_id, parent_commit)
+
+
+# ── Auto-commit ───────────────────────────────────────────────────────
+
+async def auto_commit(worktree_path: Path, message: str) -> tuple[str, int]:
+    """Stage all changes and commit. Returns (HEAD sha, files_changed)."""
+    await _run_git(worktree_path, "add", "-A")
+
+    # Check if there are staged changes
+    rc, _, _ = await _run_git(worktree_path, "diff", "--cached", "--quiet", check=False)
+    files_changed = 0
+
+    if rc != 0:
+        # Count changed files before committing
+        _, diff_names, _ = await _run_git(worktree_path, "diff", "--cached", "--name-only")
+        files_changed = len(diff_names.splitlines()) if diff_names else 0
+
+        # Commit
+        commit_msg = f"ct: {message[:72]}"
+        await _run_git(worktree_path, "commit", "-m", commit_msg)
+
+    # Return current HEAD regardless
+    _, sha, _ = await _run_git(worktree_path, "rev-parse", "HEAD")
+    return sha, files_changed
+
+
+# ── Workspace resolution ─────────────────────────────────────────────
+
+def resolve_workspace(tree_id: str, root_id: str, node_id: str, repo_mode: str) -> Path:
+    """Return the workspace path for a node.
+
+    - repo_mode == "none": flat shared directory (legacy)
+    - otherwise: per-node directory (worktree or main repo)
+    """
+    if repo_mode == "none":
+        ws = WORKSPACES_DIR / tree_id
+        ws.mkdir(parents=True, exist_ok=True)
+        return ws
+    return WORKSPACES_DIR / tree_id / node_id
+
+
+# ── File browsing / diff ──────────────────────────────────────────
+
+async def list_files(worktree_path: Path) -> list[str]:
+    """List tracked + untracked files (excluding .git internals)."""
+    _, out, _ = await _run_git(worktree_path, "ls-files", "-co", "--exclude-standard")
+    return [f for f in out.splitlines() if f] if out else []
+
+
+async def get_diff(worktree_path: Path, parent_commit: str | None) -> str:
+    """Get unified diff of changes. If parent_commit is None, diff against empty tree."""
+    if parent_commit:
+        _, diff, _ = await _run_git(worktree_path, "diff", parent_commit, "HEAD", check=False)
+    else:
+        # Diff entire tree against empty tree (shows all files as added)
+        _, diff, _ = await _run_git(
+            worktree_path, "diff", "4b825dc642cb6eb9a060e54bf899d15006578e83", "HEAD", check=False
+        )
+    return diff
+
+
+def read_file(worktree_path: Path, file_path: str) -> str:
+    """Read a file from a worktree with path traversal protection and size limit."""
+    resolved = (worktree_path / file_path).resolve()
+    if not str(resolved).startswith(str(worktree_path.resolve())):
+        raise ValueError("Path traversal detected")
+    if not resolved.is_file():
+        raise FileNotFoundError(f"File not found: {file_path}")
+    size = resolved.stat().st_size
+    if size > 1_048_576:  # 1MB
+        raise ValueError(f"File too large: {size} bytes")
+    return resolved.read_text(errors="replace")
+
+
+# ── Cleanup ───────────────────────────────────────────────────────────
+
+def cleanup_tree_workspace(tree_id: str):
+    """Remove the entire workspace directory for a tree."""
+    tree_dir = WORKSPACES_DIR / tree_id
+    if tree_dir.exists():
+        shutil.rmtree(tree_dir, ignore_errors=True)

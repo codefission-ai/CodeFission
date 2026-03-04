@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { marked } from "marked";
-import { useStore, type ToolCall } from "../store";
+import { useStore, actions, type ToolCall } from "../store";
 import { send, WS } from "../ws";
 
 // Configure marked for chat
@@ -142,6 +142,17 @@ export default function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
       <div className="chat-header">
         <span className="chat-title">{node.label || "root"}</span>
         {isStreaming && <span className="chat-streaming">streaming</span>}
+        {node.git_commit && (
+          <button
+            className="branch-btn"
+            onClick={() => {
+              actions.openFilesPanel(node.id);
+              send({ type: WS.GET_NODE_FILES, node_id: node.id });
+            }}
+          >
+            Files
+          </button>
+        )}
         <button
           className="branch-btn"
           onClick={() => send({ type: WS.BRANCH, parent_id: selectedId })}

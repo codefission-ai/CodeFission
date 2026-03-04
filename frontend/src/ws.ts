@@ -11,14 +11,22 @@ export const WS = {
   BRANCH: "branch",
   CHAT: "chat",
   GET_NODE: "get_node",
+  SET_REPO: "set_repo",
+  GET_NODE_FILES: "get_node_files",
+  GET_NODE_DIFF: "get_node_diff",
+  GET_FILE_CONTENT: "get_file_content",
 
   // Outbound (server → client)
   TREES: "trees",
   TREE_CREATED: "tree_created",
   TREE_LOADED: "tree_loaded",
   TREE_DELETED: "tree_deleted",
+  TREE_UPDATED: "tree_updated",
   NODE_CREATED: "node_created",
   NODE_DATA: "node_data",
+  NODE_FILES: "node_files",
+  NODE_DIFF: "node_diff",
+  FILE_CONTENT: "file_content",
   STATUS: "status",
   CHUNK: "chunk",
   TOOL_START: "tool_start",
@@ -64,6 +72,9 @@ function handle(data: any) {
     case WS.TREE_DELETED:
       actions.removeTree(data.tree_id);
       break;
+    case WS.TREE_UPDATED:
+      actions.updateTree(data.tree);
+      break;
     case WS.TREE_LOADED:
       actions.setNodes(data.nodes);
       const root = data.nodes.find((n: any) => !n.parent_id);
@@ -74,6 +85,15 @@ function handle(data: any) {
       break;
     case WS.NODE_DATA:
       actions.upsertNode(data.node);
+      break;
+    case WS.NODE_FILES:
+      actions.setNodeFiles(data.node_id, data.files);
+      break;
+    case WS.NODE_DIFF:
+      actions.setNodeDiff(data.node_id, data.diff);
+      break;
+    case WS.FILE_CONTENT:
+      actions.setFileContent(data.node_id, data.file_path, data.content);
       break;
     case WS.STATUS:
       actions.setNodeStatus(data.node_id, "active");
@@ -104,6 +124,9 @@ function handle(data: any) {
     case WS.DONE:
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
+      if (data.git_commit) {
+        actions.updateNodeGit(data.node_id, data.git_commit);
+      }
       break;
     case WS.ERROR:
       actions.setNodeStatus(data.node_id, "error");

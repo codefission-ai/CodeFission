@@ -9,6 +9,8 @@ export interface CNode {
   label: string;
   status: string;
   children_ids: string[];
+  git_branch: string | null;
+  git_commit: string | null;
 }
 
 export interface CTree {
@@ -18,6 +20,8 @@ export interface CTree {
   root_node_id: string | null;
   provider: string;
   model: string;
+  repo_mode: string;
+  repo_source: string | null;
 }
 
 export interface ToolCall {
@@ -29,6 +33,16 @@ export interface ToolCall {
   is_error: boolean;
 }
 
+export interface FileEntry {
+  path: string;
+}
+
+export interface FilesPanel {
+  nodeId: string;
+  tab: "files" | "diff";
+  selectedFile: string | null;
+}
+
 interface Store {
   connected: boolean;
   trees: CTree[];
@@ -38,6 +52,10 @@ interface Store {
   streaming: Record<string, boolean>;
   toolCalls: Record<string, ToolCall[]>;  // nodeId -> tool calls during streaming
   expandedNodes: Record<string, boolean>;
+  nodeFiles: Record<string, string[]>;     // nodeId -> file paths
+  nodeDiffs: Record<string, string>;       // nodeId -> diff text
+  fileContents: Record<string, string>;    // "nodeId:filePath" -> content
+  filesPanel: FilesPanel | null;
 }
 
 export const useStore = create<Store>(() => ({
@@ -49,6 +67,10 @@ export const useStore = create<Store>(() => ({
   streaming: {},
   toolCalls: {},
   expandedNodes: {},
+  nodeFiles: {},
+  nodeDiffs: {},
+  fileContents: {},
+  filesPanel: null,
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -138,6 +160,13 @@ export const actions = {
       return { toolCalls: { ...s.toolCalls, [nodeId]: updated } };
     }),
 
+  updateNodeGit: (nodeId: string, gitCommit: string) =>
+    useStore.setState((s) => {
+      const node = s.nodes[nodeId];
+      if (!node) return s;
+      return { nodes: { ...s.nodes, [nodeId]: { ...node, git_commit: gitCommit } } };
+    }),
+
   toggleExpand: (id: string) =>
     useStore.setState((s) => ({
       expandedNodes: { ...s.expandedNodes, [id]: !s.expandedNodes[id] },
@@ -146,4 +175,35 @@ export const actions = {
     useStore.setState((s) => ({
       expandedNodes: { ...s.expandedNodes, [id]: v },
     })),
+
+  // ── Tree updates ──────────────────────────────────────────────
+  updateTree: (t: CTree) =>
+    useStore.setState((s) => ({
+      trees: s.trees.map((x) => (x.id === t.id ? t : x)),
+    })),
+
+  // ── File/diff panel ───────────────────────────────────────────
+  setNodeFiles: (nodeId: string, files: string[]) =>
+    useStore.setState((s) => ({
+      nodeFiles: { ...s.nodeFiles, [nodeId]: files },
+    })),
+  setNodeDiff: (nodeId: string, diff: string) =>
+    useStore.setState((s) => ({
+      nodeDiffs: { ...s.nodeDiffs, [nodeId]: diff },
+    })),
+  setFileContent: (nodeId: string, filePath: string, content: string) =>
+    useStore.setState((s) => ({
+      fileContents: { ...s.fileContents, [`${nodeId}:${filePath}`]: content },
+    })),
+  openFilesPanel: (nodeId: string, tab: "files" | "diff" = "files") =>
+    useStore.setState({ filesPanel: { nodeId, tab, selectedFile: null } }),
+  closeFilesPanel: () => useStore.setState({ filesPanel: null }),
+  setFilesPanelTab: (tab: "files" | "diff") =>
+    useStore.setState((s) =>
+      s.filesPanel ? { filesPanel: { ...s.filesPanel, tab } } : {}
+    ),
+  selectFile: (filePath: string | null) =>
+    useStore.setState((s) =>
+      s.filesPanel ? { filesPanel: { ...s.filesPanel, selectedFile: filePath } } : {}
+    ),
 };
