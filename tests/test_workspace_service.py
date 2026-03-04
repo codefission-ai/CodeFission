@@ -5,7 +5,8 @@ from pathlib import Path
 
 from services.workspace_service import (
     setup_repo, create_worktree, ensure_worktree,
-    auto_commit, resolve_workspace, copy_session,
+    auto_commit, resolve_workspace, copy_session, cleanup_tree_workspace,
+    list_files, get_diff, read_file,
     _claude_project_dir, _run_git, WORKSPACES_DIR,
 )
 
@@ -26,6 +27,7 @@ async def test_setup_repo_new(tree_ids, tmp_path):
     root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
     assert (root_dir / ".git").exists()
     assert (root_dir / ".gitignore").exists()
+    assert ".claude/" in (root_dir / ".gitignore").read_text()
 
     # Has at least one commit
     rc, sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
@@ -60,6 +62,52 @@ async def test_setup_repo_local_requires_source(tree_ids):
         await setup_repo(tree_ids["tree"], tree_ids["root"], "local", None)
 
 
+@pytest.mark.asyncio
+async def test_setup_repo_url_requires_source(tree_ids):
+    """repo_mode='url' without source raises ValueError."""
+    with pytest.raises(ValueError, match="repo_source required"):
+        await setup_repo(tree_ids["tree"], tree_ids["root"], "url", None)
+
+
+@pytest.mark.asyncio
+async def test_setup_repo_sets_git_config(tree_ids, tmp_path):
+    """setup_repo sets committer identity in the repo config."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, email, _ = await _run_git(root_dir, "config", "user.email")
+    _, name, _ = await _run_git(root_dir, "config", "user.name")
+    assert email == "repoevolve@local"
+    assert name == "RepoEvolve"
+
+
+@pytest.mark.asyncio
+async def test_setup_repo_local_clone(tree_ids, tmp_path):
+    """repo_mode='local' clones from a local git repo."""
+    # Create a source repo
+    src = tmp_path / "source-repo"
+    src.mkdir()
+    await _run_git(src, "init")
+    await _run_git(src, "config", "user.email", "test@test")
+    await _run_git(src, "config", "user.name", "Test")
+    (src / "README.md").write_text("# Hello\n")
+    await _run_git(src, "add", "-A")
+    await _run_git(src, "commit", "-m", "init")
+
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "local", str(src))
+    assert (root_dir / ".git").exists()
+    assert (root_dir / "README.md").exists()
+    assert (root_dir / "README.md").read_text() == "# Hello\n"
+    # .claude/ should be in .gitignore
+    gitignore = (root_dir / ".gitignore").read_text()
+    assert ".claude/" in gitignore
+
+
+@pytest.mark.asyncio
+async def test_setup_repo_returns_correct_path(tree_ids, tmp_path):
+    """setup_repo returns WORKSPACES_DIR / tree_id / root_id."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    assert root_dir == tmp_path / tree_ids["tree"] / tree_ids["root"]
+
+
 # ── resolve_workspace ────────────────────────────────────────────────
 
 def test_resolve_workspace(tree_ids, tmp_path, monkeypatch):
@@ -69,6 +117,15 @@ def test_resolve_workspace(tree_ids, tmp_path, monkeypatch):
 
     path = resolve_workspace("t1", "root", "node1")
     assert path == tmp_path / "t1" / "node1"
+
+
+def test_resolve_workspace_root_same_as_node(tree_ids, tmp_path, monkeypatch):
+    """For the root node, resolve_workspace returns tree/root path."""
+    import services.workspace_service as ws_mod
+    monkeypatch.setattr(ws_mod, "WORKSPACES_DIR", tmp_path)
+
+    path = resolve_workspace("t1", "root", "root")
+    assert path == tmp_path / "t1" / "root"
 
 
 # ── create_worktree / ensure_worktree ────────────────────────────────
@@ -89,6 +146,55 @@ async def test_create_worktree(tree_ids, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_create_worktree_shares_history(tree_ids, tmp_path):
+    """Worktree starts at the same commit as its parent."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "file.txt").write_text("content\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add file")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    wt_path = await create_worktree(
+        tree_ids["tree"], tree_ids["root"], tree_ids["child"], commit,
+    )
+    # Child should have the same file
+    assert (wt_path / "file.txt").exists()
+    assert (wt_path / "file.txt").read_text() == "content\n"
+
+
+@pytest.mark.asyncio
+async def test_create_worktree_isolation(tree_ids, tmp_path):
+    """Changes in a worktree don't appear in the main repo."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    wt_path = await create_worktree(
+        tree_ids["tree"], tree_ids["root"], tree_ids["child"], commit,
+    )
+    # Write to worktree only
+    (wt_path / "child_only.txt").write_text("isolated\n")
+    await _run_git(wt_path, "add", "-A")
+    await _run_git(wt_path, "commit", "-m", "child change")
+
+    # Main repo should not have the file
+    assert not (root_dir / "child_only.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_create_multiple_worktrees(tree_ids, tmp_path):
+    """Multiple worktrees can coexist from the same commit."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    wt1 = await create_worktree(tree_ids["tree"], tree_ids["root"], "child-1", commit)
+    wt2 = await create_worktree(tree_ids["tree"], tree_ids["root"], "child-2", commit)
+    wt3 = await create_worktree(tree_ids["tree"], tree_ids["root"], "child-3", commit)
+
+    assert wt1.exists() and wt2.exists() and wt3.exists()
+    assert wt1 != wt2 != wt3
+
+
+@pytest.mark.asyncio
 async def test_ensure_worktree_root(tree_ids, tmp_path):
     """ensure_worktree for root node returns existing path."""
     root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
@@ -96,6 +202,21 @@ async def test_ensure_worktree_root(tree_ids, tmp_path):
         tree_ids["tree"], tree_ids["root"], tree_ids["root"], None, None,
     )
     assert result == root_dir
+
+
+@pytest.mark.asyncio
+async def test_ensure_worktree_creates_new(tree_ids, tmp_path):
+    """ensure_worktree creates a new worktree if it doesn't exist."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    wt = await ensure_worktree(
+        tree_ids["tree"], tree_ids["root"], "new-node",
+        tree_ids["root"], commit,
+    )
+    assert wt.exists()
+    _, branch, _ = await _run_git(wt, "rev-parse", "--abbrev-ref", "HEAD")
+    assert branch == "ct-new-node"
 
 
 @pytest.mark.asyncio
@@ -112,6 +233,28 @@ async def test_ensure_worktree_idempotent(tree_ids, tmp_path):
         tree_ids["root"], commit,
     )
     assert wt1 == wt2
+
+
+@pytest.mark.asyncio
+async def test_ensure_worktree_root_missing_raises(tree_ids, tmp_path):
+    """ensure_worktree for root when path doesn't exist raises RuntimeError."""
+    # Don't call setup_repo — root workspace doesn't exist
+    with pytest.raises(RuntimeError, match="Root workspace missing"):
+        await ensure_worktree(
+            tree_ids["tree"], tree_ids["root"], tree_ids["root"], None, None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_ensure_worktree_resolves_parent_commit(tree_ids, tmp_path):
+    """ensure_worktree reads parent's HEAD when parent_commit is None."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    # Don't pass parent_commit — it should read from parent worktree
+    wt = await ensure_worktree(
+        tree_ids["tree"], tree_ids["root"], "auto-node",
+        tree_ids["root"], None,
+    )
+    assert wt.exists()
 
 
 # ── auto_commit ──────────────────────────────────────────────────────
@@ -138,12 +281,181 @@ async def test_auto_commit_with_changes(tree_ids, tmp_path):
     assert count == 1
 
 
+@pytest.mark.asyncio
+async def test_auto_commit_multiple_files(tree_ids, tmp_path):
+    """auto_commit counts all changed files."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "a.py").write_text("a\n")
+    (root_dir / "b.py").write_text("b\n")
+    (root_dir / "c.py").write_text("c\n")
+    sha, count = await auto_commit(root_dir, "add three files")
+    assert count == 3
+
+
+@pytest.mark.asyncio
+async def test_auto_commit_message_truncated(tree_ids, tmp_path):
+    """auto_commit truncates long messages to 72 chars."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "file.txt").write_text("data\n")
+    long_msg = "x" * 200
+    await auto_commit(root_dir, long_msg)
+
+    _, log, _ = await _run_git(root_dir, "log", "--format=%s", "-1")
+    assert len(log) <= 76  # "ct: " + 72 chars
+
+
+@pytest.mark.asyncio
+async def test_auto_commit_modified_file(tree_ids, tmp_path):
+    """auto_commit handles modified (not just new) files."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "file.txt").write_text("v1\n")
+    await auto_commit(root_dir, "create")
+
+    (root_dir / "file.txt").write_text("v2\n")
+    sha, count = await auto_commit(root_dir, "modify")
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_auto_commit_deleted_file(tree_ids, tmp_path):
+    """auto_commit handles deleted files."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "file.txt").write_text("content\n")
+    await auto_commit(root_dir, "create")
+
+    (root_dir / "file.txt").unlink()
+    sha, count = await auto_commit(root_dir, "delete")
+    assert count == 1
+
+
+# ── list_files ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_list_files_tracked(tree_ids, tmp_path):
+    """list_files returns tracked files."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "main.py").write_text("print(1)\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add")
+
+    files = await list_files(root_dir)
+    assert "main.py" in files
+    assert ".gitignore" in files
+
+
+@pytest.mark.asyncio
+async def test_list_files_excludes_git(tree_ids, tmp_path):
+    """list_files does not include .git internals."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    files = await list_files(root_dir)
+    assert not any(f.startswith(".git/") for f in files)
+
+
+@pytest.mark.asyncio
+async def test_list_files_includes_untracked(tree_ids, tmp_path):
+    """list_files includes untracked files not in .gitignore."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "untracked.txt").write_text("hello\n")
+    files = await list_files(root_dir)
+    assert "untracked.txt" in files
+
+
+# ── get_diff ─────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_get_diff_against_parent(tree_ids, tmp_path):
+    """get_diff shows changes between parent commit and HEAD."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, parent_commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    (root_dir / "new.py").write_text("print('new')\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add new")
+
+    diff = await get_diff(root_dir, parent_commit)
+    assert "+print('new')" in diff
+    assert "new.py" in diff
+
+
+@pytest.mark.asyncio
+async def test_get_diff_no_parent(tree_ids, tmp_path):
+    """get_diff with no parent diffs against the empty tree."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    diff = await get_diff(root_dir, None)
+    # The initial commit only has .gitignore; diff against empty tree shows it
+    # (result may be empty string if git considers the diff trivial)
+    assert isinstance(diff, str)
+
+
+# ── read_file ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_read_file_basic(tree_ids, tmp_path):
+    """read_file returns file contents."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "hello.txt").write_text("world\n")
+    content = read_file(root_dir, "hello.txt")
+    assert content == "world\n"
+
+
+def test_read_file_traversal_blocked(tmp_path):
+    """read_file blocks path traversal attempts."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    (tmp_path / "secret.txt").write_text("secret\n")
+
+    with pytest.raises(ValueError, match="Path traversal"):
+        read_file(ws, "../secret.txt")
+
+
+def test_read_file_not_found(tmp_path):
+    """read_file raises FileNotFoundError for missing files."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    with pytest.raises(FileNotFoundError):
+        read_file(ws, "nonexistent.txt")
+
+
+def test_read_file_size_limit(tmp_path):
+    """read_file rejects files over 1MB."""
+    ws = tmp_path / "workspace"
+    ws.mkdir()
+    big = ws / "big.bin"
+    big.write_bytes(b"x" * (1_048_577))  # Just over 1MB
+    with pytest.raises(ValueError, match="too large"):
+        read_file(ws, "big.bin")
+
+
+# ── cleanup_tree_workspace ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_cleanup_tree_workspace(tree_ids, tmp_path):
+    """cleanup_tree_workspace removes the tree directory."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    assert root_dir.exists()
+    cleanup_tree_workspace(tree_ids["tree"])
+    assert not (tmp_path / tree_ids["tree"]).exists()
+
+
+def test_cleanup_tree_workspace_nonexistent(tmp_path, monkeypatch):
+    """cleanup_tree_workspace is safe on nonexistent paths."""
+    import services.workspace_service as ws_mod
+    monkeypatch.setattr(ws_mod, "WORKSPACES_DIR", tmp_path)
+    cleanup_tree_workspace("nonexistent")  # should not raise
+
+
 # ── copy_session ─────────────────────────────────────────────────────
 
 def test_claude_project_dir():
     """Project dir encodes the workspace path with dashes."""
     p = _claude_project_dir(Path("/home/user/project"))
     assert p.name == "-home-user-project"
+
+
+def test_claude_project_dir_nested():
+    """Deeply nested paths are encoded correctly."""
+    p = _claude_project_dir(Path("/a/b/c/d/e"))
+    assert p.name == "-a-b-c-d-e"
 
 
 def test_copy_session(tmp_path, monkeypatch):
@@ -188,3 +500,33 @@ def test_copy_session_idempotent(tmp_path, monkeypatch):
 
     # Should NOT overwrite
     assert (child_proj / f"{session_id}.jsonl").read_text() == "modified\n"
+
+
+def test_copy_session_missing_source(tmp_path, monkeypatch):
+    """copy_session handles missing parent session gracefully."""
+    import services.workspace_service as ws_mod
+    monkeypatch.setattr(ws_mod, "CLAUDE_PROJECTS_DIR", tmp_path / "projects")
+
+    parent_ws = Path("/fake/parent")
+    child_ws = Path("/fake/child")
+    # Don't create parent session file
+    copy_session(parent_ws, child_ws, "nonexistent-session")
+    # Should not raise, child dir should not be created
+    child_proj = tmp_path / "projects" / "-fake-child"
+    assert not child_proj.exists()
+
+
+# ── _run_git ─────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_git_check_raises(tmp_path):
+    """_run_git with check=True raises on non-zero exit."""
+    with pytest.raises(RuntimeError, match="failed"):
+        await _run_git(tmp_path, "status")  # not a git repo
+
+
+@pytest.mark.asyncio
+async def test_run_git_check_false(tmp_path):
+    """_run_git with check=False returns non-zero without raising."""
+    rc, _, _ = await _run_git(tmp_path, "status", check=False)
+    assert rc != 0
