@@ -163,11 +163,12 @@ function ProcessList({ nodeId, processes }: { nodeId: string; processes: Process
   );
 }
 
-function TreeNode({ data }: { data: { node: CNode } }) {
-  const { node } = data;
+function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } }) {
+  const { node, descendantCount } = data;
   const selectedId = useStore((s) => s.selectedNodeId);
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
+  const isSubtreeCollapsed = useStore((s) => s.collapsedSubtrees[node.id]);
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
@@ -254,10 +255,13 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   // All nodes (including root once it has a message): collapsible
   return (
     <div
-      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""}`}
+      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${isSubtreeCollapsed ? "subtree-collapsed" : ""}`}
       onClick={() => {
         actions.selectNode(node.id);
-        if (!isExpanded) actions.setExpanded(node.id, true);
+        if (!isExpanded) {
+          actions.setExpanded(node.id, true);
+          if (isSubtreeCollapsed) actions.toggleSubtreeCollapsed(node.id);
+        }
       }}
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
@@ -273,6 +277,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           ⚡{processes.length}
         </span>
       )}
+      {!isExpanded && isSubtreeCollapsed && descendantCount! > 0 && (
+        <span className="subtree-badge subtree-badge-active" title={`${descendantCount} hidden nodes`}>
+          +{descendantCount}
+        </span>
+      )}
       {isExpanded && (
         <div className="tree-node-preview" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
           {isRoot && tree && (
@@ -283,7 +292,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               {truncate(node.user_message, 150)}
               <button
                 className="collapse-btn"
-                onClick={(e) => { e.stopPropagation(); actions.setExpanded(node.id, false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.setExpanded(node.id, false);
+                  if (node.children_ids.length > 0 && !isSubtreeCollapsed) actions.toggleSubtreeCollapsed(node.id);
+                }}
                 title="Collapse"
               >&#x25B2;</button>
             </div>
@@ -382,6 +395,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           {!isStreaming && processes.length > 0 && isExpanded && (
             <ProcessList nodeId={node.id} processes={processes} />
           )}
+
         </div>
       )}
       {showModal && (

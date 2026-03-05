@@ -29,9 +29,40 @@ function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null
   return edgeIds;
 }
 
+function getDescendantCount(nodes: Record<string, CNode>, id: string): number {
+  let count = 0;
+  const stack = [...(nodes[id]?.children_ids || [])];
+  while (stack.length) {
+    const cid = stack.pop()!;
+    const child = nodes[cid];
+    if (!child) continue;
+    count++;
+    stack.push(...child.children_ids);
+  }
+  return count;
+}
+
+function getHiddenIds(nodes: Record<string, CNode>, collapsedSubtrees: Record<string, boolean>): Set<string> {
+  const hidden = new Set<string>();
+  for (const id of Object.keys(collapsedSubtrees)) {
+    if (!collapsedSubtrees[id] || !nodes[id]) continue;
+    const stack = [...(nodes[id].children_ids || [])];
+    while (stack.length) {
+      const cid = stack.pop()!;
+      if (hidden.has(cid)) continue;
+      const child = nodes[cid];
+      if (!child) continue;
+      hidden.add(cid);
+      stack.push(...child.children_ids);
+    }
+  }
+  return hidden;
+}
+
 function buildFlow(
   nodes: Record<string, CNode>,
   expandedNodes: Record<string, boolean>,
+  collapsedSubtrees: Record<string, boolean>,
   measured: Record<string, { width: number; height: number }>,
   ready: boolean,
   selectedNodeId: string | null,
@@ -40,25 +71,33 @@ function buildFlow(
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[] };
 
+  const hiddenIds = getHiddenIds(nodes, collapsedSubtrees);
+
   const hasMeasured = Object.keys(measured).length > 0;
   const { positions } = layoutTree(
     nodes,
     expandedNodes,
     hasMeasured ? measured : undefined,
+    collapsedSubtrees,
   );
 
-  const flowNodes: Node[] = list.map((n) => ({
+  const visibleList = list.filter((n) => !hiddenIds.has(n.id));
+
+  const flowNodes: Node[] = visibleList.map((n) => ({
     id: n.id,
     type: "tree",
     position: positions[n.id] || { x: 0, y: 0 },
-    data: { node: n },
+    data: {
+      node: n,
+      descendantCount: collapsedSubtrees[n.id] ? getDescendantCount(nodes, n.id) : 0,
+    },
     style: { opacity: ready ? 1 : 0 },
   }));
 
   const pathEdges = getAncestorPath(nodes, selectedNodeId);
 
-  const flowEdges: Edge[] = list
-    .filter((n) => n.parent_id)
+  const flowEdges: Edge[] = visibleList
+    .filter((n) => n.parent_id && !hiddenIds.has(n.parent_id!))
     .map((n) => {
       const edgeId = `${n.parent_id}-${n.id}`;
       const onPath = pathEdges.has(edgeId);
@@ -88,6 +127,7 @@ export default function Canvas() {
 function CanvasInner() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
+  const collapsedSubtrees = useStore((s) => s.collapsedSubtrees);
   const selectedNodeId = useStore((s) => s.selectedNodeId);
 
   const measuredRef = useRef<Record<string, { width: number; height: number }>>({});
@@ -124,9 +164,9 @@ function CanvasInner() {
   }, []);
 
   const { flowNodes, flowEdges } = useMemo(
-    () => buildFlow(nodes, expandedNodes, measuredRef.current, ready, selectedNodeId),
+    () => buildFlow(nodes, expandedNodes, collapsedSubtrees, measuredRef.current, ready, selectedNodeId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, expandedNodes, layoutVersion, ready, selectedNodeId],
+    [nodes, expandedNodes, collapsedSubtrees, layoutVersion, ready, selectedNodeId],
   );
 
   // Compensate viewport when layout shifts the selected node (e.g. sibling added)

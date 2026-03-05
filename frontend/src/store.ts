@@ -77,6 +77,7 @@ interface Store {
   streaming: Record<string, boolean>;
   toolCalls: Record<string, ToolCall[]>;  // nodeId -> tool calls during streaming
   expandedNodes: Record<string, boolean>;
+  collapsedSubtrees: Record<string, boolean>;
   nodeFiles: Record<string, string[]>;     // nodeId -> file paths
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
@@ -93,6 +94,20 @@ export function setExpandedCallback(cb: (nodeId: string, expanded: boolean) => v
   _onExpandedChange = cb;
 }
 
+let _onSubtreeCollapseChange: ((nodeId: string, collapsed: boolean) => void) | null = null;
+export function setSubtreeCollapseCallback(cb: (nodeId: string, collapsed: boolean) => void) {
+  _onSubtreeCollapseChange = cb;
+}
+
+function isDescendantOf(nodes: Record<string, CNode>, candidateId: string, ancestorId: string): boolean {
+  let cur = nodes[candidateId];
+  while (cur?.parent_id) {
+    if (cur.parent_id === ancestorId) return true;
+    cur = nodes[cur.parent_id];
+  }
+  return false;
+}
+
 export const useStore = create<Store>(() => ({
   connected: false,
   trees: [],
@@ -102,6 +117,7 @@ export const useStore = create<Store>(() => ({
   streaming: {},
   toolCalls: {},
   expandedNodes: {},
+  collapsedSubtrees: {},
   nodeFiles: {},
   nodeDiffs: {},
   fileContents: {},
@@ -225,6 +241,22 @@ export const actions = {
     useStore.setState((s) => {
       _onExpandedChange?.(id, v);
       return { expandedNodes: { ...s.expandedNodes, [id]: v } };
+    }),
+
+  loadCollapsedSubtrees: (map: Record<string, boolean>) =>
+    useStore.setState({ collapsedSubtrees: map }),
+  toggleSubtreeCollapsed: (id: string) =>
+    useStore.setState((s) => {
+      const collapsed = !s.collapsedSubtrees[id];
+      _onSubtreeCollapseChange?.(id, collapsed);
+      const next: Partial<Store> = {
+        collapsedSubtrees: { ...s.collapsedSubtrees, [id]: collapsed },
+      };
+      // If collapsing and selected node is a descendant, move selection to collapsed node
+      if (collapsed && s.selectedNodeId && isDescendantOf(s.nodes, s.selectedNodeId, id)) {
+        next.selectedNodeId = id;
+      }
+      return next;
     }),
 
   // ── Tree updates ──────────────────────────────────────────────

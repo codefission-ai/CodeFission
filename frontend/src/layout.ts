@@ -42,6 +42,7 @@ export function layoutTree(
   nodes: Record<string, CNode>,
   expandedNodes: Record<string, boolean>,
   measured?: Record<string, { width: number; height: number }>,
+  collapsedSubtrees?: Record<string, boolean>,
 ): LayoutResult {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
@@ -49,8 +50,9 @@ export function layoutTree(
 
   const children: Record<string, string[]> = {};
   for (const n of list) {
-    // Use the node's children_ids to preserve insertion order (e.g. duplicate after sibling)
-    if (n.children_ids.length > 0) {
+    if (collapsedSubtrees?.[n.id]) {
+      // Don't add to children map — node appears as a leaf
+    } else if (n.children_ids.length > 0) {
       children[n.id] = n.children_ids.filter((cid) => nodes[cid]);
     }
   }

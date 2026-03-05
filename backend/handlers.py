@@ -44,13 +44,18 @@ class ConnectionHandler:
         self.streams: dict[str, StreamState] = {}
 
     async def send(self, msg_type: str, **payload):
-        await self.ws.send_json({"type": msg_type, **payload})
+        try:
+            await self.ws.send_json({"type": msg_type, **payload})
+        except Exception:
+            # Socket dead — don't crash the streaming pipeline.
+            # _run_chat will keep accumulating text and save to DB on completion.
+            pass
 
     def cleanup(self):
-        for task in self.stream_tasks.values():
-            task.cancel()
-        for task in self.tasks.values():
-            task.cancel()
+        # Let all tasks finish — send() swallows errors on dead sockets,
+        # so _run_chat will keep going and save the response to DB.
+        # The SDK has max_turns, so tasks won't run forever.
+        pass
 
     async def dispatch(self, data: dict):
         msg_type = data.get("type")
@@ -65,9 +70,12 @@ class ConnectionHandler:
         last_tree_id = await get_setting("last_tree_id")
         raw = await get_setting("expanded_nodes")
         expanded_nodes = json.loads(raw) if raw else {}
+        raw_cs = await get_setting("collapsed_subtrees")
+        collapsed_subtrees = json.loads(raw_cs) if raw_cs else {}
         defaults = await get_global_defaults()
         await self.send(WS.TREES, trees=[t.model_dump() for t in trees],
                         last_tree_id=last_tree_id, expanded_nodes=expanded_nodes,
+                        collapsed_subtrees=collapsed_subtrees,
                         global_defaults=defaults, providers=list_providers())
 
     async def handle_create_tree(self, data: dict):
@@ -314,6 +322,17 @@ class ConnectionHandler:
             nodes_map.pop(node_id, None)
         await set_setting("expanded_nodes", json.dumps(nodes_map))
 
+    async def handle_set_subtree_collapsed(self, data: dict):
+        node_id = data["node_id"]
+        collapsed = data["collapsed"]
+        raw = await get_setting("collapsed_subtrees")
+        subtrees_map = json.loads(raw) if raw else {}
+        if collapsed:
+            subtrees_map[node_id] = True
+        else:
+            subtrees_map.pop(node_id, None)
+        await set_setting("collapsed_subtrees", json.dumps(subtrees_map))
+
     async def handle_get_settings(self, data: dict):
         defaults = await get_global_defaults()
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
@@ -477,6 +496,7 @@ class ConnectionHandler:
         WS.DUPLICATE: handle_duplicate,
         WS.SELECT_TREE: handle_select_tree,
         WS.SET_EXPANDED: handle_set_expanded,
+        WS.SET_SUBTREE_COLLAPSED: handle_set_subtree_collapsed,
         WS.GET_SETTINGS: handle_get_settings,
         WS.UPDATE_GLOBAL_SETTINGS: handle_update_global_settings,
         WS.UPDATE_TREE_SETTINGS: handle_update_tree_settings,
