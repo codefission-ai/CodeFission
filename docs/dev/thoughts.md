@@ -16,3 +16,9 @@ work tree issues:
 parallel experiments -- duplicate nodes
 
 the follow up window only shows when focused. It should show up even when the block is running -> creates a new child node that's dependent on the execution of the parent node and blocked by it waiting to be run. This way the user is scheduling jobs. there should also be a way to cancel a scheduled job or pause a running job.
+
+
+what's the max agent tool calls currently?
+
+can I send messages mid tool calls?
+
