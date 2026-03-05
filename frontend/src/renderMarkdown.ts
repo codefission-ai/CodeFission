@@ -3,9 +3,27 @@ import katex from "katex";
 
 marked.setOptions({ breaks: true, gfm: true });
 
+const VIDEO_EXT = /\.(mp4|webm|mov|ogg)$/i;
+
+// Custom renderer: convert image syntax with video extensions to <video>
+const renderer = new marked.Renderer();
+renderer.image = ({ href, title, text }: { href: string; title: string | null; text: string }) => {
+  if (VIDEO_EXT.test(href)) {
+    return `<video src="${href}" controls preload="metadata"${title ? ` title="${title}"` : ""}>${text}</video>`;
+  }
+  return `<img src="${href}" alt="${text}"${title ? ` title="${title}"` : ""} loading="lazy" />`;
+};
+
+// Auto-embed YouTube links (standalone on their own line)
+function embedYouTube(text: string): string {
+  return text.replace(
+    /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)(?:[&?][\w=&]*)?)$/gm,
+    (_, _url, id) => `<div class="video-embed"><iframe src="https://www.youtube.com/embed/${id}" frameborder="0" allowfullscreen loading="lazy"></iframe></div>`
+  );
+}
+
 /**
  * Render LaTeX blocks ($$..$$) and inline ($...$) before passing to marked.
- * Uses KaTeX for rendering.
  */
 function renderLatex(text: string): string {
   // Block math: $$ ... $$
@@ -29,7 +47,7 @@ function renderLatex(text: string): string {
 
 export function renderMarkdown(text: string): string {
   try {
-    return marked.parse(renderLatex(text)) as string;
+    return marked.parse(embedYouTube(renderLatex(text)), { renderer }) as string;
   } catch {
     return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }

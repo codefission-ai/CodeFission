@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
+import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore, actions, type CNode, type ToolCall } from "../store";
 import { send, WS } from "../ws";
@@ -125,6 +125,18 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  // Block wheel events so ReactFlow doesn't pan when scrolling the response
+  useEffect(() => {
+    const el = responseRef.current;
+    if (!el) return;
+    const stop = (e: WheelEvent) => {
+      if (el.scrollHeight > el.clientHeight) e.stopPropagation();
+    };
+    el.addEventListener("wheel", stop, { passive: false });
+    return () => el.removeEventListener("wheel", stop);
+  });
 
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response) : "",
@@ -223,6 +235,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           {/* Assistant response with markdown */}
           {node.assistant_response && (
             <div
+              ref={responseRef}
               className={`tree-node-assistant ${!isStreaming ? "clickable" : ""}`}
               onClick={() => { if (!isStreaming) setShowModal(true); }}
             >
