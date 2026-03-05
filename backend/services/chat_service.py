@@ -7,6 +7,7 @@ forward them to the frontend as distinct WebSocket messages.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import logging
@@ -272,6 +273,8 @@ async def stream_chat(
 
     except GeneratorExit:
         return
+    except asyncio.CancelledError:
+        raise
     except BaseException as exc:
         log.exception("Chat error for node %s", node_id)
         raise
