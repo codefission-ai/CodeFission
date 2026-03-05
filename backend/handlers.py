@@ -1,25 +1,25 @@
-"""WebSocket message handlers — extracted from main.py to reduce monolith size."""
+"""WebSocket message handlers — thin transport layer delegating to Orchestrator."""
 
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from fastapi import WebSocket
 
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
 from services.tree_service import (
-    create_tree, list_trees, get_tree, get_all_nodes, get_node,
-    create_child_node, update_node, update_tree, delete_tree,
-    get_setting, set_setting, get_global_defaults, resolve_tree_settings,
+    list_trees, get_tree, get_all_nodes, get_node,
+    delete_tree, update_tree,
+    get_setting, set_setting, get_global_defaults,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
-    setup_repo, create_worktree, ensure_worktree, auto_commit,
-    resolve_workspace, cleanup_tree_workspace, copy_session,
-    list_files, get_diff, read_file, _run_git, WORKSPACES_DIR,
+    resolve_workspace, cleanup_tree_workspace,
+    list_files, get_diff, read_file,
 )
+from services.orchestrator import Orchestrator
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ class ConnectionHandler:
 
     def __init__(self, ws: WebSocket):
         self.ws = ws
+        self.orch = Orchestrator()
         self.tasks: dict[str, asyncio.Task] = {}
         self.stream_tasks: dict[str, asyncio.Task] = {}
         self.cancelled: set[str] = set()
@@ -70,13 +71,7 @@ class ConnectionHandler:
 
     async def handle_create_tree(self, data: dict):
         name = data.get("name", "Untitled")
-        tree, root = await create_tree(name, repo_mode="new")
-        await setup_repo(tree.id, root.id, "new", None)
-        root_dir = WORKSPACES_DIR / tree.id / root.id
-        _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
-        _, branch, _ = await _run_git(root_dir, "rev-parse", "--abbrev-ref", "HEAD")
-        await update_node(root.id, git_branch=branch, git_commit=head_sha)
-        root = await get_node(root.id)
+        tree, root = await self.orch.create_tree(name, repo_mode="new")
         await self.send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
 
     async def handle_load_tree(self, data: dict):
@@ -103,23 +98,7 @@ class ConnectionHandler:
     async def handle_branch(self, data: dict):
         parent_id = data["parent_id"]
         label = data.get("label", "")
-        node = await create_child_node(parent_id, label)
-
-        parent = await get_node(parent_id)
-        if parent:
-            tree = await get_tree(parent.tree_id)
-            if tree:
-                try:
-                    await create_worktree(
-                        tree.id, tree.root_node_id, node.id,
-                        parent.git_commit or "HEAD",
-                    )
-                    branch_name = f"ct-{node.id}"
-                    await update_node(node.id, git_branch=branch_name)
-                    node = await get_node(node.id)
-                except Exception as e:
-                    log.warning("Worktree creation failed: %s", e)
-
+        node = await self.orch.branch(parent_id, label)
         await self.send(WS.NODE_CREATED, node=node.model_dump())
 
     async def handle_get_node(self, data: dict):
@@ -141,65 +120,21 @@ class ConnectionHandler:
     async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None):
         nid = node_id
         try:
-            node = await get_node(nid)
-            if not node:
-                return
+            # Prepare chat: create child node, resolve workspace/session/settings
+            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id)
+            nid = ctx.node_id
 
-            tree = await get_tree(node.tree_id)
-            if not tree:
-                return
-
-            # Always create a child node (root stays as a clean hub)
-            child = await create_child_node(nid, label=msg[:40])
-            created_payload = {"node": child.model_dump()}
-            if after_id:
-                created_payload["after_id"] = after_id
+            # Notify client of new node
+            created_payload = {"node": ctx.node.model_dump()}
+            if ctx.after_id:
+                created_payload["after_id"] = ctx.after_id
             await self.send(WS.NODE_CREATED, **created_payload)
-            nid = child.id
+
             # Re-key task under child id so cancel can find it
             self.tasks[nid] = self.tasks.pop(node_id, asyncio.current_task())
 
-            # Save user message and set label
-            current = await get_node(nid)
-            label = current.label if current and current.label and current.label != "" else msg[:40]
-            await update_node(nid, user_message=msg, label=label, status="active")
-            await self.send(WS.NODE_DATA, node=(await get_node(nid)).model_dump())
-
-            # Resolve workspace and ensure worktree exists
-            workspace = resolve_workspace(tree.id, tree.root_node_id, nid)
-            current = await get_node(nid)
-            parent_node = await get_node(current.parent_id) if current.parent_id else None
-            await ensure_worktree(
-                tree.id, tree.root_node_id, nid,
-                current.parent_id,
-                parent_node.git_commit if parent_node else None,
-            )
-
-            # Resolve parent's session_id for forking
-            current = await get_node(nid)
-            parent_session_id = None
-            sdk_msg = msg
-            if current and current.parent_id:
-                parent_node = await get_node(current.parent_id)
-                if parent_node and parent_node.session_id:
-                    parent_session_id = parent_node.session_id
-                    parent_ws = resolve_workspace(tree.id, tree.root_node_id, parent_node.id)
-                    copy_session(parent_ws, workspace, parent_session_id)
-                # If parent was cancelled, include full context
-                if parent_node and parent_node.status == "error" and "[Cancelled by user" in (parent_node.assistant_response or ""):
-                    partial = parent_node.assistant_response or ""
-                    sdk_msg = (
-                        "[System: Your previous response was cancelled by the user. "
-                        "The session was interrupted mid-execution. Here is your "
-                        "partial response up to the point of cancellation:\n\n"
-                        f"{partial}\n\n"
-                        "Resume from this context. The user's new message follows.]\n\n"
-                        + msg
-                    )
-
-            # Resolve effective settings (tree overrides + global defaults)
-            effective = await resolve_tree_settings(tree)
-            global_cfg = await get_global_defaults()
+            # Send updated node data (now has user_message, status=active)
+            await self.send(WS.NODE_DATA, node=ctx.node.model_dump())
 
             # Init streaming state
             self.streams[nid] = StreamState(node_id=nid)
@@ -208,17 +143,16 @@ class ConnectionHandler:
 
             # Track tool names for pairing start->end
             tool_names: dict[str, str] = {}
-            node_session_id: str | None = None
 
             # Run streaming in a separate task so the SDK's anyio
             # cancel scope is bound to that task, not ours.
             event_queue: asyncio.Queue = asyncio.Queue()
             gen = stream_chat(
-                nid, sdk_msg, workspace, parent_session_id,
-                model=effective["model"],
-                max_turns=effective["max_turns"],
-                auth_mode=global_cfg["auth_mode"],
-                api_key=global_cfg["api_key"],
+                nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
+                model=ctx.model,
+                max_turns=ctx.max_turns,
+                auth_mode=ctx.auth_mode,
+                api_key=ctx.api_key,
             )
 
             async def _pump_stream():
@@ -249,8 +183,8 @@ class ConnectionHandler:
                     raise event
 
                 if isinstance(event, SessionInit):
-                    node_session_id = event.session_id
-                    await update_node(nid, session_id=node_session_id)
+                    from services.tree_service import update_node
+                    await update_node(nid, session_id=event.session_id)
 
                 elif isinstance(event, TextDelta):
                     self.streams[nid].text += event.text
@@ -291,34 +225,18 @@ class ConnectionHandler:
                 if nid in self.streams:
                     self.streams[nid].status = "error"
                 partial = self.streams.get(nid, StreamState(nid)).text
-                active_tools = [name for name in tool_names.values()]
-                cancel_note = "\n\n---\n*[Cancelled by user]*"
-                if active_tools:
-                    cancel_note = (
-                        "\n\n---\n*[Cancelled by user while running: "
-                        + ", ".join(active_tools) + "]*"
-                    )
-                full = partial + cancel_note
-                await update_node(nid, status="error", assistant_response=full)
-                await self.send(WS.CHUNK, node_id=nid, text=cancel_note)
+                active_tools = list(tool_names.values())
+                result = await self.orch.cancel_chat(nid, partial, active_tools)
+                await self.send(WS.CHUNK, node_id=nid, text=result.saved_text)
                 await self.send(WS.ERROR, node_id=nid, error="Cancelled")
             else:
                 full_response = self.streams[nid].text
                 self.streams[nid].status = "done"
-                await update_node(nid, assistant_response=full_response, status="done")
-
-                git_commit = None
-                try:
-                    commit_sha, files_changed = await auto_commit(workspace, msg)
-                    await update_node(nid, git_commit=commit_sha)
-                    git_commit = commit_sha
-                except Exception as e:
-                    log.warning("Auto-commit failed: %s", e)
-
+                result = await self.orch.complete_chat(nid, full_response, msg, ctx.workspace)
                 await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
                 done_payload = {"node_id": nid, "full_response": full_response}
-                if git_commit:
-                    done_payload["git_commit"] = git_commit
+                if result.git_commit:
+                    done_payload["git_commit"] = result.git_commit
                 await self.send(WS.DONE, **done_payload)
 
         except Exception as e:
@@ -326,7 +244,7 @@ class ConnectionHandler:
             traceback.print_exc()
             if nid in self.streams:
                 self.streams[nid].status = "error"
-            await update_node(nid, status="error")
+            await self.orch.fail_chat(nid)
             await bus.emit(STREAM_ERROR, node_id=nid, error=str(e))
             await self.send(WS.ERROR, node_id=nid, error=str(e))
 
@@ -404,23 +322,8 @@ class ConnectionHandler:
         tree_id = data["tree_id"]
         repo_mode = data["repo_mode"]
         repo_source = data.get("repo_source")
-        tree = await get_tree(tree_id)
-        if not tree or not tree.root_node_id:
-            await self.send(WS.ERROR, error="Tree not found")
-            return
         try:
-            root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
-            if root_dir.exists() and repo_mode != tree.repo_mode:
-                import shutil
-                shutil.rmtree(root_dir, ignore_errors=True)
-            await setup_repo(tree.id, tree.root_node_id, repo_mode, repo_source)
-            root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
-            _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
-            _, branch, _ = await _run_git(root_dir, "rev-parse", "--abbrev-ref", "HEAD")
-            await update_node(tree.root_node_id, git_branch=branch, git_commit=head_sha)
-            await update_tree(tree.id, repo_mode=repo_mode, repo_source=repo_source)
-            updated_tree = await get_tree(tree.id)
-            root_node = await get_node(tree.root_node_id)
+            updated_tree, root_node = await self.orch.set_repo(tree_id, repo_mode, repo_source)
             await self.send(WS.TREE_UPDATED, tree=updated_tree.model_dump())
             await self.send(WS.NODE_DATA, node=root_node.model_dump())
         except Exception as e:

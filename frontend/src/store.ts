@@ -11,6 +11,7 @@ export interface CNode {
   children_ids: string[];
   git_branch: string | null;
   git_commit: string | null;
+  created_by: string;
 }
 
 export interface CTree {

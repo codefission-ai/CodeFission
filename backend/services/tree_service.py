@@ -97,6 +97,7 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
             git_branch=r["git_branch"],
             git_commit=r["git_commit"],
             session_id=r["session_id"],
+            created_by=r["created_by"],
         ))
     return nodes
 
@@ -122,10 +123,11 @@ async def get_node(node_id: str) -> Node | None:
         git_branch=row["git_branch"],
         git_commit=row["git_commit"],
         session_id=row["session_id"],
+        created_by=row["created_by"],
     )
 
 
-async def create_child_node(parent_id: str, label: str = "") -> Node:
+async def create_child_node(parent_id: str, label: str = "", created_by: str = "human") -> Node:
     parent = await get_node(parent_id)
     if not parent:
         raise ValueError(f"Parent node {parent_id} not found")
@@ -135,8 +137,8 @@ async def create_child_node(parent_id: str, label: str = "") -> Node:
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO nodes (id, tree_id, parent_id, user_message, assistant_response, label, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (node_id, parent.tree_id, parent_id, "", "", label, "idle", now),
+            "INSERT INTO nodes (id, tree_id, parent_id, user_message, assistant_response, label, status, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (node_id, parent.tree_id, parent_id, "", "", label, "idle", now, created_by),
         )
         await db.commit()
 
@@ -146,6 +148,7 @@ async def create_child_node(parent_id: str, label: str = "") -> Node:
         parent_id=parent_id,
         label=label,
         created_at=now,
+        created_by=created_by,
     )
 
 
@@ -167,7 +170,7 @@ async def update_node(node_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id"):
+        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id", "created_by"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:

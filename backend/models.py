@@ -18,6 +18,7 @@ class Node(BaseModel):
     git_branch: str | None = None
     git_commit: str | None = None
     session_id: str | None = None
+    created_by: str = "human"
 
 
 class Tree(BaseModel):
