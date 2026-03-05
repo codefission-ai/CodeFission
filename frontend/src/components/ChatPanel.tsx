@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { marked } from "marked";
-import { useStore, actions } from "../store";
+import { useStore } from "../store";
 import { send, WS } from "../ws";
 import ToolCallLine from "./ToolCallLine";
 
@@ -65,23 +65,6 @@ export default function ChatPanel() {
       <div className="chat-header">
         <span className="chat-title">{node.label || "root"}</span>
         {isStreaming && <span className="chat-streaming">streaming</span>}
-        {node.git_commit && (
-          <button
-            className="branch-btn"
-            onClick={() => {
-              actions.openFilesPanel(node.id);
-              send({ type: WS.GET_NODE_FILES, node_id: node.id });
-            }}
-          >
-            Files
-          </button>
-        )}
-        <button
-          className="branch-btn"
-          onClick={() => send({ type: WS.BRANCH, parent_id: selectedId })}
-        >
-          Branch
-        </button>
       </div>
 
       <div className="chat-messages">

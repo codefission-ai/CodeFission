@@ -238,6 +238,28 @@ def kill_process(pid: int, workspace: Path) -> bool:
         return False
 
 
+def kill_process_tree(pid: int) -> None:
+    """Kill a process and all its descendants by PID (no workspace check).
+
+    Used for killing the SDK subprocess and everything it spawned (curl, bash, etc.)
+    when a chat is cancelled.
+    """
+    server_pid = _get_server_pid()
+    if pid == server_pid:
+        return
+    try:
+        descendants = _get_descendants(pid)
+        # Kill children first (bottom-up), then the target
+        for child_pid in reversed(descendants):
+            try:
+                os.kill(child_pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError) as e:
+        log.debug("kill_process_tree(%d): %s", pid, e)
+
+
 def kill_all_in_workspace(workspace: Path) -> int:
     """Kill all processes under workspace. Returns count killed."""
     procs = list_processes(workspace)

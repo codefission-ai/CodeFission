@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import TreeList from "./components/TreeList";
 import Canvas from "./components/Canvas";
 import ChatPanel from "./components/ChatPanel";
-import FilesPanel from "./components/FilesPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import FilesPanel from "./components/FilesPanel";
 import { connectWs } from "./ws";
 import { useStore, actions } from "./store";
 
@@ -39,8 +39,6 @@ export default function App() {
     const tree = s.trees.find((t) => t.id === s.currentTreeId);
     return tree?.name || "";
   });
-  const filesPanel = useStore((s) => s.filesPanel);
-
   // Panel widths & collapsed state
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [chatWidth, setChatWidth] = useState(380);
@@ -173,19 +171,16 @@ export default function App() {
         <div className="resize-handle" onMouseDown={() => startDrag("chat")} />
       )}
 
-      {/* Right panel: FilesPanel or ChatPanel */}
+      {/* Right panel: ChatPanel */}
       <div
         ref={chatRef}
-        className={`chat ${chatCollapsed && !filesPanel ? "collapsed" : ""}`}
-        style={chatCollapsed && !filesPanel ? undefined : { width: chatWidth }}
+        className={`chat ${chatCollapsed ? "collapsed" : ""}`}
+        style={chatCollapsed ? undefined : { width: chatWidth }}
       >
-        {filesPanel ? (
-          <FilesPanel />
-        ) : (
-          <ChatPanel />
-        )}
+        <ChatPanel />
       </div>
 
+      <FilesPanel />
       <SettingsPanel />
     </div>
   );

@@ -19,7 +19,7 @@ from services.workspace_service import (
     resolve_workspace, cleanup_tree_workspace,
     list_files, get_diff, read_file,
 )
-from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace
+from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
 from services.orchestrator import Orchestrator
 
 log = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ class ConnectionHandler:
         self.stream_tasks: dict[str, asyncio.Task] = {}
         self.cancelled: set[str] = set()
         self.streams: dict[str, StreamState] = {}
+        self.sdk_pids: dict[str, int] = {}  # node_id -> SDK subprocess PID
 
     async def send(self, msg_type: str, **payload):
         try:
@@ -198,9 +199,18 @@ class ConnectionHandler:
             stream_task = asyncio.create_task(_pump_stream())
             self.stream_tasks[nid] = stream_task
 
+            # Find SDK subprocess PID (direct child of our process with cwd=workspace)
+            await asyncio.sleep(0.3)  # Give subprocess time to start
+            self._track_sdk_pid(nid, ctx.workspace)
+
             # Consume events from the queue
             while True:
-                event = await event_queue.get()
+                try:
+                    event = await asyncio.wait_for(event_queue.get(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    if nid in self.cancelled:
+                        break
+                    continue
                 if event is None:
                     break
                 if isinstance(event, Exception):
@@ -284,10 +294,41 @@ class ConnectionHandler:
         finally:
             self.streams.pop(nid, None)
             self.tasks.pop(nid, None)
+            self.sdk_pids.pop(nid, None)
+
+    def _track_sdk_pid(self, node_id: str, workspace):
+        """Find the SDK subprocess PID by scanning /proc for direct children with matching cwd."""
+        import os
+        from pathlib import Path
+        server_pid = os.getpid()
+        workspace_str = str(Path(workspace).resolve())
+        proc = Path("/proc")
+        if not proc.exists():
+            return
+        for entry in proc.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                stat_text = (entry / "stat").read_text()
+                ppid = int(stat_text.split(")")[1].split()[1])
+                if ppid != server_pid:
+                    continue
+                cwd = str((entry / "cwd").resolve())
+                if cwd.startswith(workspace_str):
+                    self.sdk_pids[node_id] = int(entry.name)
+                    return
+            except (PermissionError, FileNotFoundError, ProcessLookupError,
+                    OSError, IndexError, ValueError):
+                continue
 
     async def handle_cancel(self, data: dict):
         node_id = data["node_id"]
         self.cancelled.add(node_id)
+        # Kill the SDK subprocess tree to unstick any hanging tool (curl, etc.)
+        sdk_pid = self.sdk_pids.get(node_id)
+        if sdk_pid:
+            kill_process_tree(sdk_pid)
+            self.sdk_pids.pop(node_id, None)
         st = self.stream_tasks.get(node_id)
         if st and not st.done():
             st.cancel()

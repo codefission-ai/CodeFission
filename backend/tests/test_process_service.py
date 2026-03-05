@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from services import process_service
-from services.process_service import list_processes, kill_process, kill_all_in_workspace
+from services.process_service import list_processes, kill_process, kill_all_in_workspace, kill_process_tree
 
 
 def _free_port():
@@ -286,6 +286,52 @@ def test_kill_all_in_workspace(workspace):
 
 
 # ── Edge cases ──────────────────────────────────────────────────────
+
+
+def test_kill_process_tree(workspace):
+    """kill_process_tree should kill a process and all its descendants."""
+    # Parent spawns a child that sleeps
+    parent = _spawn(
+        ["python3", "-c",
+         "import subprocess, time; "
+         "subprocess.Popen(['sleep', '60']); "
+         "time.sleep(60)"],
+        workspace,
+    )
+    time.sleep(0.5)
+
+    # Find the child sleep process
+    found = list_processes(workspace)
+    sleep_procs = [p for p in found if p.command.strip() == "sleep 60"]
+    assert len(sleep_procs) >= 1, f"Child not found: {[p.command for p in found]}"
+    child_pid = sleep_procs[0].pid
+
+    # Kill the tree
+    kill_process_tree(parent.pid)
+
+    # Reap the parent (it becomes a zombie after SIGKILL until wait())
+    try:
+        parent.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        _cleanup(parent)
+        pytest.fail("Parent did not die")
+
+    time.sleep(0.3)
+
+    # Child should also be dead
+    try:
+        os.kill(child_pid, 0)
+        pytest.fail(f"Child PID {child_pid} should be dead after kill_process_tree")
+    except ProcessLookupError:
+        pass
+
+
+def test_kill_process_tree_does_not_kill_server():
+    """kill_process_tree should refuse to kill the server process."""
+    process_service._server_pid = os.getpid()
+    kill_process_tree(os.getpid())
+    # If we got here, we're still alive
+    assert True
 
 
 def test_exited_process_not_found(workspace):
