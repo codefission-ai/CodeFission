@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   BackgroundVariant,
+  useReactFlow,
   type Node,
   type Edge,
   type NodeChange,
@@ -123,20 +125,36 @@ export default function Canvas() {
   }
 
   return (
-    <ReactFlow
-      key={currentTreeId}
-      nodes={flowNodes}
-      edges={flowEdges}
-      nodeTypes={nodeTypes}
-      onNodesChange={onNodesChange}
-      fitView
-      minZoom={0.3}
-      maxZoom={2}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
-    </ReactFlow>
+    <ReactFlowProvider>
+      <ReactFlow
+        key={currentTreeId}
+        nodes={flowNodes}
+        edges={flowEdges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        fitView
+        minZoom={0.3}
+        maxZoom={2}
+        zoomOnScroll={false}
+        panOnScroll={true}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
+        <ZoomControls />
+      </ReactFlow>
+    </ReactFlowProvider>
+  );
+}
+
+function ZoomControls() {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+  return (
+    <div className="zoom-controls">
+      <button onClick={() => zoomIn({ duration: 150 })} title="Zoom in">+</button>
+      <button onClick={() => zoomOut({ duration: 150 })} title="Zoom out">−</button>
+      <button onClick={() => fitView({ duration: 150 })} title="Fit view">⊡</button>
+    </div>
   );
 }

@@ -13,3 +13,6 @@ work tree issues:
   - Copy-on-write filesystem (btrfs/APFS) — the OS deduplicates identical blocks
   transparently
 
+parallel experiments -- duplicate nodes
+
+the follow up window only shows when focused. It should show up even when the block is running -> creates a new child node that's dependent on the execution of the parent node and blocked by it waiting to be run. This way the user is scheduling jobs. there should also be a way to cancel a scheduled job or pause a running job.

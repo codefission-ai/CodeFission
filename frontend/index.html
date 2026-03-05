@@ -320,6 +320,24 @@
     .react-flow__handle { width: 6px !important; height: 6px !important; background: var(--text-muted) !important; border: none !important; }
     .react-flow__edge path { stroke: var(--border-visible) !important; }
 
+    /* ── Zoom controls ─────────────────────────────────────────── */
+    .zoom-controls {
+      position: absolute; bottom: 12px; right: 12px; z-index: 5;
+      display: flex; gap: 2px;
+    }
+    .zoom-controls button {
+      width: 28px; height: 28px;
+      background: var(--bg-raised); border: 1px solid var(--border-dim);
+      border-radius: var(--radius-sm); cursor: pointer;
+      color: var(--text-secondary); font-size: 14px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--shadow-sm); transition: all 0.1s;
+    }
+    .zoom-controls button:hover {
+      background: var(--bg-hover); color: var(--text-primary);
+      border-color: var(--border-visible);
+    }
+
     /* ── Chat panel ─────────────────────────────────────────────── */
     .chat {
       width: 380px;
