@@ -58,6 +58,17 @@ interface Store {
   filesPanel: FilesPanel | null;
 }
 
+function loadExpandedNodes(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem("expandedNodes");
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveExpandedNodes(expanded: Record<string, boolean>) {
+  try { localStorage.setItem("expandedNodes", JSON.stringify(expanded)); } catch {}
+}
+
 export const useStore = create<Store>(() => ({
   connected: false,
   trees: [],
@@ -66,7 +77,7 @@ export const useStore = create<Store>(() => ({
   selectedNodeId: null,
   streaming: {},
   toolCalls: {},
-  expandedNodes: {},
+  expandedNodes: loadExpandedNodes(),
   nodeFiles: {},
   nodeDiffs: {},
   fileContents: {},
@@ -168,13 +179,17 @@ export const actions = {
     }),
 
   toggleExpand: (id: string) =>
-    useStore.setState((s) => ({
-      expandedNodes: { ...s.expandedNodes, [id]: !s.expandedNodes[id] },
-    })),
+    useStore.setState((s) => {
+      const expandedNodes = { ...s.expandedNodes, [id]: !s.expandedNodes[id] };
+      saveExpandedNodes(expandedNodes);
+      return { expandedNodes };
+    }),
   setExpanded: (id: string, v: boolean) =>
-    useStore.setState((s) => ({
-      expandedNodes: { ...s.expandedNodes, [id]: v },
-    })),
+    useStore.setState((s) => {
+      const expandedNodes = { ...s.expandedNodes, [id]: v };
+      saveExpandedNodes(expandedNodes);
+      return { expandedNodes };
+    }),
 
   // ── Tree updates ──────────────────────────────────────────────
   updateTree: (t: CTree) =>
