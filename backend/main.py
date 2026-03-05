@@ -80,7 +80,10 @@ async def websocket_endpoint(ws: WebSocket):
     async def handle_list_trees():
         trees = await list_trees()
         last_tree_id = await get_setting("last_tree_id")
-        await send(WS.TREES, trees=[t.model_dump() for t in trees], last_tree_id=last_tree_id)
+        raw = await get_setting("expanded_nodes")
+        expanded_nodes = json.loads(raw) if raw else {}
+        await send(WS.TREES, trees=[t.model_dump() for t in trees],
+                   last_tree_id=last_tree_id, expanded_nodes=expanded_nodes)
 
     async def handle_create_tree(data: dict):
         name = data.get("name", "Untitled")
@@ -376,6 +379,17 @@ async def websocket_endpoint(ws: WebSocket):
         tree_id = data.get("tree_id")
         await set_setting("last_tree_id", tree_id)
 
+    async def handle_set_expanded(data: dict):
+        node_id = data["node_id"]
+        expanded = data["expanded"]
+        raw = await get_setting("expanded_nodes")
+        nodes_map = json.loads(raw) if raw else {}
+        if expanded:
+            nodes_map[node_id] = True
+        else:
+            nodes_map.pop(node_id, None)
+        await set_setting("expanded_nodes", json.dumps(nodes_map))
+
     async def handle_set_repo(data: dict):
         tree_id = data["tree_id"]
         repo_mode = data["repo_mode"]
@@ -472,6 +486,7 @@ async def websocket_endpoint(ws: WebSocket):
         WS.CANCEL: handle_cancel,
         WS.DUPLICATE: handle_duplicate,
         WS.SELECT_TREE: handle_select_tree,
+        WS.SET_EXPANDED: handle_set_expanded,
         WS.GET_NODE: handle_get_node,
         WS.SET_REPO: handle_set_repo,
         WS.GET_NODE_FILES: handle_get_node_files,

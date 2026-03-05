@@ -1,4 +1,8 @@
-import { actions } from "./store";
+import { actions, setExpandedCallback } from "./store";
+
+setExpandedCallback((nodeId, expanded) => {
+  send({ type: WS.SET_EXPANDED, node_id: nodeId, expanded });
+});
 
 // ── Wire protocol constants (mirror backend events.WS) ─────────────────
 
@@ -18,6 +22,7 @@ export const WS = {
   GET_NODE_DIFF: "get_node_diff",
   GET_FILE_CONTENT: "get_file_content",
   SELECT_TREE: "select_tree",
+  SET_EXPANDED: "set_expanded",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -65,6 +70,7 @@ function handle(data: any) {
   switch (data.type) {
     case WS.TREES:
       actions.setTrees(data.trees);
+      if (data.expanded_nodes) actions.loadExpandedNodes(data.expanded_nodes);
       // Auto-load last active tree on reconnect/refresh
       if (data.last_tree_id && data.trees.some((t: any) => t.id === data.last_tree_id)) {
         actions.selectTree(data.last_tree_id);
