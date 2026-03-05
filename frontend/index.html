@@ -141,10 +141,10 @@
       background: var(--bg-hover);
       color: var(--text-primary);
     }
-    .icon-btn.has-tooltip {
+    .has-tooltip {
       position: relative;
     }
-    .icon-btn .tooltip {
+    .has-tooltip > .tooltip {
       display: none;
       position: absolute;
       top: calc(100% + 6px);
@@ -161,7 +161,7 @@
       z-index: 50;
       box-shadow: var(--shadow-md);
     }
-    .icon-btn .tooltip kbd {
+    .has-tooltip > .tooltip kbd {
       display: inline-block;
       background: rgba(255,255,255,0.15);
       padding: 0 4px;
@@ -170,7 +170,7 @@
       font-size: 10px;
       margin-left: 4px;
     }
-    .icon-btn:hover .tooltip {
+    .has-tooltip:hover > .tooltip {
       display: block;
     }
 
@@ -411,6 +411,106 @@
     .react-flow__handle { width: 6px !important; height: 6px !important; background: var(--text-muted) !important; border: none !important; }
     .react-flow__edge path { stroke: var(--border-visible) !important; }
 
+    /* ── Process badge (collapsed node) ──────────────────────── */
+    .tree-node-proc-badge {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(99, 102, 241, 0.1);
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── Process list (expanded node) ────────────────────────── */
+    .node-processes {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border-dim);
+      font-size: 11px;
+    }
+    .node-processes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .node-processes-actions {
+      display: flex;
+      gap: 4px;
+    }
+    .node-process-action {
+      background: none;
+      border: 1px solid var(--border-dim);
+      color: var(--text-muted);
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.1s;
+    }
+    .node-process-action:hover {
+      color: var(--text-primary);
+      border-color: var(--border-visible);
+      background: var(--bg-hover);
+    }
+    .node-process-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 0;
+      min-width: 0;
+    }
+    .node-process-cmd {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 10px;
+    }
+    .node-process-ports {
+      display: flex;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .node-process-port {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(99, 102, 241, 0.1);
+      padding: 0 4px;
+      border-radius: 3px;
+    }
+    .node-process-kill {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 3px;
+      font-size: 14px;
+      flex-shrink: 0;
+      transition: all 0.1s;
+    }
+    .node-process-kill:hover {
+      color: var(--red);
+      background: var(--red-dim);
+    }
+
     /* ── Zoom controls ─────────────────────────────────────────── */
     .zoom-controls {
       position: absolute; bottom: 12px; right: 12px; z-index: 5;
@@ -431,6 +531,10 @@
     }
     .zoom-controls button:hover {
       background: var(--bg-hover); color: var(--text-primary);
+    }
+    .zoom-controls .has-tooltip > .tooltip {
+      top: auto;
+      bottom: calc(100% + 6px);
     }
 
     /* ── Chat panel ─────────────────────────────────────────────── */

@@ -56,6 +56,12 @@ export interface FileEntry {
   path: string;
 }
 
+export interface ProcessInfo {
+  pid: number;
+  command: string;
+  ports: number[];
+}
+
 export interface FilesPanel {
   nodeId: string;
   tab: "files" | "diff";
@@ -74,6 +80,7 @@ interface Store {
   nodeFiles: Record<string, string[]>;     // nodeId -> file paths
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
+  nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
@@ -98,6 +105,7 @@ export const useStore = create<Store>(() => ({
   nodeFiles: {},
   nodeDiffs: {},
   fileContents: {},
+  nodeProcesses: {},
   filesPanel: null,
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "" },
@@ -238,6 +246,11 @@ export const actions = {
     useStore.setState((s) => ({
       fileContents: { ...s.fileContents, [`${nodeId}:${filePath}`]: content },
     })),
+  setNodeProcesses: (nodeId: string, processes: ProcessInfo[]) =>
+    useStore.setState((s) => ({
+      nodeProcesses: { ...s.nodeProcesses, [nodeId]: processes },
+    })),
+
   openFilesPanel: (nodeId: string, tab: "files" | "diff" = "files") =>
     useStore.setState({ filesPanel: { nodeId, tab, selectedFile: null } }),
   closeFilesPanel: () => useStore.setState({ filesPanel: null }),

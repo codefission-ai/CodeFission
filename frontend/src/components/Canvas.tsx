@@ -9,6 +9,7 @@ import {
   type Edge,
   type NodeChange,
   type NodeDimensionChange,
+  PanOnScrollMode,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
@@ -164,8 +165,10 @@ function CanvasInner() {
       fitView
       minZoom={0.3}
       maxZoom={2}
-      zoomOnScroll={false}
+      zoomOnScroll={true}
+      zoomOnPinch={true}
       panOnScroll={true}
+      panOnScrollMode={PanOnScrollMode.Free}
       nodesDraggable={false}
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
@@ -176,13 +179,22 @@ function CanvasInner() {
   );
 }
 
+const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const modKey = isMac ? "⌘" : "Ctrl";
+
 function ZoomControls() {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   return (
     <div className="zoom-controls">
-      <button onClick={() => zoomIn({ duration: 150 })} title="Zoom in">+</button>
-      <button onClick={() => zoomOut({ duration: 150 })} title="Zoom out">−</button>
-      <button onClick={() => fitView({ duration: 150 })} title="Fit view">⊡</button>
+      <button className="has-tooltip" onClick={() => zoomIn({ duration: 150 })}>
+        +<span className="tooltip">Zoom in <kbd>{modKey}+Scroll</kbd></span>
+      </button>
+      <button className="has-tooltip" onClick={() => zoomOut({ duration: 150 })}>
+        −<span className="tooltip">Zoom out <kbd>{modKey}+Scroll</kbd></span>
+      </button>
+      <button className="has-tooltip" onClick={() => fitView({ duration: 150 })}>
+        ⊡<span className="tooltip">Fit view</span>
+      </button>
     </div>
   );
 }

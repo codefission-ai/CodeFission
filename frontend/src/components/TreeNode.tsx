@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -112,6 +112,56 @@ function RepoSelector({ treeId, locked, onBrowse }: {
 }
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
+const EMPTY_PROCESSES: ProcessInfo[] = [];
+
+function ProcessList({ nodeId, processes }: { nodeId: string; processes: ProcessInfo[] }) {
+  return (
+    <div className="node-processes" onClick={(e) => e.stopPropagation()}>
+      <div className="node-processes-header">
+        <span>Processes ({processes.length})</span>
+        <div className="node-processes-actions">
+          {processes.length > 1 && (
+            <button
+              className="node-process-action"
+              onClick={() => send({ type: WS.KILL_ALL_PROCESSES, node_id: nodeId })}
+              title="Kill all"
+            >
+              Kill all
+            </button>
+          )}
+          <button
+            className="node-process-action"
+            onClick={() => send({ type: WS.GET_NODE_PROCESSES, node_id: nodeId })}
+            title="Refresh"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+      {processes.map((p) => (
+        <div key={p.pid} className="node-process-item">
+          <span className="node-process-cmd" title={p.command}>
+            {p.command.length > 60 ? p.command.slice(0, 60) + "…" : p.command}
+          </span>
+          {p.ports.length > 0 && (
+            <span className="node-process-ports">
+              {p.ports.map((port) => (
+                <span key={port} className="node-process-port">:{port}</span>
+              ))}
+            </span>
+          )}
+          <button
+            className="node-process-kill"
+            onClick={() => send({ type: WS.KILL_PROCESS, node_id: nodeId, pid: p.pid })}
+            title={`Kill PID ${p.pid}`}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function TreeNode({ data }: { data: { node: CNode } }) {
   const { node } = data;
@@ -119,6 +169,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
+  const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const selected = selectedId === node.id;
   const isRoot = !node.parent_id;
@@ -215,6 +266,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       {!isExpanded && (
         <span className="tree-node-label">
           {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
+        </span>
+      )}
+      {!isExpanded && processes.length > 0 && (
+        <span className="tree-node-proc-badge" title={`${processes.length} running process${processes.length > 1 ? "es" : ""}`}>
+          ⚡{processes.length}
         </span>
       )}
       {isExpanded && (
@@ -320,6 +376,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                 )}
               </div>
             </>
+          )}
+
+          {/* Running processes */}
+          {!isStreaming && processes.length > 0 && isExpanded && (
+            <ProcessList nodeId={node.id} processes={processes} />
           )}
         </div>
       )}

@@ -243,7 +243,9 @@ def read_file(worktree_path: Path, file_path: str) -> str:
 # ── Cleanup ───────────────────────────────────────────────────────────
 
 def cleanup_tree_workspace(tree_id: str):
-    """Remove the entire workspace directory for a tree."""
+    """Kill any running processes and remove the workspace directory for a tree."""
     tree_dir = WORKSPACES_DIR / tree_id
     if tree_dir.exists():
+        from services.process_service import kill_all_in_workspace
+        kill_all_in_workspace(tree_dir)
         shutil.rmtree(tree_dir, ignore_errors=True)

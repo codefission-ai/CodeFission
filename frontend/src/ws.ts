@@ -26,6 +26,9 @@ export const WS = {
   GET_SETTINGS: "get_settings",
   UPDATE_GLOBAL_SETTINGS: "update_global_settings",
   UPDATE_TREE_SETTINGS: "update_tree_settings",
+  GET_NODE_PROCESSES: "get_node_processes",
+  KILL_PROCESS: "kill_process",
+  KILL_ALL_PROCESSES: "kill_all_processes",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -45,6 +48,7 @@ export const WS = {
   DONE: "done",
   ERROR: "error",
   SETTINGS: "settings",
+  NODE_PROCESSES: "node_processes",
 } as const;
 
 let ws: WebSocket | null = null;
@@ -98,6 +102,11 @@ function handle(data: any) {
       break;
     case WS.TREE_LOADED:
       actions.setNodes(data.nodes);
+      if (data.node_processes) {
+        for (const [nodeId, procs] of Object.entries(data.node_processes)) {
+          actions.setNodeProcesses(nodeId, procs as any[]);
+        }
+      }
       const root = data.nodes.find((n: any) => !n.parent_id);
       if (root) actions.selectNode(root.id);
       break;
@@ -148,6 +157,12 @@ function handle(data: any) {
       if (data.git_commit) {
         actions.updateNodeGit(data.node_id, data.git_commit);
       }
+      if (data.processes) {
+        actions.setNodeProcesses(data.node_id, data.processes);
+      }
+      break;
+    case WS.NODE_PROCESSES:
+      actions.setNodeProcesses(data.node_id, data.processes || []);
       break;
     case WS.ERROR:
       actions.setNodeStatus(data.node_id, "error");

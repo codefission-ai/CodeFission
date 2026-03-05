@@ -19,6 +19,7 @@ from services.workspace_service import (
     resolve_workspace, cleanup_tree_workspace,
     list_files, get_diff, read_file,
 )
+from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace
 from services.orchestrator import Orchestrator
 
 log = logging.getLogger(__name__)
@@ -78,10 +79,25 @@ class ConnectionHandler:
         tree_id = data["tree_id"]
         tree = await get_tree(tree_id)
         nodes = await get_all_nodes(tree_id)
+
+        # Scan for running processes across all node workspaces
+        node_processes = {}
+        if tree:
+            from services.workspace_service import WORKSPACES_DIR
+            tree_ws = WORKSPACES_DIR / tree_id
+            if tree_ws.exists():
+                raw = list_tree_processes(tree_ws)
+                for nid, procs in raw.items():
+                    node_processes[nid] = [
+                        {"pid": p.pid, "command": p.command, "ports": p.ports}
+                        for p in procs
+                    ]
+
         await self.send(
             WS.TREE_LOADED,
             tree=tree.model_dump() if tree else None,
             nodes=[n.model_dump() for n in nodes],
+            node_processes=node_processes,
         )
 
     async def handle_delete_tree(self, data: dict):
@@ -237,6 +253,15 @@ class ConnectionHandler:
                 done_payload = {"node_id": nid, "full_response": full_response}
                 if result.git_commit:
                     done_payload["git_commit"] = result.git_commit
+                # Brief delay to let SDK/tool subprocesses fully exit
+                await asyncio.sleep(0.15)
+                # Scan for orphaned processes in the workspace
+                procs = list_processes(ctx.workspace)
+                if procs:
+                    done_payload["processes"] = [
+                        {"pid": p.pid, "command": p.command, "ports": p.ports}
+                        for p in procs
+                    ]
                 await self.send(WS.DONE, **done_payload)
 
         except Exception as e:
@@ -386,6 +411,59 @@ class ConnectionHandler:
         except Exception as e:
             await self.send(WS.ERROR, error=f"Cannot read file: {e}")
 
+    # ── Process management ─────────────────────────────────────────────
+
+    async def _resolve_node_workspace(self, node_id: str) -> tuple:
+        """Resolve workspace path for a node. Returns (node, tree, workspace) or sends error."""
+        node = await get_node(node_id)
+        if not node:
+            await self.send(WS.ERROR, error="Node not found")
+            return None, None, None
+        tree = await get_tree(node.tree_id)
+        if not tree:
+            await self.send(WS.ERROR, error="Tree not found")
+            return None, None, None
+        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+        return node, tree, ws_path
+
+    async def handle_get_node_processes(self, data: dict):
+        node_id = data["node_id"]
+        _, _, ws_path = await self._resolve_node_workspace(node_id)
+        if not ws_path:
+            return
+        procs = list_processes(ws_path)
+        await self.send(WS.NODE_PROCESSES, node_id=node_id, processes=[
+            {"pid": p.pid, "command": p.command, "ports": p.ports}
+            for p in procs
+        ])
+
+    async def handle_kill_process(self, data: dict):
+        node_id = data["node_id"]
+        pid = data["pid"]
+        _, _, ws_path = await self._resolve_node_workspace(node_id)
+        if not ws_path:
+            return
+        kill_process(pid, ws_path)
+        # Send back updated process list
+        procs = list_processes(ws_path)
+        await self.send(WS.NODE_PROCESSES, node_id=node_id, processes=[
+            {"pid": p.pid, "command": p.command, "ports": p.ports}
+            for p in procs
+        ])
+
+    async def handle_kill_all_processes(self, data: dict):
+        node_id = data["node_id"]
+        _, _, ws_path = await self._resolve_node_workspace(node_id)
+        if not ws_path:
+            return
+        kill_all_in_workspace(ws_path)
+        # Send back updated (now empty) process list
+        procs = list_processes(ws_path)
+        await self.send(WS.NODE_PROCESSES, node_id=node_id, processes=[
+            {"pid": p.pid, "command": p.command, "ports": p.ports}
+            for p in procs
+        ])
+
     # ── Dispatch table (class-level) ──────────────────────────────────
 
     _dispatch_table: dict = {
@@ -407,4 +485,7 @@ class ConnectionHandler:
         WS.GET_NODE_FILES: handle_get_node_files,
         WS.GET_NODE_DIFF: handle_get_node_diff,
         WS.GET_FILE_CONTENT: handle_get_file_content,
+        WS.GET_NODE_PROCESSES: handle_get_node_processes,
+        WS.KILL_PROCESS: handle_kill_process,
+        WS.KILL_ALL_PROCESSES: handle_kill_all_processes,
     }

@@ -28,6 +28,14 @@ should be able to add arrows.
 
 group projects
 
+kill subprocesses
+
+check actual agent permissions
+
+attach files or another node or a note.
+
+consider a note is a folder with markdown / html. the note will be written by human. the human can attach files, text etc. need to think about this.
+
 
 
 

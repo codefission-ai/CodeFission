@@ -73,6 +73,9 @@ class WS:
     GET_SETTINGS = "get_settings"
     UPDATE_GLOBAL_SETTINGS = "update_global_settings"
     UPDATE_TREE_SETTINGS = "update_tree_settings"
+    GET_NODE_PROCESSES = "get_node_processes"
+    KILL_PROCESS = "kill_process"
+    KILL_ALL_PROCESSES = "kill_all_processes"
 
     # Outbound
     SETTINGS = "settings"
@@ -94,3 +97,4 @@ class WS:
     TOOL_END = "tool_end"
     DONE = "done"
     ERROR = "error"
+    NODE_PROCESSES = "node_processes"
