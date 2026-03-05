@@ -252,25 +252,19 @@
       max-height: 55px;
       overflow: hidden;
     }
-    .tree-node-user-clickable {
-      cursor: pointer;
-      transition: background 0.15s;
-      position: relative;
+    .tree-node-user { position: relative; }
+    .collapse-btn {
+      position: absolute; top: 3px; right: 3px;
+      width: 16px; height: 16px;
+      background: none; border: 1px solid transparent; border-radius: 3px;
+      color: var(--text-muted); font-size: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.15s, background 0.1s, border-color 0.1s;
     }
-    .tree-node-user-clickable:hover {
-      background: var(--bg-hover);
-    }
-    .tree-node-user-clickable .collapse-hint {
-      display: none;
-      position: absolute;
-      top: 4px;
-      right: 4px;
-      font-size: 9px;
-      color: var(--text-muted);
-      pointer-events: none;
-    }
-    .tree-node-user-clickable:hover .collapse-hint {
-      display: block;
+    .tree-node-user:hover .collapse-btn { opacity: 1; }
+    .collapse-btn:hover {
+      background: var(--bg-hover); border-color: var(--border-dim);
+      color: var(--text-primary);
     }
     .tree-node-assistant {
       padding: 4px 8px;
@@ -625,10 +619,11 @@
     .tree-node-assistant.clickable {
       cursor: pointer;
       border-radius: 4px;
-      transition: background 0.15s;
+      transition: background 0.15s, border-color 0.15s;
     }
     .tree-node-assistant.clickable:hover {
-      background: var(--bg-hover);
+      background: var(--bg-surface);
+      border-left-color: var(--accent);
     }
 
     /* ── Markdown inside tree node ─────────────────────────────── */

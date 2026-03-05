@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
+import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import { useStore, actions, type CNode, type ToolCall } from "../store";
 import { send, WS } from "../ws";
@@ -125,21 +125,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const responseRef = useRef<HTMLDivElement>(null);
 
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response) : "",
     [node.assistant_response]
   );
-
-  // Block wheel events so ReactFlow doesn't pan when scrolling the response
-  useEffect(() => {
-    const el = responseRef.current;
-    if (!el) return;
-    const stop = (e: WheelEvent) => e.stopPropagation();
-    el.addEventListener("wheel", stop, { passive: false });
-    return () => el.removeEventListener("wheel", stop);
-  });
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -221,18 +211,18 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
           )}
           {node.user_message && (
-            <div
-              className="tree-node-user tree-node-user-clickable"
-              onClick={() => actions.setExpanded(node.id, false)}
-            >
+            <div className="tree-node-user">
               {truncate(node.user_message, 150)}
-              <span className="collapse-hint">&#x25B2;</span>
+              <button
+                className="collapse-btn"
+                onClick={(e) => { e.stopPropagation(); actions.setExpanded(node.id, false); }}
+                title="Collapse"
+              >&#x25B2;</button>
             </div>
           )}
           {/* Assistant response with markdown */}
           {node.assistant_response && (
             <div
-              ref={responseRef}
               className={`tree-node-assistant ${!isStreaming ? "clickable" : ""}`}
               onClick={() => { if (!isStreaming) setShowModal(true); }}
             >
