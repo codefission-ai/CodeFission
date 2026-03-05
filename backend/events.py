@@ -68,6 +68,7 @@ class WS:
     GET_NODE_FILES = "get_node_files"
     GET_NODE_DIFF = "get_node_diff"
     GET_FILE_CONTENT = "get_file_content"
+    SELECT_TREE = "select_tree"
 
     # Outbound (server → client)
     TREES = "trees"

@@ -69,21 +69,11 @@ function saveExpandedNodes(expanded: Record<string, boolean>) {
   try { localStorage.setItem("expandedNodes", JSON.stringify(expanded)); } catch {}
 }
 
-function loadCurrentTreeId(): string | null {
-  try { return localStorage.getItem("currentTreeId"); } catch { return null; }
-}
-
-function saveCurrentTreeId(id: string | null) {
-  try {
-    if (id) localStorage.setItem("currentTreeId", id);
-    else localStorage.removeItem("currentTreeId");
-  } catch {}
-}
 
 export const useStore = create<Store>(() => ({
   connected: false,
   trees: [],
-  currentTreeId: loadCurrentTreeId(),
+  currentTreeId: null,
   nodes: {},
   selectedNodeId: null,
   streaming: {},
@@ -102,20 +92,13 @@ export const actions = {
   setTrees: (trees: CTree[]) => useStore.setState({ trees }),
   addTree: (t: CTree) => useStore.setState((s) => ({ trees: [t, ...s.trees] })),
   removeTree: (id: string) =>
-    useStore.setState((s) => {
-      const wasCurrent = s.currentTreeId === id;
-      if (wasCurrent) saveCurrentTreeId(null);
-      return {
-        trees: s.trees.filter((t) => t.id !== id),
-        currentTreeId: wasCurrent ? null : s.currentTreeId,
-        nodes: wasCurrent ? {} : s.nodes,
-        selectedNodeId: wasCurrent ? null : s.selectedNodeId,
-      };
-    }),
-  selectTree: (id: string) => {
-    saveCurrentTreeId(id);
-    useStore.setState({ currentTreeId: id });
-  },
+    useStore.setState((s) => ({
+      trees: s.trees.filter((t) => t.id !== id),
+      currentTreeId: s.currentTreeId === id ? null : s.currentTreeId,
+      nodes: s.currentTreeId === id ? {} : s.nodes,
+      selectedNodeId: s.currentTreeId === id ? null : s.selectedNodeId,
+    })),
+  selectTree: (id: string) => useStore.setState({ currentTreeId: id }),
 
   setNodes: (list: CNode[]) => {
     const nodes: Record<string, CNode> = {};

@@ -197,3 +197,22 @@ async def delete_tree(tree_id: str):
         await db.execute("DELETE FROM trees WHERE id = ?", (tree_id,))
         await db.commit()
     cleanup_tree_workspace(tree_id)
+
+
+async def get_setting(key: str) -> str | None:
+    async with get_db() as db:
+        cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        return row["value"] if row else None
+
+
+async def set_setting(key: str, value: str | None):
+    async with get_db() as db:
+        if value is None:
+            await db.execute("DELETE FROM settings WHERE key = ?", (key,))
+        else:
+            await db.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+                (key, value, value),
+            )
+        await db.commit()

@@ -20,6 +20,7 @@ from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from services.tree_service import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, update_tree, delete_tree,
+    get_setting, set_setting,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
@@ -78,7 +79,8 @@ async def websocket_endpoint(ws: WebSocket):
 
     async def handle_list_trees():
         trees = await list_trees()
-        await send(WS.TREES, trees=[t.model_dump() for t in trees])
+        last_tree_id = await get_setting("last_tree_id")
+        await send(WS.TREES, trees=[t.model_dump() for t in trees], last_tree_id=last_tree_id)
 
     async def handle_create_tree(data: dict):
         name = data.get("name", "Untitled")
@@ -107,6 +109,9 @@ async def websocket_endpoint(ws: WebSocket):
 
     async def handle_delete_tree(data: dict):
         tree_id = data["tree_id"]
+        last = await get_setting("last_tree_id")
+        if last == tree_id:
+            await set_setting("last_tree_id", None)
         cleanup_tree_workspace(tree_id)
         await delete_tree(tree_id)
         await send(WS.TREE_DELETED, tree_id=tree_id)
@@ -367,6 +372,10 @@ async def websocket_endpoint(ws: WebSocket):
             "after_id": node_id,
         })
 
+    async def handle_select_tree(data: dict):
+        tree_id = data.get("tree_id")
+        await set_setting("last_tree_id", tree_id)
+
     async def handle_set_repo(data: dict):
         tree_id = data["tree_id"]
         repo_mode = data["repo_mode"]
@@ -462,6 +471,7 @@ async def websocket_endpoint(ws: WebSocket):
         WS.CHAT: handle_chat,
         WS.CANCEL: handle_cancel,
         WS.DUPLICATE: handle_duplicate,
+        WS.SELECT_TREE: handle_select_tree,
         WS.GET_NODE: handle_get_node,
         WS.SET_REPO: handle_set_repo,
         WS.GET_NODE_FILES: handle_get_node_files,

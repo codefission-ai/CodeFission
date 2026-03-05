@@ -39,6 +39,10 @@ async def init_db():
                 status TEXT NOT NULL DEFAULT 'idle',
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
             CREATE INDEX IF NOT EXISTS idx_nodes_tree ON nodes(tree_id);
             CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id);
         """)

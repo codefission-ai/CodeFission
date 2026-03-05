@@ -40,6 +40,7 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
             onClick={() => {
               useStore.setState({ currentTreeId: t.id });
               send({ type: WS.LOAD_TREE, tree_id: t.id });
+              send({ type: WS.SELECT_TREE, tree_id: t.id });
             }}
           >
             <span>{t.name}</span>

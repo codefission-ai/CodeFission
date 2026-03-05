@@ -1,4 +1,4 @@
-import { actions, useStore } from "./store";
+import { actions } from "./store";
 
 // ── Wire protocol constants (mirror backend events.WS) ─────────────────
 
@@ -17,6 +17,7 @@ export const WS = {
   GET_NODE_FILES: "get_node_files",
   GET_NODE_DIFF: "get_node_diff",
   GET_FILE_CONTENT: "get_file_content",
+  SELECT_TREE: "select_tree",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -64,17 +65,16 @@ function handle(data: any) {
   switch (data.type) {
     case WS.TREES:
       actions.setTrees(data.trees);
-      // Auto-load persisted tree on reconnect/refresh
-      {
-        const saved = useStore.getState().currentTreeId;
-        if (saved && data.trees.some((t: any) => t.id === saved)) {
-          send({ type: WS.LOAD_TREE, tree_id: saved });
-        }
+      // Auto-load last active tree on reconnect/refresh
+      if (data.last_tree_id && data.trees.some((t: any) => t.id === data.last_tree_id)) {
+        actions.selectTree(data.last_tree_id);
+        send({ type: WS.LOAD_TREE, tree_id: data.last_tree_id });
       }
       break;
     case WS.TREE_CREATED:
       actions.addTree(data.tree);
       actions.selectTree(data.tree.id);
+      send({ type: WS.SELECT_TREE, tree_id: data.tree.id });
       actions.setNodes([data.root]);
       actions.selectNode(data.root.id);
       break;
