@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useStore, actions } from "../store";
+import { useStore } from "../store";
 import { send, WS } from "../ws";
 
-export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
+export default function TreeList() {
   const trees = useStore((s) => s.trees);
   const currentTreeId = useStore((s) => s.currentTreeId);
   const [name, setName] = useState("");
@@ -18,15 +18,7 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="tree-list">
       <div className="tree-list-header">
-        <span>RepoEvolve</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button className="branch-btn" onClick={() => actions.toggleSettings()} title="Settings">
-            ⚙
-          </button>
-          <button className="branch-btn" onClick={onCollapse} title="Collapse sidebar">
-            ✕
-          </button>
-        </div>
+        <span>Clawtree</span>
       </div>
       <div className="tree-list-create">
         <input
@@ -35,7 +27,12 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && create()}
         />
-        <button onClick={create}>+</button>
+        <button onClick={create} title="Create tree">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="7" y1="2" x2="7" y2="12" />
+            <line x1="2" y1="7" x2="12" y2="7" />
+          </svg>
+        </button>
       </div>
       <div className="tree-list-items">
         {trees.map((t) => (
@@ -56,7 +53,10 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
                 send({ type: WS.DELETE_TREE, tree_id: t.id });
               }}
             >
-              ×
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <line x1="3" y1="3" x2="9" y2="9" />
+                <line x1="9" y1="3" x2="3" y2="9" />
+              </svg>
             </button>
           </div>
         ))}

@@ -22,3 +22,14 @@ what's the max agent tool calls currently?
 
 can I send messages mid tool calls?
 
+should be able to write nodes.
+
+should be able to add arrows.
+
+group projects
+
+
+
+
+
+

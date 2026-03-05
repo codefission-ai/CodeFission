@@ -15,7 +15,7 @@ function renderMarkdown(text: string): string {
   }
 }
 
-export default function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
+export default function ChatPanel() {
   const selectedId = useStore((s) => s.selectedNodeId);
   const nodes = useStore((s) => s.nodes);
   const streaming = useStore((s) => s.streaming);
@@ -81,9 +81,6 @@ export default function ChatPanel({ onCollapse }: { onCollapse: () => void }) {
           onClick={() => send({ type: WS.BRANCH, parent_id: selectedId })}
         >
           Branch
-        </button>
-        <button className="branch-btn" onClick={onCollapse} title="Collapse panel">
-          ✕
         </button>
       </div>
 
