@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useStore } from "../store";
+import { useStore, actions } from "../store";
 import { send, WS } from "../ws";
 
 export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
@@ -19,9 +19,14 @@ export default function TreeList({ onCollapse }: { onCollapse: () => void }) {
     <div className="tree-list">
       <div className="tree-list-header">
         <span>RepoEvolve</span>
-        <button className="branch-btn" onClick={onCollapse} title="Collapse sidebar">
-          ✕
-        </button>
+        <div style={{ display: "flex", gap: 4 }}>
+          <button className="branch-btn" onClick={() => actions.toggleSettings()} title="Settings">
+            ⚙
+          </button>
+          <button className="branch-btn" onClick={onCollapse} title="Collapse sidebar">
+            ✕
+          </button>
+        </div>
       </div>
       <div className="tree-list-create">
         <input

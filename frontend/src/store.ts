@@ -20,8 +20,26 @@ export interface CTree {
   root_node_id: string | null;
   provider: string;
   model: string;
+  max_turns: number | null;
   repo_mode: string;
   repo_source: string | null;
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  models: string[];
+  default_model: string;
+  auth_modes: string[];
+  default_auth_mode: string;
+}
+
+export interface GlobalDefaults {
+  provider: string;
+  model: string;
+  max_turns: number;
+  auth_mode: string;
+  api_key: string;
 }
 
 export interface ToolCall {
@@ -56,6 +74,9 @@ interface Store {
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   filesPanel: FilesPanel | null;
+  showSettings: boolean;
+  globalDefaults: GlobalDefaults;
+  providers: ProviderInfo[];
 }
 
 // Callback set by ws.ts to avoid circular imports
@@ -77,6 +98,9 @@ export const useStore = create<Store>(() => ({
   nodeDiffs: {},
   fileContents: {},
   filesPanel: null,
+  showSettings: false,
+  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "" },
+  providers: [],
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -224,4 +248,9 @@ export const actions = {
     useStore.setState((s) =>
       s.filesPanel ? { filesPanel: { ...s.filesPanel, selectedFile: filePath } } : {}
     ),
+
+  // ── Settings ─────────────────────────────────────────────────
+  toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),
+  setGlobalDefaults: (d: GlobalDefaults) => useStore.setState({ globalDefaults: d }),
+  setProviders: (p: ProviderInfo[]) => useStore.setState({ providers: p }),
 };

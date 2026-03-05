@@ -65,6 +65,13 @@ async def init_db():
         if "repo_source" not in columns:
             await db.execute("ALTER TABLE trees ADD COLUMN repo_source TEXT")
 
+        # Migrate: add max_turns to trees
+        if "max_turns" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN max_turns INTEGER")
+
+        # Migrate: rename provider "anthropic" → "claude-code"
+        await db.execute("UPDATE trees SET provider = 'claude-code' WHERE provider = 'anthropic'")
+
         # Migrate: add git_branch, git_commit to nodes
         cursor2 = await db.execute("PRAGMA table_info(nodes)")
         node_columns = {row[1] for row in await cursor2.fetchall()}

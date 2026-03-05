@@ -1,9 +1,8 @@
 from pydantic import BaseModel
-from datetime import datetime
 
-# Default provider/model for new trees
-DEFAULT_PROVIDER = "anthropic"
-DEFAULT_MODEL = "claude-sonnet-4-6"
+# Default provider/model for new trees (empty = use global default)
+DEFAULT_PROVIDER = ""
+DEFAULT_MODEL = ""
 
 
 class Node(BaseModel):
@@ -28,5 +27,6 @@ class Tree(BaseModel):
     root_node_id: str | None = None
     provider: str = DEFAULT_PROVIDER
     model: str = DEFAULT_MODEL
+    max_turns: int | None = None
     repo_mode: str = "new"
     repo_source: str | None = None

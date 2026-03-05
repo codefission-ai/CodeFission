@@ -1,15 +1,17 @@
+import json
 import uuid
 from datetime import datetime, timezone
 
 from db import get_db
 from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
+from providers import PROVIDERS, DEFAULT_PROVIDER as FALLBACK_PROVIDER
 from services.workspace_service import cleanup_tree_workspace
 
 
 async def create_tree(
     name: str,
-    provider: str = DEFAULT_PROVIDER,
-    model: str = DEFAULT_MODEL,
+    provider: str = "",
+    model: str = "",
     repo_mode: str = "new",
     repo_source: str | None = None,
 ) -> tuple[Tree, Node]:
@@ -41,6 +43,7 @@ async def list_trees() -> list[Tree]:
     return [
         Tree(id=r["id"], name=r["name"], created_at=r["created_at"],
              provider=r["provider"], model=r["model"],
+             max_turns=r["max_turns"],
              repo_mode=r["repo_mode"], repo_source=r["repo_source"])
         for r in rows
     ]
@@ -61,6 +64,7 @@ async def get_tree(tree_id: str) -> Tree | None:
         id=row["id"], name=row["name"], created_at=row["created_at"],
         root_node_id=root_id,
         provider=row["provider"], model=row["model"],
+        max_turns=row["max_turns"],
         repo_mode=row["repo_mode"], repo_source=row["repo_source"],
     )
 
@@ -179,7 +183,7 @@ async def update_tree(tree_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("repo_mode", "repo_source"):
+        if k in ("repo_mode", "repo_source", "provider", "model", "max_turns"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
@@ -216,3 +220,31 @@ async def set_setting(key: str, value: str | None):
                 (key, value, value),
             )
         await db.commit()
+
+
+async def get_global_defaults() -> dict:
+    """Return global default settings (from settings table + provider registry)."""
+    provider = await get_setting("default_provider") or FALLBACK_PROVIDER
+    p = PROVIDERS.get(provider)
+    model = await get_setting("default_model") or (p.default_model if p else "claude-sonnet-4-6")
+    max_turns_raw = await get_setting("default_max_turns")
+    max_turns = int(max_turns_raw) if max_turns_raw else 25
+    auth_mode = await get_setting("auth_mode") or (p.default_auth_mode if p else "cli")
+    api_key = await get_setting("api_key") or ""
+    return {
+        "provider": provider,
+        "model": model,
+        "max_turns": max_turns,
+        "auth_mode": auth_mode,
+        "api_key": api_key,
+    }
+
+
+async def resolve_tree_settings(tree: Tree) -> dict:
+    """Merge tree overrides with global defaults. Empty string / None = inherit."""
+    defaults = await get_global_defaults()
+    return {
+        "provider": tree.provider if tree.provider else defaults["provider"],
+        "model": tree.model if tree.model else defaults["model"],
+        "max_turns": tree.max_turns if tree.max_turns is not None else defaults["max_turns"],
+    }

@@ -70,6 +70,12 @@ class WS:
     GET_FILE_CONTENT = "get_file_content"
     SELECT_TREE = "select_tree"
     SET_EXPANDED = "set_expanded"
+    GET_SETTINGS = "get_settings"
+    UPDATE_GLOBAL_SETTINGS = "update_global_settings"
+    UPDATE_TREE_SETTINGS = "update_tree_settings"
+
+    # Outbound
+    SETTINGS = "settings"
 
     # Outbound (server → client)
     TREES = "trees"

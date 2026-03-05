@@ -23,6 +23,9 @@ export const WS = {
   GET_FILE_CONTENT: "get_file_content",
   SELECT_TREE: "select_tree",
   SET_EXPANDED: "set_expanded",
+  GET_SETTINGS: "get_settings",
+  UPDATE_GLOBAL_SETTINGS: "update_global_settings",
+  UPDATE_TREE_SETTINGS: "update_tree_settings",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -41,6 +44,7 @@ export const WS = {
   TOOL_END: "tool_end",
   DONE: "done",
   ERROR: "error",
+  SETTINGS: "settings",
 } as const;
 
 let ws: WebSocket | null = null;
@@ -71,6 +75,8 @@ function handle(data: any) {
     case WS.TREES:
       actions.setTrees(data.trees);
       if (data.expanded_nodes) actions.loadExpandedNodes(data.expanded_nodes);
+      if (data.global_defaults) actions.setGlobalDefaults(data.global_defaults);
+      if (data.providers) actions.setProviders(data.providers);
       // Auto-load last active tree on reconnect/refresh
       if (data.last_tree_id && data.trees.some((t: any) => t.id === data.last_tree_id)) {
         actions.selectTree(data.last_tree_id);
@@ -146,6 +152,10 @@ function handle(data: any) {
     case WS.ERROR:
       actions.setNodeStatus(data.node_id, "error");
       actions.setStreaming(data.node_id, false);
+      break;
+    case WS.SETTINGS:
+      if (data.global_defaults) actions.setGlobalDefaults(data.global_defaults);
+      if (data.providers) actions.setProviders(data.providers);
       break;
   }
 }

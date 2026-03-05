@@ -3,6 +3,7 @@ import TreeList from "./components/TreeList";
 import Canvas from "./components/Canvas";
 import ChatPanel from "./components/ChatPanel";
 import FilesPanel from "./components/FilesPanel";
+import SettingsPanel from "./components/SettingsPanel";
 import { connectWs } from "./ws";
 import { useStore } from "./store";
 
@@ -111,6 +112,7 @@ export default function App() {
           ◀
         </button>
       )}
+      <SettingsPanel />
     </div>
   );
 }

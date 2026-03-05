@@ -28,10 +28,6 @@ from services.tree_service import get_tree, get_node
 
 log = logging.getLogger(__name__)
 
-# When True, uses ANTHROPIC_API_KEY; when False, uses Claude Code subscription.
-USE_API = False
-
-
 # ── Structured events yielded to caller ──────────────────────────────
 
 @dataclass
@@ -88,13 +84,11 @@ class SessionInit(ChatEvent):
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _sdk_env() -> dict[str, str]:
+def _sdk_env(auth_mode: str = "cli", api_key: str = "") -> dict[str, str]:
     """Build env dict for the SDK subprocess."""
     env = {"CLAUDECODE": ""}
-    if USE_API:
-        key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if key:
-            env["ANTHROPIC_API_KEY"] = key
+    if auth_mode == "api_key" and api_key:
+        env["ANTHROPIC_API_KEY"] = api_key
     return env
 
 
@@ -153,6 +147,11 @@ async def stream_chat(
     user_message: str,
     workspace: Path,
     parent_session_id: str | None = None,
+    *,
+    model: str = "claude-sonnet-4-6",
+    max_turns: int = 25,
+    auth_mode: str = "cli",
+    api_key: str = "",
 ) -> AsyncGenerator[ChatEvent, None]:
     """Stream a chat response for a node, yielding structured ChatEvents.
 
@@ -171,12 +170,12 @@ async def stream_chat(
 
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
-        model=tree.model,
+        model=model,
         cwd=str(workspace),
-        max_turns=25,
+        max_turns=max_turns,
         permission_mode="bypassPermissions",
         include_partial_messages=True,
-        env=_sdk_env(),
+        env=_sdk_env(auth_mode, api_key),
         debug_stderr=open(os.devnull, "w"),
     )
 

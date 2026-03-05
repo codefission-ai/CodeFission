@@ -17,10 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from db import init_db
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
+from providers import list_providers
 from services.tree_service import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, update_tree, delete_tree,
-    get_setting, set_setting,
+    get_setting, set_setting, get_global_defaults, resolve_tree_settings,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
@@ -82,15 +83,14 @@ async def websocket_endpoint(ws: WebSocket):
         last_tree_id = await get_setting("last_tree_id")
         raw = await get_setting("expanded_nodes")
         expanded_nodes = json.loads(raw) if raw else {}
+        defaults = await get_global_defaults()
         await send(WS.TREES, trees=[t.model_dump() for t in trees],
-                   last_tree_id=last_tree_id, expanded_nodes=expanded_nodes)
+                   last_tree_id=last_tree_id, expanded_nodes=expanded_nodes,
+                   global_defaults=defaults, providers=list_providers())
 
     async def handle_create_tree(data: dict):
         name = data.get("name", "Untitled")
-        provider = data.get("provider", "anthropic")
-        model = data.get("model", "claude-sonnet-4-6")
-        tree, root = await create_tree(name, provider=provider, model=model,
-                                       repo_mode="new")
+        tree, root = await create_tree(name, repo_mode="new")
         # Auto-init git repo for root node
         await setup_repo(tree.id, root.id, "new", None)
         root_dir = WORKSPACES_DIR / tree.id / root.id
@@ -215,6 +215,10 @@ async def websocket_endpoint(ws: WebSocket):
                             + msg
                         )
 
+                # Resolve effective settings (tree overrides + global defaults)
+                effective = await resolve_tree_settings(tree)
+                global_cfg = await get_global_defaults()
+
                 # Init streaming state
                 _streams[nid] = StreamState(node_id=nid)
                 await bus.emit(STREAM_START, node_id=nid)
@@ -229,7 +233,13 @@ async def websocket_endpoint(ws: WebSocket):
                 # the SDK generator is GC'd, it cancels the stream task
                 # (already done) instead of our finalization task.
                 event_queue: asyncio.Queue = asyncio.Queue()
-                gen = stream_chat(nid, sdk_msg, workspace, parent_session_id)
+                gen = stream_chat(
+                    nid, sdk_msg, workspace, parent_session_id,
+                    model=effective["model"],
+                    max_turns=effective["max_turns"],
+                    auth_mode=global_cfg["auth_mode"],
+                    api_key=global_cfg["api_key"],
+                )
 
                 async def _pump_stream():
                     try:
@@ -390,6 +400,33 @@ async def websocket_endpoint(ws: WebSocket):
             nodes_map.pop(node_id, None)
         await set_setting("expanded_nodes", json.dumps(nodes_map))
 
+    async def handle_get_settings():
+        defaults = await get_global_defaults()
+        await send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
+
+    async def handle_update_global_settings(data: dict):
+        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key"):
+            if key in data:
+                val = data[key]
+                await set_setting(key, str(val) if val is not None and val != "" else None)
+        defaults = await get_global_defaults()
+        await send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
+
+    async def handle_update_tree_settings(data: dict):
+        tree_id = data["tree_id"]
+        updates = {}
+        if "provider" in data:
+            updates["provider"] = data["provider"] or ""
+        if "model" in data:
+            updates["model"] = data["model"] or ""
+        if "max_turns" in data:
+            updates["max_turns"] = data["max_turns"]  # None = inherit
+        if updates:
+            await update_tree(tree_id, **updates)
+        tree = await get_tree(tree_id)
+        if tree:
+            await send(WS.TREE_UPDATED, tree=tree.model_dump())
+
     async def handle_set_repo(data: dict):
         tree_id = data["tree_id"]
         repo_mode = data["repo_mode"]
@@ -487,6 +524,9 @@ async def websocket_endpoint(ws: WebSocket):
         WS.DUPLICATE: handle_duplicate,
         WS.SELECT_TREE: handle_select_tree,
         WS.SET_EXPANDED: handle_set_expanded,
+        WS.GET_SETTINGS: lambda d: handle_get_settings(),
+        WS.UPDATE_GLOBAL_SETTINGS: handle_update_global_settings,
+        WS.UPDATE_TREE_SETTINGS: handle_update_tree_settings,
         WS.GET_NODE: handle_get_node,
         WS.SET_REPO: handle_set_repo,
         WS.GET_NODE_FILES: handle_get_node_files,

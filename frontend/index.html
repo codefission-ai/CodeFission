@@ -903,6 +903,54 @@
 
     /* ── Selection highlight ────────────────────────────────────── */
     ::selection { background: rgba(0,0,0,0.10); color: var(--text-primary); }
+
+    /* ── Settings panel ────────────────────────────────────────── */
+    .settings-overlay {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.35);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .settings-panel {
+      background: var(--bg-deep); border: 1px solid var(--border);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      width: 480px; max-height: 80vh; display: flex; flex-direction: column;
+    }
+    .settings-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 20px; border-bottom: 1px solid var(--border-dim);
+    }
+    .settings-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .settings-close-btn {
+      background: none; border: none; font-size: 18px; color: var(--text-muted);
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .settings-close-btn:hover { background: var(--bg-active); color: var(--text-primary); }
+    .settings-body {
+      padding: 16px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
+    }
+    .settings-section {
+      display: flex; flex-direction: column; gap: 6px;
+      padding-bottom: 16px; border-bottom: 1px solid var(--border-dim);
+    }
+    .settings-section:last-child { border-bottom: none; padding-bottom: 0; }
+    .settings-section-title { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+    .settings-hint { margin: 0 0 6px; font-size: 11px; color: var(--text-muted); }
+    .settings-label { font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-top: 4px; }
+    .settings-select, .settings-input {
+      padding: 6px 8px; font-size: 12px; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--bg-main); color: var(--text-primary);
+      font-family: inherit;
+    }
+    .settings-select:focus, .settings-input:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .settings-input[type="password"] { font-family: monospace; letter-spacing: 1px; }
+    .settings-save-btn {
+      margin-top: 8px; padding: 6px 16px; font-size: 12px; font-weight: 600;
+      background: var(--accent); color: white; border: none; border-radius: 6px;
+      cursor: pointer; align-self: flex-start; transition: all 0.15s;
+    }
+    .settings-save-btn:hover { filter: brightness(1.1); }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>
