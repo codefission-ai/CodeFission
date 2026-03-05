@@ -1,4 +1,4 @@
-import { actions } from "./store";
+import { actions, useStore } from "./store";
 
 // ── Wire protocol constants (mirror backend events.WS) ─────────────────
 
@@ -64,6 +64,13 @@ function handle(data: any) {
   switch (data.type) {
     case WS.TREES:
       actions.setTrees(data.trees);
+      // Auto-load persisted tree on reconnect/refresh
+      {
+        const saved = useStore.getState().currentTreeId;
+        if (saved && data.trees.some((t: any) => t.id === saved)) {
+          send({ type: WS.LOAD_TREE, tree_id: saved });
+        }
+      }
       break;
     case WS.TREE_CREATED:
       actions.addTree(data.tree);
