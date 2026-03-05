@@ -15,8 +15,8 @@ async def create_tree(
     repo_mode: str = "new",
     repo_source: str | None = None,
 ) -> tuple[Tree, Node]:
-    tree_id = str(uuid.uuid4())[:8]
-    root_id = str(uuid.uuid4())[:8]
+    tree_id = uuid.uuid4().hex[:12]
+    root_id = uuid.uuid4().hex[:12]
     now = datetime.now(timezone.utc).isoformat()
 
     async with get_db() as db:
@@ -130,7 +130,7 @@ async def create_child_node(parent_id: str, label: str = "") -> Node:
     if not parent:
         raise ValueError(f"Parent node {parent_id} not found")
 
-    node_id = str(uuid.uuid4())[:8]
+    node_id = uuid.uuid4().hex[:12]
     now = datetime.now(timezone.utc).isoformat()
 
     async with get_db() as db:

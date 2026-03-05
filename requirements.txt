@@ -1,7 +1,0 @@
-fastapi
-uvicorn[standard]
-aiosqlite
-anthropic
-openai
-claude-agent-sdk
-pydantic

@@ -1,74 +1,92 @@
-# RepoEvolve
+# Clawtree
 
-A tree-structured AI conversation tool for exploring code repositories. Branch conversations at any point to explore alternative approaches, compare AI responses, and evolve your understanding of a codebase.
-
-<!-- ![Screenshot](docs/screenshot.png) -->
-
-## Features
-
-- **Tree-structured conversations** — branch any AI response to explore alternatives
-- **Repository-aware** — attach git repos to conversations for code-aware AI assistance
-- **Multi-provider** — supports Anthropic (Claude) and OpenAI models
-- **Live streaming** — real-time token streaming with WebSocket updates
-- **Git worktrees** — each conversation branch gets its own isolated worktree
-- **File browsing** — view files and diffs for any node in the tree
+Tree-structured AI coding assistant. Each conversation node is an isolated git worktree — branch conversations to explore alternative approaches, and each branch gets its own filesystem sandbox.
 
 ## Prerequisites
 
-- Python 3.12+
-- Node.js 18+
-- An API key for at least one provider:
-  - `ANTHROPIC_API_KEY` for Claude models
-  - `OPENAI_API_KEY` for OpenAI models
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — AI backend (spawned as subprocess). Install: `npm install -g @anthropic-ai/claude-code`
+- [uv](https://docs.astral.sh/uv/installation/) — Python package manager. Install: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- [Node.js](https://nodejs.org/en/download) 18+ — frontend build. Install via system package manager or [nvm](https://github.com/nvm-sh/nvm)
+- [git](https://git-scm.com/downloads) — worktree isolation. Usually pre-installed.
 
-## Getting Started
+Authenticate Claude Code before first use:
 
-```bash
-# Clone the repository
-git clone https://github.com/your-username/repoevolve.git
-cd repoevolve
+```
+claude login
+```
 
-# Create and activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
+## Quick start
 
-# Install Python dependencies
-pip install -r requirements.txt
+### Option A: Let Claude do it
 
-# Install frontend dependencies
-cd frontend
-npm install
-npm run build
-cd ..
+If you already have Claude Code installed:
 
-# Set API keys
-export ANTHROPIC_API_KEY="sk-ant-..."
-# and/or
-export OPENAI_API_KEY="sk-..."
+```
+claude -p "git clone <repo-url> clawtree && cd clawtree && ./run.sh"
+```
 
-# Run the server
+### Option B: Manual
+
+```
+git clone <repo-url> clawtree
+cd clawtree
 ./run.sh
 ```
 
-Open http://localhost:8080 in your browser.
+On first run, `run.sh` will:
+1. Install Python dependencies via `uv` (creates `.venv/` automatically)
+2. Install npm packages and build the frontend
+3. Start the server on `http://localhost:8080`
+
+Subsequent runs skip steps 1-2 (unless dependencies or source changed).
+
+To use a different port: `./run.sh 3000`
+
+## How it works
+
+Create a tree in the sidebar, type a message, and Clawtree spawns a Claude Code session in an isolated git worktree. Branch any node to explore alternatives — each branch forks the conversation context and the filesystem state.
+
+```
+         [root]
+        /      \
+   [add auth]  [add auth]     <- same prompt, different approaches
+      |            |
+ [fix tests]  [add logging]   <- independent follow-ups
+```
+
+Every node tracks its git branch, commit, and Claude session. Child nodes fork from the parent's prompt cache so context carries over without re-sending history.
+
+## Authentication
+
+Configurable in the Settings panel (gear icon in sidebar):
+
+- **CLI (OAuth)** — default. Uses your `claude login` session. No API key needed.
+- **API Key** — provide an Anthropic API key in settings. Useful for headless/remote setups.
+
+Both modes require the Claude Code CLI binary to be installed.
 
 ## Configuration
 
-All configuration is done via environment variables:
+Open Settings (gear icon) to configure:
 
-| Variable | Description |
-|---|---|
-| `ANTHROPIC_API_KEY` | API key for Claude models |
-| `OPENAI_API_KEY` | API key for OpenAI models |
+- **Global defaults** — provider, model, max turns, auth mode. Applies to all trees.
+- **Per-tree overrides** — provider, model, max turns. Leave as "Default" to inherit global settings.
 
-The server port can be changed by passing it as an argument: `./run.sh 3000`
+Settings persist in the backend database across sessions and devices.
 
-## Tech Stack
+## Development
 
-- **Backend:** Python, FastAPI, aiosqlite, WebSockets
-- **Frontend:** React, TypeScript, React Flow, Vite
-- **AI:** Anthropic Claude SDK, OpenAI SDK, Claude Agent SDK
+Run tests:
 
-## License
+```
+uv run --group dev pytest
+```
 
-[MIT](LICENSE)
+Frontend dev server (hot reload):
+
+```
+cd frontend
+npm run dev
+```
+
+Data is stored in `~/.repoevolve/` (SQLite database, git worktrees). Override with `REPOEVOLVE_DATA_DIR` env var.

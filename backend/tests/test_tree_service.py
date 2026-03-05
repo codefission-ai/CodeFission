@@ -17,8 +17,8 @@ async def test_create_tree_defaults(tmp_db):
     tree, root = await create_tree("Test Tree")
     assert tree.name == "Test Tree"
     assert tree.repo_mode == "new"
-    assert tree.provider == "anthropic"
-    assert tree.model == "claude-sonnet-4-6"
+    assert tree.provider == ""
+    assert tree.model == ""
     assert root.tree_id == tree.id
     assert root.parent_id is None
     assert root.label == "root"

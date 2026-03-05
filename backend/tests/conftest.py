@@ -1,13 +1,7 @@
 """Shared fixtures for RepoEvolve tests."""
 
-import sys
-from pathlib import Path
-
 import pytest
 import pytest_asyncio
-
-# Make backend importable
-sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 
 @pytest.fixture
@@ -26,4 +20,5 @@ async def tmp_db(tmp_path):
     db_mod.DB_PATH = tmp_path / "test.db"
     await db_mod.init_db()
     yield db_mod.DB_PATH
+    await db_mod.close_db()
     db_mod.DB_PATH = original

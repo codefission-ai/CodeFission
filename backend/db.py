@@ -7,21 +7,40 @@ from config import DATA_DIR
 
 DB_PATH = DATA_DIR / "repoevolve.db"
 
+_conn: aiosqlite.Connection | None = None
 
-@asynccontextmanager
-async def get_db():
+
+async def _open_connection() -> aiosqlite.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     db = await aiosqlite.connect(str(DB_PATH))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
-    try:
-        yield db
-    finally:
-        await db.close()
+    return db
+
+
+@asynccontextmanager
+async def get_db():
+    global _conn
+    if _conn is None:
+        _conn = await _open_connection()
+    yield _conn
+
+
+async def close_db():
+    global _conn
+    if _conn is not None:
+        await _conn.close()
+        _conn = None
 
 
 async def init_db():
+    global _conn
+    # Close existing connection (e.g. tests changing DB_PATH)
+    if _conn is not None:
+        await _conn.close()
+        _conn = None
+
     async with get_db() as db:
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS trees (

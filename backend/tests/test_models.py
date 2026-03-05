@@ -59,6 +59,6 @@ def test_tree_serialization():
 
 
 def test_default_constants():
-    """DEFAULT_PROVIDER and DEFAULT_MODEL are set."""
-    assert DEFAULT_PROVIDER == "anthropic"
-    assert "claude" in DEFAULT_MODEL
+    """DEFAULT_PROVIDER and DEFAULT_MODEL are empty (inherit from global)."""
+    assert DEFAULT_PROVIDER == ""
+    assert DEFAULT_MODEL == ""
