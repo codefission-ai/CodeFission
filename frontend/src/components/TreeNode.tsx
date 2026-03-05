@@ -1,7 +1,9 @@
-import { memo, useState, useCallback, useRef, useLayoutEffect } from "react";
+import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode } from "../store";
+import { useStore, actions, type CNode, type ToolCall } from "../store";
 import { send, WS } from "../ws";
+import { renderMarkdown } from "../renderMarkdown";
+import ToolCallLine from "./ToolCallLine";
 import NodeModal from "./NodeModal";
 
 function truncate(text: string, max: number): string {
@@ -109,17 +111,35 @@ function RepoSelector({ treeId, locked, onBrowse }: {
   );
 }
 
+const EMPTY_TOOL_CALLS: ToolCall[] = [];
+
 function TreeNode({ data }: { data: { node: CNode } }) {
   const { node } = data;
   const selectedId = useStore((s) => s.selectedNodeId);
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
+  const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const selected = selectedId === node.id;
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const responseRef = useRef<HTMLDivElement>(null);
+
+  const assistantHtml = useMemo(
+    () => node.assistant_response ? renderMarkdown(node.assistant_response) : "",
+    [node.assistant_response]
+  );
+
+  // Block wheel events so ReactFlow doesn't pan when scrolling the response
+  useEffect(() => {
+    const el = responseRef.current;
+    if (!el) return;
+    const stop = (e: WheelEvent) => e.stopPropagation();
+    el.addEventListener("wheel", stop, { passive: false });
+    return () => el.removeEventListener("wheel", stop);
+  });
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -209,17 +229,37 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               <span className="collapse-hint">&#x25B2;</span>
             </div>
           )}
-          {(node.assistant_response || isStreaming) && (
+          {/* Assistant response with markdown */}
+          {node.assistant_response && (
             <div
-              className={`tree-node-assistant ${!isStreaming && node.assistant_response ? "clickable" : ""}`}
-              onClick={() => {
-                if (!isStreaming && node.assistant_response) setShowModal(true);
-              }}
+              ref={responseRef}
+              className={`tree-node-assistant ${!isStreaming ? "clickable" : ""}`}
+              onClick={() => { if (!isStreaming) setShowModal(true); }}
             >
-              {truncate(node.assistant_response, 150)}
+              <div
+                className="tree-node-response-md"
+                dangerouslySetInnerHTML={{ __html: assistantHtml }}
+              />
               {isStreaming && <span className="stream-cursor" />}
             </div>
           )}
+
+          {/* Tool calls during streaming */}
+          {isStreaming && activeToolCalls.length > 0 && (
+            <div className="tool-calls-block">
+              {activeToolCalls.map((tc) => (
+                <ToolCallLine key={tc.tool_call_id} tc={tc} />
+              ))}
+            </div>
+          )}
+
+          {/* Streaming dots - waiting state */}
+          {isStreaming && !node.assistant_response && activeToolCalls.length === 0 && (
+            <div className="tree-node-assistant">
+              <div className="stream-dots">···</div>
+            </div>
+          )}
+
           {!isStreaming && selected && (
             <>
               <div className="tree-node-input">
