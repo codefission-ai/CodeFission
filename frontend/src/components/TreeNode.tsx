@@ -236,8 +236,8 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           {node.assistant_response && (
             <div
               ref={responseRef}
-              className={`tree-node-assistant ${!isStreaming ? "clickable" : ""}`}
-              onClick={() => { if (!isStreaming) setShowModal(true); }}
+              className={`tree-node-assistant ${selected && !isStreaming ? "clickable" : ""}`}
+              onClick={() => { if (selected && !isStreaming) setShowModal(true); }}
             >
               <div
                 className="tree-node-response-md"
