@@ -263,6 +263,27 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             </div>
           )}
 
+          {/* Action buttons while streaming */}
+          {isStreaming && (
+            <div className="tree-node-actions">
+              <button
+                className="tree-node-action-btn cancel"
+                onClick={(e) => { e.stopPropagation(); send({ type: WS.CANCEL, node_id: node.id }); }}
+              >
+                Cancel
+              </button>
+              {node.user_message && (
+                <button
+                  className="tree-node-action-btn"
+                  onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); send({ type: WS.DUPLICATE, node_id: node.id }); }}
+                  title="Re-run this prompt as a sibling"
+                >
+                  Duplicate
+                </button>
+              )}
+            </div>
+          )}
+
           {!isStreaming && selected && (
             <>
               <div className="tree-node-input">
@@ -282,11 +303,22 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                   rows={1}
                 />
               </div>
-              {node.git_commit && (
-                <button className="tree-node-files-btn" onClick={handleOpenFiles}>
-                  Files
-                </button>
-              )}
+              <div className="tree-node-actions">
+                {node.user_message && (
+                  <button
+                    className="tree-node-action-btn"
+                    onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); send({ type: WS.DUPLICATE, node_id: node.id }); }}
+                    title="Re-run this prompt as a sibling"
+                  >
+                    Duplicate
+                  </button>
+                )}
+                {node.git_commit && (
+                  <button className="tree-node-action-btn" onClick={handleOpenFiles}>
+                    Files
+                  </button>
+                )}
+              </div>
             </>
           )}
         </div>

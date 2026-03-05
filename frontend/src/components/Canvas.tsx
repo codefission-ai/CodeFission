@@ -12,7 +12,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
-import { useStore, type CNode } from "../store";
+import { useStore, actions, type CNode } from "../store";
 import { layoutTree } from "../layout";
 
 const nodeTypes = { tree: TreeNode };
@@ -76,14 +76,23 @@ function buildFlow(
 }
 
 export default function Canvas() {
+  const currentTreeId = useStore((s) => s.currentTreeId);
+  return (
+    <ReactFlowProvider key={currentTreeId}>
+      <CanvasInner />
+    </ReactFlowProvider>
+  );
+}
+
+function CanvasInner() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
-  const currentTreeId = useStore((s) => s.currentTreeId);
   const selectedNodeId = useStore((s) => s.selectedNodeId);
 
   const measuredRef = useRef<Record<string, { width: number; height: number }>>({});
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [ready, setReady] = useState(false);
+  const prevPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
   const heightTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
 
@@ -106,7 +115,6 @@ export default function Canvas() {
       setLayoutVersion((v) => v + 1);
       setReady(true);
     } else if (heightChanged) {
-      // Debounce height-only changes to avoid stealing focus on every keystroke
       clearTimeout(heightTimerRef.current);
       heightTimerRef.current = setTimeout(() => {
         setLayoutVersion((v) => v + 1);
@@ -120,31 +128,51 @@ export default function Canvas() {
     [nodes, expandedNodes, layoutVersion, ready, selectedNodeId],
   );
 
+  // Compensate viewport when layout shifts the selected node (e.g. sibling added)
+  const reactFlowInstance = useReactFlow();
+  const newPositions: Record<string, { x: number; y: number }> = {};
+  for (const fn of flowNodes) newPositions[fn.id] = fn.position;
+
+  if (selectedNodeId && ready) {
+    const prev = prevPositionsRef.current[selectedNodeId];
+    const curr = newPositions[selectedNodeId];
+    if (prev && curr && (prev.x !== curr.x || prev.y !== curr.y)) {
+      const dx = curr.x - prev.x;
+      const dy = curr.y - prev.y;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        const vp = reactFlowInstance.getViewport();
+        reactFlowInstance.setViewport(
+          { x: vp.x - dx * vp.zoom, y: vp.y - dy * vp.zoom, zoom: vp.zoom },
+          { duration: 0 },
+        );
+      }
+    }
+  }
+  prevPositionsRef.current = newPositions;
+
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;
   }
 
   return (
-    <ReactFlowProvider>
-      <ReactFlow
-        key={currentTreeId}
-        nodes={flowNodes}
-        edges={flowEdges}
-        nodeTypes={nodeTypes}
-        onNodesChange={onNodesChange}
-        fitView
-        minZoom={0.3}
-        maxZoom={2}
-        zoomOnScroll={false}
-        panOnScroll={true}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
-        <ZoomControls />
-      </ReactFlow>
-    </ReactFlowProvider>
+    <ReactFlow
+      nodes={flowNodes}
+      edges={flowEdges}
+      nodeTypes={nodeTypes}
+      onNodesChange={onNodesChange}
+      onPaneClick={() => actions.selectNode(null)}
+      fitView
+      minZoom={0.3}
+      maxZoom={2}
+      zoomOnScroll={false}
+      panOnScroll={true}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
+      <ZoomControls />
+    </ReactFlow>
   );
 }
 

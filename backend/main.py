@@ -67,6 +67,8 @@ async def startup():
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     tasks: dict[str, asyncio.Task] = {}
+    stream_tasks: dict[str, asyncio.Task] = {}
+    cancelled: set[str] = set()  # node ids that were cancelled
 
     # ── Helper to send typed JSON ────────────────────────────────────
     async def send(msg_type: str, **payload):
@@ -142,8 +144,9 @@ async def websocket_endpoint(ws: WebSocket):
     async def handle_chat(data: dict):
         node_id = data["node_id"]
         content = data["content"]
+        after_id = data.get("after_id")  # optional: insert new child after this sibling
 
-        async def _run_chat(nid: str, msg: str):
+        async def _run_chat(nid: str, msg: str, after_id: str | None = None):
             try:
                 node = await get_node(nid)
                 if not node:
@@ -155,8 +158,13 @@ async def websocket_endpoint(ws: WebSocket):
 
                 # Always create a child node (root stays as a clean hub)
                 child = await create_child_node(nid, label=msg[:40])
-                await send(WS.NODE_CREATED, node=child.model_dump())
+                created_payload = {"node": child.model_dump()}
+                if after_id:
+                    created_payload["after_id"] = after_id
+                await send(WS.NODE_CREATED, **created_payload)
                 nid = child.id
+                # Re-key task under child id so cancel can find it
+                tasks[nid] = tasks.pop(node_id, asyncio.current_task())
 
                 # Save user message and set label
                 current = await get_node(nid)
@@ -177,6 +185,7 @@ async def websocket_endpoint(ws: WebSocket):
                 # Resolve parent's session_id for forking
                 current = await get_node(nid)
                 parent_session_id = None
+                sdk_msg = msg
                 if current and current.parent_id:
                     parent_node = await get_node(current.parent_id)
                     if parent_node and parent_node.session_id:
@@ -185,6 +194,18 @@ async def websocket_endpoint(ws: WebSocket):
                         # can find it (sessions are stored per-cwd)
                         parent_ws = resolve_workspace(tree.id, tree.root_node_id, parent_node.id)
                         copy_session(parent_ws, workspace, parent_session_id)
+                    # If parent was cancelled, include full context so the model
+                    # knows what happened (SDK session file may be incomplete)
+                    if parent_node and parent_node.status == "error" and "[Cancelled by user" in (parent_node.assistant_response or ""):
+                        partial = parent_node.assistant_response or ""
+                        sdk_msg = (
+                            "[System: Your previous response was cancelled by the user. "
+                            "The session was interrupted mid-execution. Here is your "
+                            "partial response up to the point of cancellation:\n\n"
+                            f"{partial}\n\n"
+                            "Resume from this context. The user's new message follows.]\n\n"
+                            + msg
+                        )
 
                 # Init streaming state
                 _streams[nid] = StreamState(node_id=nid)
@@ -200,17 +221,28 @@ async def websocket_endpoint(ws: WebSocket):
                 # the SDK generator is GC'd, it cancels the stream task
                 # (already done) instead of our finalization task.
                 event_queue: asyncio.Queue = asyncio.Queue()
+                gen = stream_chat(nid, sdk_msg, workspace, parent_session_id)
 
                 async def _pump_stream():
                     try:
-                        async for event in stream_chat(nid, msg, workspace, parent_session_id):
+                        async for event in gen:
                             await event_queue.put(event)
+                    except asyncio.CancelledError:
+                        pass  # graceful cancel — sentinel in finally
                     except Exception as exc:
                         await event_queue.put(exc)
                     finally:
+                        # Explicitly close the generator so the SDK's
+                        # finally blocks run and terminate the subprocess.
+                        try:
+                            await gen.aclose()
+                        except Exception:
+                            pass
                         await event_queue.put(None)  # sentinel
+                        stream_tasks.pop(nid, None)
 
                 stream_task = asyncio.create_task(_pump_stream())
+                stream_tasks[nid] = stream_task
 
                 # Consume events from the queue
                 while True:
@@ -255,26 +287,46 @@ async def websocket_endpoint(ws: WebSocket):
                 except BaseException:
                     pass
 
-                # Finalise
-                full_response = _streams[nid].text
-                _streams[nid].status = "done"
-                await update_node(nid, assistant_response=full_response, status="done")
+                # Check if this node was cancelled
+                was_cancelled = nid in cancelled
+                cancelled.discard(nid)
 
-                # Auto-commit
-                git_commit = None
-                try:
-                    commit_sha, files_changed = await auto_commit(workspace, msg)
-                    await update_node(nid, git_commit=commit_sha)
-                    git_commit = commit_sha
-                except Exception as e:
-                    import logging
-                    logging.getLogger(__name__).warning("Auto-commit failed: %s", e)
+                if was_cancelled:
+                    if nid in _streams:
+                        _streams[nid].status = "error"
+                    partial = _streams.get(nid, StreamState(nid)).text
+                    active_tools = [name for name in tool_names.values()]
+                    cancel_note = "\n\n---\n*[Cancelled by user]*"
+                    if active_tools:
+                        cancel_note = (
+                            "\n\n---\n*[Cancelled by user while running: "
+                            + ", ".join(active_tools) + "]*"
+                        )
+                    full = partial + cancel_note
+                    await update_node(nid, status="error", assistant_response=full)
+                    await send(WS.CHUNK, node_id=nid, text=cancel_note)
+                    await send(WS.ERROR, node_id=nid, error="Cancelled")
+                else:
+                    # Normal finish
+                    full_response = _streams[nid].text
+                    _streams[nid].status = "done"
+                    await update_node(nid, assistant_response=full_response, status="done")
 
-                await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
-                done_payload = {"node_id": nid, "full_response": full_response}
-                if git_commit:
-                    done_payload["git_commit"] = git_commit
-                await send(WS.DONE, **done_payload)
+                    # Auto-commit
+                    git_commit = None
+                    try:
+                        commit_sha, files_changed = await auto_commit(workspace, msg)
+                        await update_node(nid, git_commit=commit_sha)
+                        git_commit = commit_sha
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).warning("Auto-commit failed: %s", e)
+
+                    await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
+                    done_payload = {"node_id": nid, "full_response": full_response}
+                    if git_commit:
+                        done_payload["git_commit"] = git_commit
+                    await send(WS.DONE, **done_payload)
 
             except Exception as e:
                 import traceback
@@ -287,9 +339,33 @@ async def websocket_endpoint(ws: WebSocket):
 
             finally:
                 _streams.pop(nid, None)
+                tasks.pop(nid, None)
 
-        task = asyncio.create_task(_run_chat(node_id, content))
+        task = asyncio.create_task(_run_chat(node_id, content, after_id))
         tasks[node_id] = task
+
+    async def handle_cancel(data: dict):
+        node_id = data["node_id"]
+        cancelled.add(node_id)
+        # Cancel the stream task (not the main task) so the SDK generator
+        # can close gracefully and flush the session file
+        st = stream_tasks.get(node_id)
+        if st and not st.done():
+            st.cancel()
+
+    async def handle_duplicate(data: dict):
+        """Re-run the same user message from the same parent, creating a sibling."""
+        node_id = data["node_id"]
+        node = await get_node(node_id)
+        if not node or not node.user_message or not node.parent_id:
+            await send(WS.ERROR, error="Cannot duplicate this node")
+            return
+        # Send a chat to the parent with the same message, inserting after the original
+        await handle_chat({
+            "node_id": node.parent_id,
+            "content": node.user_message,
+            "after_id": node_id,
+        })
 
     async def handle_set_repo(data: dict):
         tree_id = data["tree_id"]
@@ -384,6 +460,8 @@ async def websocket_endpoint(ws: WebSocket):
         WS.DELETE_TREE: handle_delete_tree,
         WS.BRANCH: handle_branch,
         WS.CHAT: handle_chat,
+        WS.CANCEL: handle_cancel,
+        WS.DUPLICATE: handle_duplicate,
         WS.GET_NODE: handle_get_node,
         WS.SET_REPO: handle_set_repo,
         WS.GET_NODE_FILES: handle_get_node_files,
@@ -400,6 +478,8 @@ async def websocket_endpoint(ws: WebSocket):
                 await handler(data)
 
     except WebSocketDisconnect:
+        for task in stream_tasks.values():
+            task.cancel()
         for task in tasks.values():
             task.cancel()
 

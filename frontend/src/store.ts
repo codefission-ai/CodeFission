@@ -104,13 +104,20 @@ export const actions = {
     for (const n of list) nodes[n.id] = n;
     useStore.setState({ nodes });
   },
-  upsertNode: (node: CNode) =>
+  upsertNode: (node: CNode, afterId?: string) =>
     useStore.setState((s) => {
       const nodes = { ...s.nodes, [node.id]: node };
       if (node.parent_id && nodes[node.parent_id]) {
         const p = nodes[node.parent_id];
         if (!p.children_ids.includes(node.id)) {
-          nodes[node.parent_id] = { ...p, children_ids: [...p.children_ids, node.id] };
+          const ids = [...p.children_ids];
+          const insertIdx = afterId ? ids.indexOf(afterId) : -1;
+          if (insertIdx >= 0) {
+            ids.splice(insertIdx + 1, 0, node.id);
+          } else {
+            ids.push(node.id);
+          }
+          nodes[node.parent_id] = { ...p, children_ids: ids };
         }
       }
       return { nodes };

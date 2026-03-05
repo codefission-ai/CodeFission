@@ -270,6 +270,8 @@ async def stream_chat(
                     yield SessionInit(msg.session_id)
                 return
 
+    except GeneratorExit:
+        return
     except BaseException as exc:
         log.exception("Chat error for node %s", node_id)
         raise

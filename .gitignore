@@ -9,6 +9,7 @@ data/workspaces/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+backend/data/
 test_repo/
 ref_repos/
 .claude/

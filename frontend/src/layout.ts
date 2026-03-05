@@ -49,8 +49,9 @@ export function layoutTree(
 
   const children: Record<string, string[]> = {};
   for (const n of list) {
-    if (n.parent_id) {
-      (children[n.parent_id] ??= []).push(n.id);
+    // Use the node's children_ids to preserve insertion order (e.g. duplicate after sibling)
+    if (n.children_ids.length > 0) {
+      children[n.id] = n.children_ids.filter((cid) => nodes[cid]);
     }
   }
 

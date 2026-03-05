@@ -61,6 +61,8 @@ class WS:
     DELETE_TREE = "delete_tree"
     BRANCH = "branch"
     CHAT = "chat"
+    CANCEL = "cancel"
+    DUPLICATE = "duplicate"
     GET_NODE = "get_node"
     SET_REPO = "set_repo"
     GET_NODE_FILES = "get_node_files"

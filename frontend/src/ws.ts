@@ -10,6 +10,8 @@ export const WS = {
   DELETE_TREE: "delete_tree",
   BRANCH: "branch",
   CHAT: "chat",
+  CANCEL: "cancel",
+  DUPLICATE: "duplicate",
   GET_NODE: "get_node",
   SET_REPO: "set_repo",
   GET_NODE_FILES: "get_node_files",
@@ -81,7 +83,7 @@ function handle(data: any) {
       if (root) actions.selectNode(root.id);
       break;
     case WS.NODE_CREATED:
-      actions.upsertNode(data.node);
+      actions.upsertNode(data.node, data.after_id);
       break;
     case WS.NODE_DATA:
       actions.upsertNode(data.node);

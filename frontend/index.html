@@ -807,16 +807,25 @@
     .repo-badge-browsable { cursor: pointer; transition: color 0.15s; }
     .repo-badge-browsable:hover { color: var(--text-primary); text-decoration: underline; }
 
-    /* ── Files button on tree nodes ────────────────────────────── */
-    .tree-node-files-btn {
+    /* ── Action buttons on tree nodes ──────────────────────────── */
+    .tree-node-actions {
+      display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px;
+    }
+    .tree-node-action-btn {
       padding: 2px 8px; font-size: 10px; font-weight: 600;
       background: transparent; color: var(--text-muted);
       border: 1px solid var(--border-dim); border-radius: 4px;
-      cursor: pointer; align-self: flex-start; margin-top: 2px;
-      transition: all 0.15s;
+      cursor: pointer; transition: all 0.15s;
     }
-    .tree-node-files-btn:hover {
+    .tree-node-action-btn:hover {
       background: var(--accent-dim); border-color: var(--accent); color: var(--text-primary);
+    }
+    .tree-node-action-btn.cancel {
+      color: var(--red, #dc2626); border-color: rgba(220,38,38,0.3);
+      align-self: flex-start; margin-top: 2px;
+    }
+    .tree-node-action-btn.cancel:hover {
+      background: rgba(220,38,38,0.1); border-color: var(--red, #dc2626); color: var(--red, #dc2626);
     }
 
     /* ── Files panel ───────────────────────────────────────────── */
