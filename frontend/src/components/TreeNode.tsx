@@ -191,8 +191,8 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   });
 
   const assistantHtml = useMemo(
-    () => node.assistant_response ? renderMarkdown(node.assistant_response) : "",
-    [node.assistant_response]
+    () => node.assistant_response ? renderMarkdown(node.assistant_response, node.id) : "",
+    [node.assistant_response, node.id]
   );
 
   useLayoutEffect(() => {
@@ -400,6 +400,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       )}
       {showModal && (
         <NodeModal
+          nodeId={node.id}
           userMessage={node.user_message}
           assistantResponse={node.assistant_response}
           onClose={() => setShowModal(false)}

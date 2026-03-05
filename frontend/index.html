@@ -1102,14 +1102,16 @@
       color: var(--text-muted);
       font-family: var(--font-mono);
       user-select: none;
+      display: flex; align-items: center; gap: 4px;
     }
+    .filebrowser-dir-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filebrowser-file {
       padding: 4px 8px;
       font-size: 12px; cursor: pointer;
       font-family: var(--font-mono);
       color: var(--text-secondary);
       transition: background 0.1s;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      white-space: nowrap;
       display: flex; align-items: center; gap: 4px;
     }
     .filebrowser-file:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -1117,6 +1119,28 @@
       background: var(--accent-dim); color: var(--text-primary);
     }
     .filebrowser-file-icon { font-size: 11px; flex-shrink: 0; }
+    .filebrowser-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Download buttons */
+    .filebrowser-dl-btn {
+      display: none; flex-shrink: 0;
+      padding: 2px; border-radius: 3px;
+      color: var(--text-dim);
+      transition: color 0.1s, background 0.1s;
+      line-height: 0;
+    }
+    .filebrowser-dl-btn:hover { color: var(--accent); background: var(--accent-dim); }
+    .filebrowser-file:hover .filebrowser-dl-btn,
+    .filebrowser-dir:hover > .filebrowser-dl-btn { display: flex; }
+
+    .filebrowser-dl-all {
+      display: flex; align-items: center; gap: 4px;
+      padding: 4px 10px; font-size: 11px; font-weight: 500;
+      color: var(--text-secondary); text-decoration: none;
+      border: 1px solid var(--border-visible); border-radius: var(--radius-sm);
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .filebrowser-dl-all:hover { background: var(--bg-hover); color: var(--text-primary); }
 
     /* Content area */
     .filebrowser-content {
@@ -1129,8 +1153,17 @@
       color: var(--text-muted);
       border-bottom: 1px solid var(--border-subtle);
       flex-shrink: 0;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      display: flex; align-items: center; gap: 8px;
     }
+    .filebrowser-filepath > span {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .filebrowser-filepath-dl {
+      flex-shrink: 0; color: var(--text-dim); line-height: 0;
+      padding: 2px; border-radius: 3px;
+      transition: color 0.1s, background 0.1s;
+    }
+    .filebrowser-filepath-dl:hover { color: var(--accent); background: var(--accent-dim); }
     .filebrowser-placeholder {
       flex: 1; display: flex; align-items: center; justify-content: center;
       color: var(--text-muted); font-size: 13px;

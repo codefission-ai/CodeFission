@@ -1,19 +1,8 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { marked } from "marked";
 import { useStore } from "../store";
 import { send, WS } from "../ws";
+import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
-
-// Configure marked for chat
-marked.setOptions({ breaks: true, gfm: true });
-
-function renderMarkdown(text: string): string {
-  try {
-    return marked.parse(text) as string;
-  } catch {
-    return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
-}
 
 export default function ChatPanel() {
   const selectedId = useStore((s) => s.selectedNodeId);
@@ -82,7 +71,7 @@ export default function ChatPanel() {
             {m.role === "assistant" ? (
               <div
                 className="msg-text"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text) }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text, m.fromId) }}
               />
             ) : (
               <div className="msg-text">{m.text}</div>

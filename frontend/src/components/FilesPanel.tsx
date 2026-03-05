@@ -96,10 +96,27 @@ function buildFileTree(paths: string[]): TreeDir {
   return root;
 }
 
-function FileTreeNode({ dir, selectedFile, onSelect, depth }: {
+function DownloadBtn({ href, title, className }: { href: string; title: string; className?: string }) {
+  return (
+    <a
+      href={href}
+      title={title}
+      className={`filebrowser-dl-btn ${className || ""}`}
+      onClick={(e) => e.stopPropagation()}
+      download
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 2v9M4 8l4 4 4-4M2 14h12" />
+      </svg>
+    </a>
+  );
+}
+
+function FileTreeNode({ dir, selectedFile, onSelect, nodeId, depth }: {
   dir: TreeDir;
   selectedFile: string | null;
   onSelect: (path: string) => void;
+  nodeId: string;
   depth: number;
 }) {
   return (
@@ -107,9 +124,13 @@ function FileTreeNode({ dir, selectedFile, onSelect, depth }: {
       {dir.dirs.map((d) => (
         <div key={d.path}>
           <div className="filebrowser-dir" style={{ paddingLeft: depth * 12 + 8 }}>
-            {d.name}/
+            <span className="filebrowser-dir-name">{d.name}/</span>
+            <DownloadBtn
+              href={`/api/download-zip/${nodeId}?subpath=${encodeURIComponent(d.path)}`}
+              title={`Download ${d.name}/ as zip`}
+            />
           </div>
-          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} depth={depth + 1} />
+          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} depth={depth + 1} />
         </div>
       ))}
       {dir.files.map((f) => {
@@ -124,7 +145,11 @@ function FileTreeNode({ dir, selectedFile, onSelect, depth }: {
             onClick={() => onSelect(f)}
           >
             {icon && <span className="filebrowser-file-icon">{icon}</span>}
-            {name}
+            <span className="filebrowser-file-name">{name}</span>
+            <DownloadBtn
+              href={`/api/download/${nodeId}/${f}`}
+              title={`Download ${name}`}
+            />
           </div>
         );
       })}
@@ -497,6 +522,19 @@ export default function FilesPanel() {
             </button>
           </div>
           <span className="filebrowser-title">{node?.label || "Files"}</span>
+          {nodeId && (
+            <a
+              className="filebrowser-dl-all"
+              href={`/api/download-zip/${nodeId}`}
+              title="Download entire workspace as zip"
+              download
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 2v9M4 8l4 4 4-4M2 14h12" />
+              </svg>
+              <span>Download All</span>
+            </a>
+          )}
           <button className="filebrowser-close" onClick={handleClose}>&times;</button>
         </div>
 
@@ -509,14 +547,26 @@ export default function FilesPanel() {
                 {files.length === 0 ? (
                   <div className="filebrowser-placeholder">No files</div>
                 ) : (
-                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} depth={0} />
+                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} nodeId={nodeId!} depth={0} />
                 )}
               </div>
               {/* Content area */}
               <div className="filebrowser-content">
                 {selectedFile ? (
                   <>
-                    <div className="filebrowser-filepath">{selectedFile}</div>
+                    <div className="filebrowser-filepath">
+                      <span>{selectedFile}</span>
+                      <a
+                        className="filebrowser-filepath-dl"
+                        href={`/api/download/${nodeId}/${selectedFile}`}
+                        title="Download file"
+                        download
+                      >
+                        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 2v9M4 8l4 4 4-4M2 14h12" />
+                        </svg>
+                      </a>
+                    </div>
                     <ContentViewer nodeId={nodeId!} filePath={selectedFile} content={content} />
                   </>
                 ) : (

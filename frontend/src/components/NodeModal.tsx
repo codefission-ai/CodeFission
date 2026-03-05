@@ -3,13 +3,14 @@ import { createPortal } from "react-dom";
 import { renderMarkdown } from "../renderMarkdown";
 
 interface Props {
+  nodeId: string;
   userMessage: string;
   assistantResponse: string;
   onClose: () => void;
 }
 
-export default function NodeModal({ userMessage, assistantResponse, onClose }: Props) {
-  const html = useMemo(() => renderMarkdown(assistantResponse), [assistantResponse]);
+export default function NodeModal({ nodeId, userMessage, assistantResponse, onClose }: Props) {
+  const html = useMemo(() => renderMarkdown(assistantResponse, nodeId), [assistantResponse, nodeId]);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const handleKeyDown = useCallback(

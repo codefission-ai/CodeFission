@@ -122,6 +122,9 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
                 "\nYou are working on a branch node (git worktree). "
                 "This worktree was forked from the parent node's commit. "
                 "Your changes here are isolated and do not affect the parent or sibling branches."
+                "\n\nCRITICAL: Your working directory has changed from previous conversations in this session. "
+                "ALWAYS use the working directory path shown above. NEVER reuse file paths from earlier "
+                "messages — they reference a different worktree that is not your current workspace."
             )
         if node.git_branch:
             parts.append(f"\nGit branch: {node.git_branch}")
@@ -135,6 +138,21 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
             "and are completely independent. Do NOT use `git log --all`, `git branch`, "
             "`git show` on other branches, or reference any branch other than your own. "
             "Only interact with files in your working directory."
+        )
+
+        parts.append(
+            "\n\n## Response Format"
+            "\nYour response is displayed as rendered Markdown. Use this to surface the "
+            "artifacts the user cares about most — don't make them hunt through files:"
+            "\n- Experiments/data science: include result tables, metric summaries, and "
+            "embed plots as inline images (`![](path/to/plot.png)`)."
+            "\n- Web development: show the local URL/port so the user can open it immediately."
+            "\n- Media (images, audio, video): embed or link to the generated files inline."
+            "\n- Documents that Markdown can't render (PDF, DOCX, slides, spreadsheets): "
+            "list the file paths so the user can open or download them."
+            "\n- Code changes: show the key snippets or a summary — not the entire file."
+            "\nIn short: if you produced something the user will want to see, show it or "
+            "link to it directly in your response."
         )
 
     return "".join(parts)
