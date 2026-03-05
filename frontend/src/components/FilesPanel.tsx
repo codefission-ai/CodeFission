@@ -134,11 +134,19 @@ function FileTreeNode({ dir, selectedFile, onSelect, depth }: {
 
 // ── Diff parser ──────────────────────────────────────────────────────
 
+type DiffFileStatus = "modified" | "added" | "deleted" | "renamed" | "mode-change";
+
 interface DiffFile {
   path: string;
+  oldPath?: string;        // for renames
+  status: DiffFileStatus;
+  binary: boolean;
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
+  similarity?: number;     // rename similarity %
+  oldMode?: string;
+  newMode?: string;
 }
 
 interface DiffHunk {
@@ -155,15 +163,19 @@ interface DiffLine {
 
 function parseDiff(raw: string): DiffFile[] {
   const files: DiffFile[] = [];
-  // Split into file sections
   const fileSections = raw.split(/^diff --git /m).filter(Boolean);
 
   for (const section of fileSections) {
     const lines = section.split("\n");
-    // Extract filename from "a/path b/path" header
     const headerMatch = lines[0]?.match(/a\/(.+?) b\/(.+)/);
     const path = headerMatch ? headerMatch[2] : "unknown";
 
+    let status: DiffFileStatus = "modified";
+    let oldPath: string | undefined;
+    let binary = false;
+    let similarity: number | undefined;
+    let oldMode: string | undefined;
+    let newMode: string | undefined;
     let additions = 0;
     let deletions = 0;
     const hunks: DiffHunk[] = [];
@@ -173,6 +185,30 @@ function parseDiff(raw: string): DiffFile[] {
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
+
+      // Detect file status from metadata
+      if (line.startsWith("new file mode")) {
+        status = "added";
+        newMode = line.slice("new file mode ".length);
+        continue;
+      }
+      if (line.startsWith("deleted file mode")) {
+        status = "deleted";
+        oldMode = line.slice("deleted file mode ".length);
+        continue;
+      }
+      if (line.startsWith("old mode ")) { oldMode = line.slice("old mode ".length); continue; }
+      if (line.startsWith("new mode ")) {
+        newMode = line.slice("new mode ".length);
+        if (!oldPath && status === "modified") status = "mode-change";
+        continue;
+      }
+      const simMatch = line.match(/^similarity index (\d+)%/);
+      if (simMatch) { similarity = parseInt(simMatch[1], 10); continue; }
+      if (line.startsWith("rename from ")) { oldPath = line.slice("rename from ".length); status = "renamed"; continue; }
+      if (line.startsWith("rename to ")) continue;
+      if (line.startsWith("Binary files")) { binary = true; continue; }
+      if (line.startsWith("---") || line.startsWith("+++") || line.startsWith("index ")) continue;
 
       // Hunk header
       const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/);
@@ -185,13 +221,6 @@ function parseDiff(raw: string): DiffFile[] {
       }
 
       if (!currentHunk) continue;
-
-      // Skip file metadata lines
-      if (line.startsWith("---") || line.startsWith("+++") ||
-          line.startsWith("index ") || line.startsWith("old mode") ||
-          line.startsWith("new mode") || line.startsWith("new file") ||
-          line.startsWith("deleted file") || line.startsWith("similarity") ||
-          line.startsWith("rename") || line.startsWith("Binary")) continue;
 
       if (line.startsWith("+")) {
         additions++;
@@ -208,45 +237,98 @@ function parseDiff(raw: string): DiffFile[] {
       }
     }
 
-    if (hunks.length > 0) {
-      files.push({ path, additions, deletions, hunks });
-    }
+    // If mode changed but there are also code changes, it's a modify
+    if (status === "mode-change" && hunks.length > 0) status = "modified";
+
+    files.push({ path, oldPath, status, binary, additions, deletions, hunks, similarity, oldMode, newMode });
   }
   return files;
 }
 
 // ── Diff viewer ──────────────────────────────────────────────────────
 
-function DiffFileSection({ file }: { file: DiffFile }) {
+const STATUS_LABELS: Record<DiffFileStatus, string> = {
+  added: "NEW", deleted: "DELETED", renamed: "RENAMED", modified: "MODIFIED", "mode-change": "MODE",
+};
+const STATUS_ICONS: Record<string, string> = {
+  image: "\u{1F5BC}", video: "\u{1F3AC}", audio: "\u{1F3B5}", pdf: "\u{1F4C4}",
+};
+
+function DiffFileSection({ file, nodeId }: { file: DiffFile; nodeId: string | undefined }) {
+  const kind = fileKind(file.path);
+  const isBinaryKind = kind !== "text";
+  const statusLabel = STATUS_LABELS[file.status];
+
   return (
-    <div className="diff-file">
+    <div className={`diff-file diff-file-${file.status}`}>
       <div className="diff-file-header">
-        <span className="diff-file-name">{file.path}</span>
+        <span className={`diff-file-badge diff-badge-${file.status}`}>{statusLabel}</span>
+        {isBinaryKind && <span className="diff-file-type-icon">{STATUS_ICONS[kind] || ""}</span>}
+        <span className="diff-file-name">
+          {file.oldPath && file.status === "renamed" ? (
+            <>{file.oldPath} <span className="diff-rename-arrow">&rarr;</span> {file.path}</>
+          ) : file.path}
+        </span>
         <span className="diff-file-stats">
+          {file.similarity != null && <span className="diff-stat-sim">{file.similarity}%</span>}
           {file.additions > 0 && <span className="diff-stat-add">+{file.additions}</span>}
           {file.deletions > 0 && <span className="diff-stat-del">-{file.deletions}</span>}
+          {file.binary && <span className="diff-stat-bin">BIN</span>}
         </span>
       </div>
-      <div className="diff-file-body">
-        {file.hunks.map((hunk, hi) => (
-          <div key={hi} className="diff-hunk-block">
-            <div className="diff-hunk-header">{hunk.header}</div>
-            {hunk.lines.map((line, li) => (
-              <div key={li} className={`diff-line diff-line-${line.type}`}>
-                <span className="diff-ln diff-ln-old">{line.oldNum ?? ""}</span>
-                <span className="diff-ln diff-ln-new">{line.newNum ?? ""}</span>
-                <span className="diff-indicator">{line.type === "add" ? "+" : line.type === "del" ? "-" : " "}</span>
-                <span className="diff-text">{line.text}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
+
+      {/* Mode change note */}
+      {file.oldMode && file.newMode && file.oldMode !== file.newMode && (
+        <div className="diff-mode-change">{file.oldMode} &rarr; {file.newMode}</div>
+      )}
+
+      {/* Binary file body */}
+      {file.binary && (
+        <div className="diff-binary-body">
+          {kind === "image" && nodeId && file.status !== "deleted" ? (
+            <div className="diff-binary-preview">
+              <img src={`/api/files/${nodeId}/${file.path}`} alt={file.path} />
+            </div>
+          ) : kind === "video" && nodeId && file.status !== "deleted" ? (
+            <div className="diff-binary-preview">
+              <video controls src={`/api/files/${nodeId}/${file.path}`} />
+            </div>
+          ) : kind === "audio" && nodeId && file.status !== "deleted" ? (
+            <div className="diff-binary-preview diff-binary-audio">
+              <audio controls src={`/api/files/${nodeId}/${file.path}`} />
+            </div>
+          ) : (
+            <div className="diff-binary-notice">
+              Binary file {file.status === "added" ? "added" : file.status === "deleted" ? "deleted" : "changed"}
+              {isBinaryKind && ` (${kind})`}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Code hunks */}
+      {file.hunks.length > 0 && (
+        <div className="diff-file-body">
+          {file.hunks.map((hunk, hi) => (
+            <div key={hi} className="diff-hunk-block">
+              <div className="diff-hunk-header">{hunk.header}</div>
+              {hunk.lines.map((line, li) => (
+                <div key={li} className={`diff-line diff-line-${line.type}`}>
+                  <span className="diff-ln diff-ln-old">{line.oldNum ?? ""}</span>
+                  <span className="diff-ln diff-ln-new">{line.newNum ?? ""}</span>
+                  <span className="diff-indicator">{line.type === "add" ? "+" : line.type === "del" ? "-" : " "}</span>
+                  <span className="diff-text">{line.text}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function DiffViewer({ diff }: { diff: string | undefined }) {
+function DiffViewer({ diff, nodeId }: { diff: string | undefined; nodeId: string | undefined }) {
   const files = useMemo(() => diff ? parseDiff(diff) : [], [diff]);
 
   if (diff === undefined) return <div className="filebrowser-placeholder">Loading diff...</div>;
@@ -254,15 +336,23 @@ function DiffViewer({ diff }: { diff: string | undefined }) {
 
   const totalAdd = files.reduce((s, f) => s + f.additions, 0);
   const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+  const binCount = files.filter(f => f.binary).length;
+  const newCount = files.filter(f => f.status === "added").length;
+  const delCount = files.filter(f => f.status === "deleted").length;
+  const renCount = files.filter(f => f.status === "renamed").length;
 
   return (
     <div className="diff-viewer">
       <div className="diff-summary">
-        {files.length} file{files.length !== 1 ? "s" : ""} changed
+        <span>{files.length} file{files.length !== 1 ? "s" : ""} changed</span>
         {totalAdd > 0 && <span className="diff-stat-add"> +{totalAdd}</span>}
         {totalDel > 0 && <span className="diff-stat-del"> -{totalDel}</span>}
+        {newCount > 0 && <span className="diff-summary-detail"> ({newCount} new)</span>}
+        {delCount > 0 && <span className="diff-summary-detail"> ({delCount} deleted)</span>}
+        {renCount > 0 && <span className="diff-summary-detail"> ({renCount} renamed)</span>}
+        {binCount > 0 && <span className="diff-summary-detail"> ({binCount} binary)</span>}
       </div>
-      {files.map((f, i) => <DiffFileSection key={i} file={f} />)}
+      {files.map((f, i) => <DiffFileSection key={i} file={f} nodeId={nodeId} />)}
     </div>
   );
 }
@@ -439,7 +529,7 @@ export default function FilesPanel() {
           )}
           {tab === "diff" && (
             <div className="filebrowser-content">
-              <DiffViewer diff={diff} />
+              <DiffViewer diff={diff} nodeId={nodeId} />
             </div>
           )}
         </div>
