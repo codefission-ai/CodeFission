@@ -132,22 +132,138 @@ function FileTreeNode({ dir, selectedFile, onSelect, depth }: {
   );
 }
 
+// ── Diff parser ──────────────────────────────────────────────────────
+
+interface DiffFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  hunks: DiffHunk[];
+}
+
+interface DiffHunk {
+  header: string;
+  lines: DiffLine[];
+}
+
+interface DiffLine {
+  type: "add" | "del" | "ctx";
+  oldNum: number | null;
+  newNum: number | null;
+  text: string;
+}
+
+function parseDiff(raw: string): DiffFile[] {
+  const files: DiffFile[] = [];
+  // Split into file sections
+  const fileSections = raw.split(/^diff --git /m).filter(Boolean);
+
+  for (const section of fileSections) {
+    const lines = section.split("\n");
+    // Extract filename from "a/path b/path" header
+    const headerMatch = lines[0]?.match(/a\/(.+?) b\/(.+)/);
+    const path = headerMatch ? headerMatch[2] : "unknown";
+
+    let additions = 0;
+    let deletions = 0;
+    const hunks: DiffHunk[] = [];
+    let currentHunk: DiffHunk | null = null;
+    let oldLine = 0;
+    let newLine = 0;
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Hunk header
+      const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)/);
+      if (hunkMatch) {
+        oldLine = parseInt(hunkMatch[1], 10);
+        newLine = parseInt(hunkMatch[2], 10);
+        currentHunk = { header: line, lines: [] };
+        hunks.push(currentHunk);
+        continue;
+      }
+
+      if (!currentHunk) continue;
+
+      // Skip file metadata lines
+      if (line.startsWith("---") || line.startsWith("+++") ||
+          line.startsWith("index ") || line.startsWith("old mode") ||
+          line.startsWith("new mode") || line.startsWith("new file") ||
+          line.startsWith("deleted file") || line.startsWith("similarity") ||
+          line.startsWith("rename") || line.startsWith("Binary")) continue;
+
+      if (line.startsWith("+")) {
+        additions++;
+        currentHunk.lines.push({ type: "add", oldNum: null, newNum: newLine, text: line.slice(1) });
+        newLine++;
+      } else if (line.startsWith("-")) {
+        deletions++;
+        currentHunk.lines.push({ type: "del", oldNum: oldLine, newNum: null, text: line.slice(1) });
+        oldLine++;
+      } else if (line.startsWith(" ") || line === "") {
+        currentHunk.lines.push({ type: "ctx", oldNum: oldLine, newNum: newLine, text: line.slice(1) });
+        oldLine++;
+        newLine++;
+      }
+    }
+
+    if (hunks.length > 0) {
+      files.push({ path, additions, deletions, hunks });
+    }
+  }
+  return files;
+}
+
 // ── Diff viewer ──────────────────────────────────────────────────────
 
+function DiffFileSection({ file }: { file: DiffFile }) {
+  return (
+    <div className="diff-file">
+      <div className="diff-file-header">
+        <span className="diff-file-name">{file.path}</span>
+        <span className="diff-file-stats">
+          {file.additions > 0 && <span className="diff-stat-add">+{file.additions}</span>}
+          {file.deletions > 0 && <span className="diff-stat-del">-{file.deletions}</span>}
+        </span>
+      </div>
+      <div className="diff-file-body">
+        {file.hunks.map((hunk, hi) => (
+          <div key={hi} className="diff-hunk-block">
+            <div className="diff-hunk-header">{hunk.header}</div>
+            {hunk.lines.map((line, li) => (
+              <div key={li} className={`diff-line diff-line-${line.type}`}>
+                <span className="diff-ln diff-ln-old">{line.oldNum ?? ""}</span>
+                <span className="diff-ln diff-ln-new">{line.newNum ?? ""}</span>
+                <span className="diff-indicator">{line.type === "add" ? "+" : line.type === "del" ? "-" : " "}</span>
+                <span className="diff-text">{line.text}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DiffViewer({ diff }: { diff: string | undefined }) {
+  const files = useMemo(() => diff ? parseDiff(diff) : [], [diff]);
+
   if (diff === undefined) return <div className="filebrowser-placeholder">Loading diff...</div>;
   if (diff === "") return <div className="filebrowser-placeholder">No changes</div>;
+
+  const totalAdd = files.reduce((s, f) => s + f.additions, 0);
+  const totalDel = files.reduce((s, f) => s + f.deletions, 0);
+
   return (
-    <pre className="filebrowser-diff">
-      {diff.split("\n").map((line, i) => {
-        let cls = "";
-        if (line.startsWith("+") && !line.startsWith("+++")) cls = "diff-add";
-        else if (line.startsWith("-") && !line.startsWith("---")) cls = "diff-del";
-        else if (line.startsWith("@@")) cls = "diff-hunk";
-        else if (line.startsWith("diff ") || line.startsWith("index ")) cls = "diff-meta";
-        return <span key={i} className={cls}>{line}{"\n"}</span>;
-      })}
-    </pre>
+    <div className="diff-viewer">
+      <div className="diff-summary">
+        {files.length} file{files.length !== 1 ? "s" : ""} changed
+        {totalAdd > 0 && <span className="diff-stat-add"> +{totalAdd}</span>}
+        {totalDel > 0 && <span className="diff-stat-del"> -{totalDel}</span>}
+      </div>
+      {files.map((f, i) => <DiffFileSection key={i} file={f} />)}
+    </div>
   );
 }
 

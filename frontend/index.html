@@ -1182,17 +1182,75 @@
       flex: 1; border: none; background: white;
     }
 
-    /* Diff in file browser */
-    .filebrowser-diff {
-      padding: 8px 0; margin: 0;
-      font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
-      color: var(--text-secondary); white-space: pre;
-      background: var(--bg-deep);
+    /* Diff viewer */
+    .diff-viewer {
+      flex: 1; overflow-y: auto;
+      font-family: var(--font-mono); font-size: 12px;
     }
-    .diff-add { color: var(--green); background: var(--green-dim); display: inline-block; width: 100%; padding: 0 16px; }
-    .diff-del { color: var(--red); background: var(--red-dim); display: inline-block; width: 100%; padding: 0 16px; }
-    .diff-hunk { color: var(--accent); padding: 0 16px; }
-    .diff-meta { color: var(--text-muted); padding: 0 16px; }
+    .diff-summary {
+      padding: 8px 16px;
+      font-size: 12px; font-weight: 600;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-dim);
+      background: var(--bg-surface);
+      position: sticky; top: 0; z-index: 1;
+    }
+    .diff-stat-add { color: var(--green); font-weight: 700; }
+    .diff-stat-del { color: var(--red); font-weight: 700; margin-left: 4px; }
+    .diff-file { border-bottom: 1px solid var(--border-dim); }
+    .diff-file-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 16px;
+      background: var(--bg-raised);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky; top: 33px; z-index: 1;
+    }
+    .diff-file-name {
+      font-size: 12px; font-weight: 600; color: var(--text-primary);
+    }
+    .diff-file-stats {
+      font-size: 11px; display: flex; gap: 6px;
+    }
+    .diff-file-body { background: var(--bg-deep); }
+    .diff-hunk-block { border-top: 1px solid var(--border-subtle); }
+    .diff-hunk-header {
+      padding: 4px 16px;
+      color: var(--text-muted); font-size: 11px;
+      background: rgba(0,0,0,0.02);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .diff-line {
+      display: flex; line-height: 1.6;
+      border-bottom: 1px solid transparent;
+    }
+    .diff-line:hover { filter: brightness(0.97); }
+    .diff-ln {
+      display: inline-block; width: 40px; min-width: 40px;
+      text-align: right; padding-right: 8px;
+      color: var(--text-dim); user-select: none;
+      font-size: 11px;
+    }
+    .diff-indicator {
+      display: inline-block; width: 16px; min-width: 16px;
+      text-align: center; user-select: none;
+      font-weight: 700;
+    }
+    .diff-text {
+      flex: 1; white-space: pre-wrap; word-break: break-all;
+      padding-right: 16px;
+    }
+    .diff-line-add {
+      background: rgba(22,163,74,0.07);
+    }
+    .diff-line-add .diff-indicator { color: var(--green); }
+    .diff-line-add .diff-text { color: var(--text-primary); }
+    .diff-line-del {
+      background: rgba(220,38,38,0.07);
+    }
+    .diff-line-del .diff-indicator { color: var(--red); }
+    .diff-line-del .diff-text { color: var(--text-primary); }
+    .diff-line-ctx .diff-text { color: var(--text-secondary); }
+    .diff-line-ctx .diff-indicator { color: transparent; }
 
     /* ── Highlight.js theme (light, minimal) ──────────────────────── */
     .hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #7c3aed; }
