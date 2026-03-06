@@ -31,6 +31,7 @@ class StreamState:
     node_id: str
     text: str = ""
     status: str = "active"   # active | done | error
+    session_id: str | None = None
 
 
 class ConnectionHandler:
@@ -143,6 +144,13 @@ class ConnectionHandler:
         task = asyncio.create_task(self._run_chat(node_id, content, after_id))
         self.tasks[node_id] = task
 
+    async def handle_continue_chat(self, data: dict):
+        node_id = data["node_id"]
+        content = data["content"]
+
+        task = asyncio.create_task(self._run_continue_chat(node_id, content))
+        self.tasks[node_id] = task
+
     async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None):
         nid = node_id
         try:
@@ -224,6 +232,7 @@ class ConnectionHandler:
                 if isinstance(event, SessionInit):
                     from services.tree_service import update_node
                     await update_node(nid, session_id=event.session_id)
+                    self.streams[nid].session_id = event.session_id
 
                 elif isinstance(event, TextDelta):
                     self.streams[nid].text += event.text
@@ -274,6 +283,8 @@ class ConnectionHandler:
                 result = await self.orch.complete_chat(nid, full_response, msg, ctx.workspace)
                 await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
                 done_payload = {"node_id": nid, "full_response": full_response}
+                if self.streams[nid].session_id:
+                    done_payload["session_id"] = self.streams[nid].session_id
                 if result.git_commit:
                     done_payload["git_commit"] = result.git_commit
                 # Brief delay to let SDK/tool subprocesses fully exit
@@ -301,6 +312,146 @@ class ConnectionHandler:
             self.streams.pop(nid, None)
             self.tasks.pop(nid, None)
             self.sdk_pids.pop(nid, None)
+
+    async def _run_continue_chat(self, node_id: str, msg: str):
+        """Continue an existing conversation on the same node."""
+        try:
+            ctx = await self.orch.prepare_continue_chat(node_id, msg)
+
+            if ctx.sandbox:
+                set_sandbox(default_writable_paths(str(ctx.workspace.parent)))
+
+            # Send updated node data (status=active)
+            await self.send(WS.NODE_DATA, node=ctx.node.model_dump())
+
+            # Init streaming state — start fresh for this continuation
+            self.streams[node_id] = StreamState(node_id=node_id)
+            await self.send(WS.STATUS, node_id=node_id, status="active")
+
+            # Append follow-up separator so the streaming display looks right
+            separator = f"\n\n---\n\n**You:** {msg}\n\n"
+            await self.send(WS.CHUNK, node_id=node_id, text=separator)
+
+            tool_names: dict[str, str] = {}
+            event_queue: asyncio.Queue = asyncio.Queue()
+            gen = stream_chat(
+                node_id, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
+                model=ctx.model,
+                max_turns=ctx.max_turns,
+                auth_mode=ctx.auth_mode,
+                api_key=ctx.api_key,
+                continue_conversation=True,
+            )
+
+            async def _pump_stream():
+                try:
+                    async for event in gen:
+                        await event_queue.put(event)
+                except asyncio.CancelledError:
+                    pass
+                except Exception as exc:
+                    await event_queue.put(exc)
+                finally:
+                    try:
+                        await gen.aclose()
+                    except Exception:
+                        pass
+                    await event_queue.put(None)
+                    self.stream_tasks.pop(node_id, None)
+
+            stream_task = asyncio.create_task(_pump_stream())
+            self.stream_tasks[node_id] = stream_task
+
+            await asyncio.sleep(0.3)
+            self._track_sdk_pid(node_id, ctx.workspace)
+
+            while True:
+                try:
+                    event = await asyncio.wait_for(event_queue.get(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    if node_id in self.cancelled:
+                        break
+                    continue
+                if event is None:
+                    break
+                if isinstance(event, Exception):
+                    raise event
+
+                if isinstance(event, SessionInit):
+                    from services.tree_service import update_node
+                    await update_node(node_id, session_id=event.session_id)
+
+                elif isinstance(event, TextDelta):
+                    self.streams[node_id].text += event.text
+                    await self.send(WS.CHUNK, node_id=node_id, text=event.text)
+
+                elif isinstance(event, ToolStart):
+                    if event.name:
+                        tool_names[event.tool_call_id] = event.name
+                    await self.send(WS.TOOL_START,
+                        node_id=node_id,
+                        tool_call_id=event.tool_call_id,
+                        name=event.name,
+                        arguments=event.arguments,
+                    )
+
+                elif isinstance(event, ToolEnd):
+                    name = event.name or tool_names.get(event.tool_call_id, "")
+                    await self.send(WS.TOOL_END,
+                        node_id=node_id,
+                        tool_call_id=event.tool_call_id,
+                        name=name,
+                        result=event.result,
+                        is_error=event.is_error,
+                    )
+
+            try:
+                await stream_task
+            except BaseException:
+                pass
+
+            was_cancelled = node_id in self.cancelled
+            self.cancelled.discard(node_id)
+
+            if was_cancelled:
+                if node_id in self.streams:
+                    self.streams[node_id].status = "error"
+                partial = self.streams.get(node_id, StreamState(node_id)).text
+                active_tools = list(tool_names.values())
+                result = await self.orch.cancel_chat(node_id, partial, active_tools)
+                await self.send(WS.CHUNK, node_id=node_id, text=result.saved_text)
+                await self.send(WS.ERROR, node_id=node_id, error="Cancelled")
+            else:
+                new_response = self.streams[node_id].text
+                self.streams[node_id].status = "done"
+                result = await self.orch.complete_continue_chat(
+                    node_id, new_response, msg, ctx.workspace)
+                done_payload = {"node_id": node_id, "full_response": result.full_response}
+                if result.git_commit:
+                    done_payload["git_commit"] = result.git_commit
+                await asyncio.sleep(0.15)
+                from services.process_service import list_processes
+                procs = list_processes(ctx.workspace)
+                if procs:
+                    done_payload["processes"] = [
+                        {"pid": p.pid, "command": p.command, "ports": p.ports}
+                        for p in procs
+                    ]
+                await self.send(WS.DONE, **done_payload)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            if node_id in self.streams:
+                self.streams[node_id].status = "error"
+            await self.orch.fail_chat(node_id)
+            await self.send(WS.ERROR, node_id=node_id, error=str(e))
+
+        finally:
+            clear_sandbox()
+            self.streams.pop(node_id, None)
+            self.tasks.pop(node_id, None)
+            self.sdk_pids.pop(node_id, None)
 
     def _track_sdk_pid(self, node_id: str, workspace):
         """Find the SDK subprocess PID by scanning /proc for direct children with matching cwd."""
@@ -542,6 +693,7 @@ class ConnectionHandler:
         WS.DELETE_TREE: handle_delete_tree,
         WS.BRANCH: handle_branch,
         WS.CHAT: handle_chat,
+        WS.CONTINUE_CHAT: handle_continue_chat,
         WS.CANCEL: handle_cancel,
         WS.DUPLICATE: handle_duplicate,
         WS.SELECT_TREE: handle_select_tree,

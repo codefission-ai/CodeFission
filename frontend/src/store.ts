@@ -11,6 +11,7 @@ export interface CNode {
   children_ids: string[];
   git_branch: string | null;
   git_commit: string | null;
+  session_id: string | null;
   created_by: string;
 }
 
@@ -179,6 +180,18 @@ export const actions = {
           [nodeId]: { ...node, assistant_response: node.assistant_response + text },
         },
       };
+    }),
+  setNodeResponse: (nodeId: string, response: string) =>
+    useStore.setState((s) => {
+      const node = s.nodes[nodeId];
+      if (!node) return s;
+      return { nodes: { ...s.nodes, [nodeId]: { ...node, assistant_response: response } } };
+    }),
+  setNodeSessionId: (nodeId: string, sessionId: string) =>
+    useStore.setState((s) => {
+      const node = s.nodes[nodeId];
+      if (!node) return s;
+      return { nodes: { ...s.nodes, [nodeId]: { ...node, session_id: sessionId } } };
     }),
   setNodeStatus: (nodeId: string, status: string) =>
     useStore.setState((s) => {

@@ -34,6 +34,7 @@ export const WS = {
   GET_NODE_PROCESSES: "get_node_processes",
   KILL_PROCESS: "kill_process",
   KILL_ALL_PROCESSES: "kill_all_processes",
+  CONTINUE_CHAT: "continue_chat",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -135,6 +136,7 @@ function handle(data: any) {
       actions.setNodeStatus(data.node_id, "active");
       actions.setStreaming(data.node_id, true);
       actions.setExpanded(data.node_id, true);
+      actions.selectNode(data.node_id);
       break;
     case WS.CHUNK:
       actions.appendChunk(data.node_id, data.text);
@@ -160,6 +162,13 @@ function handle(data: any) {
     case WS.DONE:
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
+      // full_response has the complete text (important for continue_chat mode)
+      if (data.full_response != null) {
+        actions.setNodeResponse(data.node_id, data.full_response);
+      }
+      if (data.session_id) {
+        actions.setNodeSessionId(data.node_id, data.session_id);
+      }
       if (data.git_commit) {
         actions.updateNodeGit(data.node_id, data.git_commit);
       }
