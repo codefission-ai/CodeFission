@@ -464,6 +464,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           userMessage={node.user_message}
           assistantResponse={node.assistant_response}
           onClose={() => setShowModal(false)}
+          onQuoteText={(text) => setInput((prev) => prev + (prev ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n")}
         />
       )}
     </div>

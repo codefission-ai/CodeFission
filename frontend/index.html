@@ -1042,6 +1042,27 @@
     .node-modal-response .video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
     .node-modal-response hr { border: none; border-top: 1px solid var(--border-dim); margin: 14px 0; }
 
+    /* Keep text selection visible in modal */
+    .node-modal-response ::selection { background: rgba(58, 58, 66, 0.3); }
+
+    /* Selection quote button */
+    .selection-quote-btn {
+      position: fixed;
+      transform: translate(-50%, -100%);
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 10001;
+      box-shadow: var(--shadow-md);
+      line-height: 1.4;
+    }
+    .selection-quote-btn:hover { background: #505060; }
+
     /* KaTeX overrides for dark theme */
     .katex { color: var(--text-primary); }
     .katex-display { margin: 12px 0; overflow-x: auto; }
