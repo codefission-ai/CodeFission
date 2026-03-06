@@ -179,16 +179,17 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const responseRef = useRef<HTMLDivElement>(null);
 
-  // Block wheel events so ReactFlow doesn't pan when scrolling the response
+  // Block wheel events so ReactFlow doesn't pan when scrolling the response,
+  // but only when this node is selected (focused).
   useEffect(() => {
     const el = responseRef.current;
-    if (!el) return;
+    if (!el || !selected) return;
     const stop = (e: WheelEvent) => {
       if (el.scrollHeight > el.clientHeight) e.stopPropagation();
     };
     el.addEventListener("wheel", stop, { passive: false });
     return () => el.removeEventListener("wheel", stop);
-  });
+  }, [selected]);
 
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response, node.id) : "",

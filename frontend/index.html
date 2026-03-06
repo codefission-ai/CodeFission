@@ -368,8 +368,11 @@
       color: var(--text-secondary);
       word-break: break-word;
       max-height: 300px;
-      overflow-y: auto;
+      overflow-y: hidden;
       width: 100%;
+    }
+    .tree-node.selected .tree-node-assistant {
+      overflow-y: auto;
     }
     .tree-node-input {
       display: flex;
