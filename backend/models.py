@@ -19,6 +19,7 @@ class Node(BaseModel):
     git_commit: str | None = None
     session_id: str | None = None
     created_by: str = "human"
+    quoted_node_ids: list[str] = []
 
 
 class Tree(BaseModel):

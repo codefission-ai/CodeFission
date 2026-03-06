@@ -102,5 +102,7 @@ async def init_db():
             await db.execute("ALTER TABLE nodes ADD COLUMN session_id TEXT")
         if "created_by" not in node_columns:
             await db.execute("ALTER TABLE nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
+        if "quoted_node_ids" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN quoted_node_ids TEXT NOT NULL DEFAULT '[]'")
 
         await db.commit()

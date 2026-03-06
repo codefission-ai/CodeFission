@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useStore } from "../store";
+import { useStore, actions } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -9,6 +9,7 @@ export default function ChatPanel() {
   const nodes = useStore((s) => s.nodes);
   const streaming = useStore((s) => s.streaming);
   const toolCalls = useStore((s) => s.toolCalls);
+  const pendingQuotes = useStore((s) => s.pendingQuotes);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -41,7 +42,9 @@ export default function ChatPanel() {
 
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
-    send({ type: WS.CHAT, node_id: selectedId, content: input.trim() });
+    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content: input.trim() };
+    if (pendingQuotes.length > 0) msg.quoted_node_ids = pendingQuotes;
+    send(msg);
     setInput("");
   };
 
@@ -100,6 +103,20 @@ export default function ChatPanel() {
       </div>
 
       <div className="chat-input">
+        {pendingQuotes.length > 0 && (
+          <div className="quote-chips chat-quote-chips">
+            {pendingQuotes.map((qid) => (
+              <span key={qid} className="quote-chip">
+                <span className="quote-chip-label">{nodes[qid]?.label || qid}</span>
+                <button
+                  className="quote-chip-remove"
+                  onClick={() => actions.removeQuote(qid)}
+                  onMouseDown={(e) => e.preventDefault()}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           placeholder="Type a message..."

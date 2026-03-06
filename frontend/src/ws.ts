@@ -98,7 +98,6 @@ function handle(data: any) {
       actions.selectTree(data.tree.id);
       send({ type: WS.SELECT_TREE, tree_id: data.tree.id });
       actions.setNodes([data.root]);
-      actions.selectNode(data.root.id);
       break;
     case WS.TREE_DELETED:
       actions.removeTree(data.tree_id);
@@ -113,8 +112,7 @@ function handle(data: any) {
           actions.setNodeProcesses(nodeId, procs as any[]);
         }
       }
-      const root = data.nodes.find((n: any) => !n.parent_id);
-      if (root) actions.selectNode(root.id);
+      // Don't auto-select any node — let user click to focus
       break;
     case WS.NODE_CREATED:
       actions.upsertNode(data.node, data.after_id);

@@ -19,6 +19,7 @@ function mkNode(
     git_branch: opts.git_branch ?? null,
     git_commit: opts.git_commit ?? null,
     created_by: opts.created_by ?? "human",
+    quoted_node_ids: opts.quoted_node_ids ?? [],
     ...opts,
   };
 }

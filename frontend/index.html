@@ -289,6 +289,8 @@
 
     /* Root node */
     .tree-node.tree-node-root:hover { background: var(--bg-raised); border-color: var(--border-visible); }
+    .tree-node.tree-node-root.selected { border-color: var(--accent); background: var(--accent-dim); }
+    .tree-node.tree-node-root.selected:hover { background: var(--accent-dim); border-color: var(--accent); }
     .tree-node-root-active {
       flex-direction: column;
       align-items: stretch;
@@ -330,6 +332,7 @@
       flex-direction: column;
       align-items: flex-start;
       padding: 8px 14px;
+      position: relative;
     }
     .tree-node.expanded .tree-node-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
     .tree-node-preview {
@@ -417,6 +420,11 @@
     .tree-node-send:disabled { opacity: 0.3; cursor: default; filter: none; }
     .react-flow__handle { width: 6px !important; height: 6px !important; background: var(--text-muted) !important; border: none !important; }
     .react-flow__edge path { stroke: var(--border-visible) !important; }
+    .react-flow__edge.quote-edge path {
+      stroke: #3b82f6 !important;
+      stroke-width: 1.5;
+      stroke-dasharray: 6 3;
+    }
 
     /* ── Process badge (collapsed node) ──────────────────────── */
     .tree-node-proc-badge {
@@ -516,6 +524,76 @@
     .node-process-kill:hover {
       color: var(--red);
       background: var(--red-dim);
+    }
+
+    /* ── Quote button & chips ──────────────────────────────────── */
+    .quote-btn {
+      position: absolute;
+      top: 4px; right: 4px;
+      z-index: 5;
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 600;
+      background: rgba(59, 130, 246, 0.08);
+      color: #3b82f6;
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+      opacity: 0;
+    }
+    .tree-node:hover .quote-btn,
+    .quote-btn.quoted {
+      opacity: 1;
+    }
+    .quote-btn:hover {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+    .quote-btn.quoted {
+      background: rgba(59, 130, 246, 0.15);
+      border-color: #3b82f6;
+    }
+    .quote-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-bottom: 4px;
+      width: 100%;
+    }
+    .quote-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: 500;
+      background: rgba(59, 130, 246, 0.08);
+      color: #3b82f6;
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      border-radius: 4px;
+      max-width: 140px;
+    }
+    .quote-chip-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .quote-chip-remove {
+      background: none;
+      border: none;
+      color: #3b82f6;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0 1px;
+      opacity: 0.6;
+      transition: opacity 0.1s;
+    }
+    .quote-chip-remove:hover { opacity: 1; }
+    .chat-quote-chips {
+      width: 100%;
+      margin-bottom: 6px;
     }
 
     /* ── Subtree collapse/expand ────────────────────────────────── */
@@ -787,6 +865,7 @@
       display: flex; gap: 6px; padding: 12px 16px;
       border-top: 1px solid var(--border-dim); flex-shrink: 0;
       align-items: flex-end;
+      flex-wrap: wrap;
     }
     .chat-input textarea {
       flex: 1; padding: 8px 12px;

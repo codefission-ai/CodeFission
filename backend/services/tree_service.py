@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 from db import get_db
 from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
@@ -98,6 +99,7 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
             git_commit=r["git_commit"],
             session_id=r["session_id"],
             created_by=r["created_by"],
+            quoted_node_ids=json.loads(r["quoted_node_ids"]) if r["quoted_node_ids"] else [],
         ))
     return nodes
 
@@ -124,6 +126,7 @@ async def get_node(node_id: str) -> Node | None:
         git_commit=row["git_commit"],
         session_id=row["session_id"],
         created_by=row["created_by"],
+        quoted_node_ids=json.loads(row["quoted_node_ids"]) if row["quoted_node_ids"] else [],
     )
 
 
@@ -170,7 +173,10 @@ async def update_node(node_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id", "created_by"):
+        if k == "quoted_node_ids":
+            sets.append(f"{k} = ?")
+            vals.append(json.dumps(v))
+        elif k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id", "created_by"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:

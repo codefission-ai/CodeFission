@@ -5,6 +5,7 @@ import {
   Background,
   BackgroundVariant,
   useReactFlow,
+  MarkerType,
   type Node,
   type Edge,
   type NodeChange,
@@ -111,6 +112,27 @@ function buildFlow(
         },
       };
     });
+
+  // Quote edges: dashed arrows from quoted nodes → quoting node
+  for (const n of visibleList) {
+    if (!n.quoted_node_ids || n.quoted_node_ids.length === 0) continue;
+    for (const qid of n.quoted_node_ids) {
+      if (hiddenIds.has(qid) || !nodes[qid]) continue;
+      flowEdges.push({
+        id: `quote-${qid}-${n.id}`,
+        source: qid,
+        target: n.id,
+        type: "default",
+        className: "quote-edge",
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: "#3b82f6",
+          width: 16,
+          height: 16,
+        },
+      });
+    }
+  }
 
   return { flowNodes, flowEdges };
 }

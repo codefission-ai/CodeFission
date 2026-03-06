@@ -139,15 +139,16 @@ class ConnectionHandler:
         node_id = data["node_id"]
         content = data["content"]
         after_id = data.get("after_id")
+        quoted_node_ids = data.get("quoted_node_ids") or []
 
-        task = asyncio.create_task(self._run_chat(node_id, content, after_id))
+        task = asyncio.create_task(self._run_chat(node_id, content, after_id, quoted_node_ids))
         self.tasks[node_id] = task
 
-    async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None):
+    async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, quoted_node_ids: list[str] | None = None):
         nid = node_id
         try:
             # Prepare chat: create child node, resolve workspace/session/settings
-            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id)
+            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id, quoted_node_ids=quoted_node_ids)
             nid = ctx.node_id
 
             # Sandbox: optionally restrict subprocess writes to this tree's workspace

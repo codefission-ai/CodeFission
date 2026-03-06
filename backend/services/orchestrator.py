@@ -52,6 +52,7 @@ class ChatContext:
     api_key: str
     after_id: str | None = None
     sandbox: bool = False
+    quoted_node_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -152,12 +153,51 @@ class Orchestrator:
         root_node = await get_node(tree.root_node_id)
         return updated_tree, root_node
 
+    async def _build_quote_context(
+        self,
+        quoted_node_ids: list[str],
+        tree: Tree,
+        root_node_id: str | None,
+    ) -> str:
+        """Build prompt context from quoted nodes."""
+        parts = [
+            "[System: The user has referenced the following node(s) from other branches in this tree:\n"
+        ]
+        for qid in quoted_node_ids:
+            qnode = await get_node(qid)
+            if not qnode:
+                continue
+            ws_path = resolve_workspace(tree.id, root_node_id, qnode.id)
+            parts.append(f'\n--- Quoted: "{qnode.label}" ---')
+            parts.append(f"\nWorkspace: {ws_path}")
+            if qnode.git_branch:
+                parts.append(f"\nGit branch: {qnode.git_branch}")
+            if qnode.git_commit:
+                parts.append(f"\nCommit: {qnode.git_commit}")
+            if qnode.user_message:
+                um = qnode.user_message
+                if len(um) > 1000:
+                    um = um[:1000] + "... [truncated]"
+                parts.append(f"\nUser's question: {um}")
+            if qnode.assistant_response:
+                resp = qnode.assistant_response
+                if len(resp) > 3000:
+                    resp = resp[:3000] + "... [truncated]"
+                parts.append(f"\nAssistant's response:\n{resp}")
+            parts.append("\n---\n")
+        parts.append(
+            "\nUse this context to inform your response. "
+            "The user's message follows.]\n\n"
+        )
+        return "".join(parts)
+
     async def prepare_chat(
         self,
         parent_node_id: str,
         message: str,
         after_id: str | None = None,
         created_by: str = "human",
+        quoted_node_ids: list[str] | None = None,
     ) -> ChatContext:
         """Create a child node and resolve everything needed to stream a chat.
 
@@ -177,7 +217,10 @@ class Orchestrator:
 
         # Save user message, set label and status
         label = message[:40]
-        await update_node(nid, user_message=message, label=label, status="active")
+        update_kwargs: dict = dict(user_message=message, label=label, status="active")
+        if quoted_node_ids:
+            update_kwargs["quoted_node_ids"] = quoted_node_ids
+        await update_node(nid, **update_kwargs)
 
         # Resolve workspace and ensure worktree
         workspace = resolve_workspace(tree.id, tree.root_node_id, nid)
@@ -218,6 +261,11 @@ class Orchestrator:
                 "Resume from this context. The user's new message follows.]\n\n"
                 + sdk_msg
             )
+
+        # If quoted nodes, prepend their context
+        if quoted_node_ids:
+            quote_ctx = await self._build_quote_context(quoted_node_ids, tree, tree.root_node_id)
+            sdk_msg = quote_ctx + sdk_msg
 
         # Resolve effective settings
         effective = await resolve_tree_settings(tree)

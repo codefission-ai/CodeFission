@@ -172,7 +172,20 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
+  const pendingQuotes = useStore((s) => s.pendingQuotes);
+  const allNodes = useStore((s) => s.nodes);
+  const selectedHasInput = useStore((s) => {
+    if (!s.selectedNodeId) return false;
+    const sel = s.nodes[s.selectedNodeId];
+    if (!sel) return false;
+    // Root hub always has input
+    if (!sel.parent_id && !sel.user_message) return true;
+    // Expanded + not streaming = has follow-up textarea
+    return !!s.expandedNodes[s.selectedNodeId] && !s.streaming[s.selectedNodeId];
+  });
   const selected = selectedId === node.id;
+  const isQuoted = pendingQuotes.includes(node.id);
+  const canShowQuote = selectedHasInput && !selected && isExpanded;
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -212,7 +225,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
-    send({ type: WS.CHAT, node_id: node.id, content: input.trim() });
+    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content: input.trim() };
+    const quotes = useStore.getState().pendingQuotes;
+    if (quotes.length > 0) msg.quoted_node_ids = quotes;
+    send(msg);
     setInput("");
   }, [input, isStreaming, node.id]);
 
@@ -231,9 +247,23 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   if (isRoot && !node.user_message) {
     const hasChildren = node.children_ids.length > 0;
     return (
-      <div className="tree-node tree-node-root" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
+      <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
         <Handle type="source" position={Position.Bottom} />
         <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
+        {pendingQuotes.length > 0 && selected && (
+          <div className="quote-chips">
+            {pendingQuotes.map((qid) => (
+              <span key={qid} className="quote-chip">
+                <span className="quote-chip-label">{allNodes[qid]?.label || qid}</span>
+                <button
+                  className="quote-chip-remove"
+                  onClick={(e) => { e.stopPropagation(); actions.removeQuote(qid); }}
+                  onMouseDown={(e) => e.preventDefault()}
+                >×</button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           className="tree-node-root-input"
@@ -285,6 +315,21 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       )}
       {isExpanded && (
         <div className="tree-node-preview" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
+          {/* Quote button: hover to quote this node into your message */}
+          {canShowQuote && (
+            <button
+              className={`quote-btn ${isQuoted ? "quoted" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
+                if (isQuoted) actions.removeQuote(node.id);
+                else actions.addQuote(node.id);
+              }}
+            >
+              {isQuoted ? "Quoted ✓" : "Quote"}
+            </button>
+          )}
           {isRoot && tree && (
             <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
           )}
@@ -356,6 +401,20 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
           {!isStreaming && selected && (
             <>
+              {pendingQuotes.length > 0 && (
+                <div className="quote-chips">
+                  {pendingQuotes.map((qid) => (
+                    <span key={qid} className="quote-chip">
+                      <span className="quote-chip-label">{allNodes[qid]?.label || qid}</span>
+                      <button
+                        className="quote-chip-remove"
+                        onClick={(e) => { e.stopPropagation(); actions.removeQuote(qid); }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="tree-node-input">
                 <textarea
                   ref={textareaRef}

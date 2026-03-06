@@ -12,6 +12,7 @@ export interface CNode {
   git_branch: string | null;
   git_commit: string | null;
   created_by: string;
+  quoted_node_ids: string[];
 }
 
 export interface CTree {
@@ -84,6 +85,7 @@ interface Store {
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
+  pendingQuotes: string[];
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
   providers: ProviderInfo[];
@@ -124,6 +126,7 @@ export const useStore = create<Store>(() => ({
   fileContents: {},
   nodeProcesses: {},
   filesPanel: null,
+  pendingQuotes: [],
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
   providers: [],
@@ -167,7 +170,10 @@ export const actions = {
       }
       return { nodes };
     }),
-  selectNode: (id: string | null) => useStore.setState({ selectedNodeId: id }),
+  selectNode: (id: string | null) => useStore.setState((s) => ({
+    selectedNodeId: id,
+    pendingQuotes: id !== s.selectedNodeId ? [] : s.pendingQuotes,
+  })),
 
   appendChunk: (nodeId: string, text: string) =>
     useStore.setState((s) => {
@@ -295,6 +301,18 @@ export const actions = {
     useStore.setState((s) =>
       s.filesPanel ? { filesPanel: { ...s.filesPanel, selectedFile: filePath } } : {}
     ),
+
+  // ── Quote ────────────────────────────────────────────────────
+  addQuote: (nodeId: string) =>
+    useStore.setState((s) => ({
+      pendingQuotes: s.pendingQuotes.includes(nodeId)
+        ? s.pendingQuotes
+        : [...s.pendingQuotes, nodeId],
+    })),
+  removeQuote: (nodeId: string) =>
+    useStore.setState((s) => ({
+      pendingQuotes: s.pendingQuotes.filter((id) => id !== nodeId),
+    })),
 
   // ── Settings ─────────────────────────────────────────────────
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),
