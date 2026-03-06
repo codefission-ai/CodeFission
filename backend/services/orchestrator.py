@@ -52,7 +52,6 @@ class ChatContext:
     api_key: str
     after_id: str | None = None
     sandbox: bool = False
-    continue_conversation: bool = False
 
 
 @dataclass
@@ -280,78 +279,6 @@ class Orchestrator:
         full = partial_text + cancel_note
         await update_node(node_id, status="error", assistant_response=full)
         return CancelResult(node_id=node_id, saved_text=cancel_note, active_tools=active_tools)
-
-    async def prepare_continue_chat(
-        self,
-        node_id: str,
-        message: str,
-    ) -> ChatContext:
-        """Prepare to continue an existing conversation on the same node.
-
-        Resumes the SDK session instead of forking it. No new node is created.
-        """
-        node = await get_node(node_id)
-        if not node:
-            raise ValueError(f"Node {node_id} not found")
-        if not node.session_id:
-            raise ValueError(f"Node {node_id} has no session to continue")
-
-        tree = await get_tree(node.tree_id)
-        if not tree:
-            raise ValueError(f"Tree for node {node_id} not found")
-
-        await update_node(node_id, status="active")
-
-        workspace = resolve_workspace(tree.id, tree.root_node_id, node_id)
-
-        effective = await resolve_tree_settings(tree)
-        global_cfg = await get_global_defaults()
-
-        from services.tree_service import get_setting
-        sandbox_enabled = (await get_setting("sandbox")) == "true"
-
-        node = await get_node(node_id)
-
-        return ChatContext(
-            node_id=node_id,
-            node=node,
-            workspace=workspace,
-            sdk_message=message,
-            parent_session_id=node.session_id,
-            model=effective["model"],
-            max_turns=effective["max_turns"],
-            auth_mode=global_cfg["auth_mode"],
-            api_key=global_cfg["api_key"],
-            sandbox=sandbox_enabled,
-            continue_conversation=True,
-        )
-
-    async def complete_continue_chat(
-        self,
-        node_id: str,
-        new_response: str,
-        user_message: str,
-        workspace: Path,
-    ) -> ChatResult:
-        """Finalise a continued chat: append response, auto-commit."""
-        node = await get_node(node_id)
-        if not node:
-            raise ValueError(f"Node {node_id} not found")
-
-        # Append the follow-up exchange to the existing response
-        separator = f"\n\n---\n\n**You:** {user_message}\n\n"
-        full = node.assistant_response + separator + new_response
-        await update_node(node_id, assistant_response=full, status="done")
-
-        git_commit = None
-        try:
-            commit_sha, _ = await auto_commit(workspace, user_message)
-            await update_node(node_id, git_commit=commit_sha)
-            git_commit = commit_sha
-        except Exception as e:
-            log.warning("Auto-commit failed: %s", e)
-
-        return ChatResult(node_id=node_id, full_response=full, git_commit=git_commit)
 
     async def fail_chat(self, node_id: str) -> None:
         """Mark a chat node as failed."""

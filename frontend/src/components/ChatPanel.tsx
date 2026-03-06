@@ -39,16 +39,9 @@ export default function ChatPanel() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, node?.assistant_response, activeToolCalls.length]);
 
-  // Can we continue the conversation on this node (vs creating a child)?
-  const canContinue = node?.status === "done" && node?.session_id;
-
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
-    if (canContinue) {
-      send({ type: WS.CONTINUE_CHAT, node_id: selectedId, content: input.trim() });
-    } else {
-      send({ type: WS.CHAT, node_id: selectedId, content: input.trim() });
-    }
+    send({ type: WS.CHAT, node_id: selectedId, content: input.trim() });
     setInput("");
   };
 
@@ -121,22 +114,8 @@ export default function ChatPanel() {
           rows={1}
         />
         <button onClick={handleSend} disabled={!input.trim() || isStreaming}>
-          {canContinue ? "Continue" : "Send"}
+          Send
         </button>
-        {canContinue && (
-          <button
-            className="chat-branch-btn"
-            onClick={() => {
-              if (!input.trim() || !selectedId || isStreaming) return;
-              send({ type: WS.CHAT, node_id: selectedId, content: input.trim() });
-              setInput("");
-            }}
-            disabled={!input.trim() || isStreaming}
-            title="Create a new branch instead of continuing"
-          >
-            Branch
-          </button>
-        )}
       </div>
     </div>
   );

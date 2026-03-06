@@ -18,7 +18,6 @@ function mkNode(
     children_ids: opts.children_ids ?? [],
     git_branch: opts.git_branch ?? null,
     git_commit: opts.git_commit ?? null,
-    session_id: opts.session_id ?? null,
     created_by: opts.created_by ?? "human",
     ...opts,
   };

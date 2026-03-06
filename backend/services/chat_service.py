@@ -175,7 +175,6 @@ async def stream_chat(
     max_turns: int = 25,
     auth_mode: str = "cli",
     api_key: str = "",
-    continue_conversation: bool = False,
 ) -> AsyncGenerator[ChatEvent, None]:
     """Stream a chat response for a node, yielding structured ChatEvents.
 
@@ -203,16 +202,12 @@ async def stream_chat(
         debug_stderr=open(os.devnull, "w"),
     )
 
-    # Session handling: continue existing session or fork from parent
+    # Session forking: if parent has a session file, fork from it
     if parent_session_id:
         from services.workspace_service import session_file_exists
         if session_file_exists(workspace, parent_session_id):
             options.resume = parent_session_id
-            if continue_conversation:
-                options.continue_conversation = True
-                options.fork_session = False
-            else:
-                options.fork_session = True
+            options.fork_session = True
         else:
             log.info("Parent session file missing, starting fresh session for node %s", node_id)
 

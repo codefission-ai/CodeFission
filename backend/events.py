@@ -77,7 +77,6 @@ class WS:
     GET_NODE_PROCESSES = "get_node_processes"
     KILL_PROCESS = "kill_process"
     KILL_ALL_PROCESSES = "kill_all_processes"
-    CONTINUE_CHAT = "continue_chat"
 
     # Outbound
     SETTINGS = "settings"
