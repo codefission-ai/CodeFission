@@ -7,6 +7,7 @@ from services.workspace_service import (
     setup_repo, create_worktree, ensure_worktree,
     auto_commit, resolve_workspace, copy_session, cleanup_tree_workspace,
     list_files, get_diff, read_file,
+    remove_worktree, list_files_from_commit, read_file_from_commit, get_diff_from_commits,
     _claude_project_dir, _run_git, WORKSPACES_DIR,
 )
 
@@ -530,3 +531,127 @@ async def test_run_git_check_false(tmp_path):
     """_run_git with check=False returns non-zero without raising."""
     rc, _, _ = await _run_git(tmp_path, "status", check=False)
     assert rc != 0
+
+
+# ── remove_worktree ──────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_remove_worktree(tree_ids, tmp_path):
+    """remove_worktree removes directory but preserves branch ref."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+    wt = await create_worktree(tree_ids["tree"], tree_ids["root"], tree_ids["child"], commit)
+    assert wt.exists()
+
+    result = await remove_worktree(tree_ids["tree"], tree_ids["root"], tree_ids["child"])
+    assert result is True
+    assert not wt.exists()
+
+    # Branch should still exist in main repo
+    rc, _, _ = await _run_git(root_dir, "rev-parse", "--verify", f"ct-{tree_ids['child']}", check=False)
+    assert rc == 0
+
+
+@pytest.mark.asyncio
+async def test_remove_worktree_root_skipped(tree_ids, tmp_path):
+    """remove_worktree on root returns False and does nothing."""
+    await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    result = await remove_worktree(tree_ids["tree"], tree_ids["root"], tree_ids["root"])
+    assert result is False
+    assert (tmp_path / tree_ids["tree"] / tree_ids["root"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_remove_worktree_nonexistent(tree_ids, tmp_path):
+    """remove_worktree on non-existent path returns False."""
+    await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    result = await remove_worktree(tree_ids["tree"], tree_ids["root"], "nonexistent")
+    assert result is False
+
+
+# ── ensure_worktree after removal ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ensure_worktree_after_removal(tree_ids, tmp_path):
+    """ensure_worktree recreates from existing branch after removal."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    # Create, add content, commit, remove
+    wt = await create_worktree(tree_ids["tree"], tree_ids["root"], tree_ids["child"], commit)
+    (wt / "test.txt").write_text("hello\n")
+    await _run_git(wt, "add", "-A")
+    await _run_git(wt, "commit", "-m", "add test")
+    _, child_commit, _ = await _run_git(wt, "rev-parse", "HEAD")
+
+    await remove_worktree(tree_ids["tree"], tree_ids["root"], tree_ids["child"])
+    assert not wt.exists()
+
+    # Re-create via ensure_worktree
+    wt2 = await ensure_worktree(
+        tree_ids["tree"], tree_ids["root"], tree_ids["child"],
+        tree_ids["root"], commit,
+    )
+    assert wt2.exists()
+    # Should be on the same branch with the committed content
+    _, branch, _ = await _run_git(wt2, "rev-parse", "--abbrev-ref", "HEAD")
+    assert branch == f"ct-{tree_ids['child']}"
+    assert (wt2 / "test.txt").exists()
+    assert (wt2 / "test.txt").read_text() == "hello\n"
+
+
+# ── Git-based reading functions ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_list_files_from_commit(tree_ids, tmp_path):
+    """list_files_from_commit returns files at a specific commit."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "main.py").write_text("print(1)\n")
+    (root_dir / "lib.py").write_text("x = 1\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add files")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    files = await list_files_from_commit(tree_ids["tree"], tree_ids["root"], commit)
+    assert "main.py" in files
+    assert "lib.py" in files
+    assert ".gitignore" in files
+
+
+@pytest.mark.asyncio
+async def test_read_file_from_commit(tree_ids, tmp_path):
+    """read_file_from_commit returns file content at a specific commit."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "hello.txt").write_text("world\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add hello")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    content = await read_file_from_commit(tree_ids["tree"], tree_ids["root"], commit, "hello.txt")
+    assert content == "world"
+
+
+@pytest.mark.asyncio
+async def test_get_diff_from_commits(tree_ids, tmp_path):
+    """get_diff_from_commits shows diff between two commits."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, parent_commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    (root_dir / "new.py").write_text("print('new')\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add new")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    diff = await get_diff_from_commits(tree_ids["tree"], tree_ids["root"], parent_commit, commit)
+    assert "+print('new')" in diff
+    assert "new.py" in diff
+
+
+@pytest.mark.asyncio
+async def test_get_diff_from_commits_no_parent(tree_ids, tmp_path):
+    """get_diff_from_commits with no parent diffs against empty tree."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    diff = await get_diff_from_commits(tree_ids["tree"], tree_ids["root"], None, commit)
+    assert isinstance(diff, str)

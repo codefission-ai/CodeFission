@@ -129,13 +129,83 @@ async def ensure_worktree(
             raise RuntimeError(f"Root workspace missing: {worktree_path}")
         return worktree_path
 
+    # Check if branch already exists (e.g. worktree was removed but branch remains)
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    branch_name = f"ct-{node_id}"
+    rc, _, _ = await _run_git(main_repo, "rev-parse", "--verify", branch_name, check=False)
+    if rc == 0:
+        # Branch exists — attach worktree to existing branch (no -b)
+        await _run_git(main_repo, "worktree", "add", str(worktree_path), branch_name)
+        return worktree_path
+
     # Determine parent's commit
     if not parent_commit:
-        # Read HEAD from parent's worktree
+        # Try reading HEAD from parent's worktree first
         parent_dir = WORKSPACES_DIR / tree_id / (parent_id or root_id)
-        _, parent_commit, _ = await _run_git(parent_dir, "rev-parse", "HEAD")
+        if parent_dir.exists():
+            _, parent_commit, _ = await _run_git(parent_dir, "rev-parse", "HEAD")
+        else:
+            # Parent worktree removed — resolve from branch ref in main repo
+            parent_branch = f"ct-{parent_id}" if parent_id and parent_id != root_id else "HEAD"
+            _, parent_commit, _ = await _run_git(main_repo, "rev-parse", parent_branch)
 
     return await create_worktree(tree_id, root_id, node_id, parent_commit)
+
+
+async def remove_worktree(tree_id: str, root_id: str, node_id: str) -> bool:
+    """Remove a node's worktree directory, keeping the branch ref.
+
+    Skips root nodes (the main repo). Returns True if removal happened.
+    """
+    if node_id == root_id:
+        return False
+
+    worktree_path = WORKSPACES_DIR / tree_id / node_id
+    if not worktree_path.exists():
+        return False
+
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    try:
+        await _run_git(main_repo, "worktree", "remove", "--force", str(worktree_path))
+    except Exception:
+        # Fallback: manual removal + prune
+        try:
+            shutil.rmtree(worktree_path, ignore_errors=True)
+            await _run_git(main_repo, "worktree", "prune", check=False)
+        except Exception as e2:
+            log.warning("Worktree removal fallback failed: %s", e2)
+            return False
+
+    log.info("Removed worktree for node %s", node_id)
+    return True
+
+
+# ── Git-based reading (no worktree needed) ───────────────────────────
+
+async def list_files_from_commit(tree_id: str, root_id: str, commit: str) -> list[str]:
+    """List files at a commit using git ls-tree (no worktree needed)."""
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    _, out, _ = await _run_git(main_repo, "ls-tree", "-r", "--name-only", commit)
+    return [f for f in out.splitlines() if f] if out else []
+
+
+async def read_file_from_commit(tree_id: str, root_id: str, commit: str, file_path: str) -> str:
+    """Read a file at a commit using git show (no worktree needed)."""
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    _, content, _ = await _run_git(main_repo, "show", f"{commit}:{file_path}")
+    return content
+
+
+async def get_diff_from_commits(tree_id: str, root_id: str, parent_commit: str | None, commit: str) -> str:
+    """Get diff between two commits (no worktree needed)."""
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    if parent_commit:
+        _, diff, _ = await _run_git(main_repo, "diff", parent_commit, commit, check=False)
+    else:
+        _, diff, _ = await _run_git(
+            main_repo, "diff", "4b825dc642cb6eb9a060e54bf899d15006578e83", commit, check=False
+        )
+    return diff
 
 
 # ── Auto-commit ───────────────────────────────────────────────────────

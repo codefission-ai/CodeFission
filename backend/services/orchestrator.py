@@ -30,6 +30,8 @@ from services.workspace_service import (
     copy_session,
     _run_git,
     WORKSPACES_DIR,
+    read_file_from_commit,
+    list_files_from_commit,
 )
 
 log = logging.getLogger(__name__)
@@ -106,23 +108,15 @@ class Orchestrator:
         label: str = "",
         created_by: str = "human",
     ) -> Node:
-        """Create a child node with its own git worktree."""
+        """Create a child node. Worktree is created on demand when chat starts."""
         node = await create_child_node(parent_id, label, created_by=created_by)
 
         parent = await get_node(parent_id)
         if parent:
-            tree = await get_tree(parent.tree_id)
-            if tree:
-                try:
-                    await create_worktree(
-                        tree.id, tree.root_node_id, node.id,
-                        parent.git_commit or "HEAD",
-                    )
-                    branch_name = f"ct-{node.id}"
-                    await update_node(node.id, git_branch=branch_name)
-                    node = await get_node(node.id)
-                except Exception as e:
-                    log.warning("Worktree creation failed: %s", e)
+            # Record branch name and inherit parent's commit (worktree created lazily)
+            branch_name = f"ct-{node.id}"
+            await update_node(node.id, git_branch=branch_name, git_commit=parent.git_commit)
+            node = await get_node(node.id)
 
         return node
 
@@ -184,22 +178,29 @@ class Orchestrator:
                         parts.append(selected_content)
                         parts.append("\n---\n")
                 else:
-                    # Full file quote
+                    # Full file quote — try filesystem first, fall back to git
+                    content = None
                     full = ws_path / fpath
                     if full.exists() and full.is_file():
                         try:
                             content = full.read_text(errors="replace")
-                            if len(content) > MAX_FILE_SIZE:
-                                content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
-                            if total + len(content) > MAX_TOTAL:
-                                parts.append(f'\n--- File: {fpath} (from "{node_label}") --- [skipped: size limit]\n')
-                                continue
-                            total += len(content)
-                            parts.append(f'\n--- File: {fpath} (from "{node_label}") ---\n')
-                            parts.append(content)
-                            parts.append("\n---\n")
                         except Exception:
                             pass
+                    elif qnode and qnode.git_commit:
+                        try:
+                            content = await read_file_from_commit(tree.id, root_node_id, qnode.git_commit, fpath)
+                        except Exception:
+                            pass
+                    if content is not None:
+                        if len(content) > MAX_FILE_SIZE:
+                            content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
+                        if total + len(content) > MAX_TOTAL:
+                            parts.append(f'\n--- File: {fpath} (from "{node_label}") --- [skipped: size limit]\n')
+                            continue
+                        total += len(content)
+                        parts.append(f'\n--- File: {fpath} (from "{node_label}") ---\n')
+                        parts.append(content)
+                        parts.append("\n---\n")
 
             elif qtype == "folder":
                 folder = fq.get("path", "")
@@ -225,6 +226,32 @@ class Orchestrator:
                         except Exception:
                             pass
                     parts.append("---\n")
+                elif qnode and qnode.git_commit:
+                    # Worktree removed — read from git
+                    try:
+                        all_files = await list_files_from_commit(tree.id, root_node_id, qnode.git_commit)
+                        folder_prefix = folder.rstrip("/") + "/" if folder else ""
+                        skip_dirs = {"node_modules/", "__pycache__/", ".venv/", "venv/"}
+                        parts.append(f'\n--- Folder: {folder}/ (from "{node_label}") ---\n')
+                        for rel in all_files:
+                            if folder_prefix and not rel.startswith(folder_prefix):
+                                continue
+                            if any(sd in rel for sd in skip_dirs):
+                                continue
+                            try:
+                                content = await read_file_from_commit(tree.id, root_node_id, qnode.git_commit, rel)
+                                if len(content) > MAX_FILE_SIZE:
+                                    content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
+                                if total + len(content) > MAX_TOTAL:
+                                    parts.append(f"\n## {rel} [skipped: size limit]\n")
+                                    break
+                                total += len(content)
+                                parts.append(f"\n## {rel}\n{content}\n")
+                            except Exception:
+                                pass
+                        parts.append("---\n")
+                    except Exception:
+                        pass
 
             elif qtype == "diff":
                 content = fq.get("content", "")
@@ -368,8 +395,9 @@ class Orchestrator:
         node_id: str,
         partial_text: str,
         active_tools: list[str],
+        workspace: Path | None = None,
     ) -> CancelResult:
-        """Save a cancelled chat with a cancellation marker."""
+        """Save a cancelled chat with a cancellation marker, auto-commit partial changes."""
         cancel_note = "\n\n---\n*[Cancelled by user]*"
         if active_tools:
             cancel_note = (
@@ -377,7 +405,17 @@ class Orchestrator:
                 + ", ".join(active_tools) + "]*"
             )
         full = partial_text + cancel_note
-        await update_node(node_id, status="error", assistant_response=full)
+        update_kwargs: dict = dict(status="error", assistant_response=full)
+
+        # Auto-commit partial changes so the worktree can be safely removed
+        if workspace and workspace.exists():
+            try:
+                commit_sha, _ = await auto_commit(workspace, "cancelled mid-stream")
+                update_kwargs["git_commit"] = commit_sha
+            except Exception as e:
+                log.warning("Auto-commit on cancel failed: %s", e)
+
+        await update_node(node_id, **update_kwargs)
         return CancelResult(node_id=node_id, saved_text=cancel_note, active_tools=active_tools)
 
     async def fail_chat(self, node_id: str) -> None:

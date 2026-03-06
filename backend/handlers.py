@@ -18,6 +18,8 @@ from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, Se
 from services.workspace_service import (
     resolve_workspace, cleanup_tree_workspace,
     list_files, get_diff, read_file,
+    list_files_from_commit, read_file_from_commit, get_diff_from_commits,
+    remove_worktree,
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
 from services.orchestrator import Orchestrator
@@ -266,9 +268,20 @@ class ConnectionHandler:
                     self.streams[nid].status = "error"
                 partial = self.streams.get(nid, StreamState(nid)).text
                 active_tools = list(tool_names.values())
-                result = await self.orch.cancel_chat(nid, partial, active_tools)
+                result = await self.orch.cancel_chat(nid, partial, active_tools, ctx.workspace)
                 await self.send(WS.CHUNK, node_id=nid, text=result.saved_text)
                 await self.send(WS.ERROR, node_id=nid, error="Cancelled")
+                # Remove ephemeral worktree if no running processes
+                try:
+                    procs = list_processes(ctx.workspace)
+                    if not procs:
+                        node = await get_node(nid)
+                        if node:
+                            tree = await get_tree(node.tree_id)
+                            if tree:
+                                await remove_worktree(tree.id, tree.root_node_id, nid)
+                except Exception:
+                    log.debug("Ephemeral worktree removal after cancel failed for %s", nid, exc_info=True)
             else:
                 full_response = self.streams[nid].text
                 self.streams[nid].status = "done"
@@ -286,6 +299,16 @@ class ConnectionHandler:
                         {"pid": p.pid, "command": p.command, "ports": p.ports}
                         for p in procs
                     ]
+                else:
+                    # No running processes — remove ephemeral worktree
+                    try:
+                        node = await get_node(nid)
+                        if node:
+                            tree = await get_tree(node.tree_id)
+                            if tree:
+                                await remove_worktree(tree.id, tree.root_node_id, nid)
+                    except Exception:
+                        log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
                 await self.send(WS.DONE, **done_payload)
 
         except Exception as e:
@@ -296,6 +319,18 @@ class ConnectionHandler:
             await self.orch.fail_chat(nid)
             await bus.emit(STREAM_ERROR, node_id=nid, error=str(e))
             await self.send(WS.ERROR, node_id=nid, error=str(e))
+            # Try to remove ephemeral worktree on error
+            try:
+                node = await get_node(nid)
+                if node:
+                    tree = await get_tree(node.tree_id)
+                    if tree:
+                        ws_path = resolve_workspace(tree.id, tree.root_node_id, nid)
+                        procs = list_processes(ws_path) if ws_path.exists() else []
+                        if not procs:
+                            await remove_worktree(tree.id, tree.root_node_id, nid)
+            except Exception:
+                log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
 
         finally:
             clear_sandbox()
@@ -435,10 +470,12 @@ class ConnectionHandler:
             await self.send(WS.ERROR, error="Tree not found")
             return
         ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
-        if not ws_path.exists():
-            await self.send(WS.NODE_FILES, node_id=node_id, files=[])
-            return
-        files = await list_files(ws_path)
+        if ws_path.exists():
+            files = await list_files(ws_path)
+        elif node.git_commit:
+            files = await list_files_from_commit(tree.id, tree.root_node_id, node.git_commit)
+        else:
+            files = []
         await self.send(WS.NODE_FILES, node_id=node_id, files=files)
 
     async def handle_get_node_diff(self, data: dict):
@@ -452,15 +489,17 @@ class ConnectionHandler:
             await self.send(WS.ERROR, error="Tree not found")
             return
         ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
-        if not ws_path.exists():
-            await self.send(WS.NODE_DIFF, node_id=node_id, diff="")
-            return
         parent_commit = None
         if node.parent_id:
             parent_node = await get_node(node.parent_id)
             if parent_node:
                 parent_commit = parent_node.git_commit
-        diff = await get_diff(ws_path, parent_commit)
+        if ws_path.exists():
+            diff = await get_diff(ws_path, parent_commit)
+        elif node.git_commit:
+            diff = await get_diff_from_commits(tree.id, tree.root_node_id, parent_commit, node.git_commit)
+        else:
+            diff = ""
         await self.send(WS.NODE_DIFF, node_id=node_id, diff=diff)
 
     async def handle_get_file_content(self, data: dict):
@@ -476,7 +515,12 @@ class ConnectionHandler:
             return
         ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
         try:
-            content = read_file(ws_path, file_path)
+            if ws_path.exists():
+                content = read_file(ws_path, file_path)
+            elif node.git_commit:
+                content = await read_file_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+            else:
+                raise FileNotFoundError(f"No worktree or commit for node {node_id}")
             await self.send(WS.FILE_CONTENT, node_id=node_id, file_path=file_path, content=content)
         except Exception as e:
             await self.send(WS.ERROR, error=f"Cannot read file: {e}")
