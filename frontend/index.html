@@ -811,6 +811,9 @@
     .chat-input button:disabled { opacity: 0.3; cursor: default; filter: none; }
 
 
+    /* ── Smooth node repositioning ─────────────────────────────── */
+    .react-flow__node { transition: transform 0.18s ease-out; }
+
     /* ── Animations ─────────────────────────────────────────────── */
     @keyframes msg-in {
       from { opacity: 0; transform: translateY(4px); }

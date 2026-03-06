@@ -133,6 +133,7 @@ function CanvasInner() {
   const measuredRef = useRef<Record<string, { width: number; height: number }>>({});
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [ready, setReady] = useState(false);
+  const didFitRef = useRef(false);
   const prevPositionsRef = useRef<Record<string, { x: number; y: number }>>({});
 
   const heightTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
@@ -156,10 +157,12 @@ function CanvasInner() {
       setLayoutVersion((v) => v + 1);
       setReady(true);
     } else if (heightChanged) {
+      // Height-only changes (e.g. textarea resize) use a longer debounce
+      // since CSS transitions smooth out the position shifts
       clearTimeout(heightTimerRef.current);
       heightTimerRef.current = setTimeout(() => {
         setLayoutVersion((v) => v + 1);
-      }, 200);
+      }, 500);
     }
   }, []);
 
@@ -191,6 +194,15 @@ function CanvasInner() {
   }
   prevPositionsRef.current = newPositions;
 
+  // Fit view once after initial layout is ready (not on every update)
+  if (ready && !didFitRef.current) {
+    didFitRef.current = true;
+    // Schedule after this render so ReactFlow has the nodes
+    requestAnimationFrame(() => {
+      reactFlowInstance.fitView({ duration: 0 });
+    });
+  }
+
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;
   }
@@ -202,7 +214,6 @@ function CanvasInner() {
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onPaneClick={() => actions.selectNode(null)}
-      fitView
       minZoom={0.3}
       maxZoom={2}
       zoomOnScroll={true}
