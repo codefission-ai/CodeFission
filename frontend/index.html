@@ -283,14 +283,14 @@
       cursor: default;
     }
     .tree-node:hover { background: var(--bg-hover); border-color: var(--text-muted); box-shadow: var(--shadow-md); }
-    .tree-node.selected { border-color: var(--accent); background: var(--accent-dim); color: var(--text-primary); }
+    .tree-node.selected { border-color: var(--accent); background: #e0e4ee; color: var(--text-primary); }
     .tree-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Root node */
     .tree-node.tree-node-root:hover { background: var(--bg-raised); border-color: var(--border-visible); }
-    .tree-node.tree-node-root.selected { border-color: var(--accent); background: var(--accent-dim); }
-    .tree-node.tree-node-root.selected:hover { background: var(--accent-dim); border-color: var(--accent); }
+    .tree-node.tree-node-root.selected { border-color: var(--accent); background: #e0e4ee; }
+    .tree-node.tree-node-root.selected:hover { background: #e0e4ee; border-color: var(--accent); }
     .tree-node-root-active {
       flex-direction: column;
       align-items: stretch;
