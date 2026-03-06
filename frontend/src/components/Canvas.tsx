@@ -5,9 +5,12 @@ import {
   Background,
   BackgroundVariant,
   useReactFlow,
+  useInternalNode,
+  BaseEdge,
   MarkerType,
   type Node,
   type Edge,
+  type EdgeProps,
   type NodeChange,
   type NodeDimensionChange,
   PanOnScrollMode,
@@ -17,7 +20,43 @@ import TreeNode from "./TreeNode";
 import { useStore, actions, type CNode } from "../store";
 import { layoutTree } from "../layout";
 
+function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
+  const sourceNode = useInternalNode(source);
+  const targetNode = useInternalNode(target);
+  if (!sourceNode || !targetNode) return null;
+
+  const sw = sourceNode.measured?.width ?? 0;
+  const sh = sourceNode.measured?.height ?? 0;
+  const tw = targetNode.measured?.width ?? 0;
+  const th = targetNode.measured?.height ?? 0;
+
+  // Node centers
+  const sx = (sourceNode.internals?.positionAbsolute?.x ?? 0) + sw / 2;
+  const sy = (sourceNode.internals?.positionAbsolute?.y ?? 0) + sh / 2;
+  const tx = (targetNode.internals?.positionAbsolute?.x ?? 0) + tw / 2;
+  const ty = (targetNode.internals?.positionAbsolute?.y ?? 0) + th / 2;
+
+  const dx = tx - sx;
+  const dy = ty - sy;
+  if (dx === 0 && dy === 0) return null;
+
+  // Intersection with source rectangle edge
+  const sT = Math.min(
+    dx !== 0 ? (sw / 2) / Math.abs(dx) : Infinity,
+    dy !== 0 ? (sh / 2) / Math.abs(dy) : Infinity,
+  );
+  // Intersection with target rectangle edge
+  const tT = Math.min(
+    dx !== 0 ? (tw / 2) / Math.abs(dx) : Infinity,
+    dy !== 0 ? (th / 2) / Math.abs(dy) : Infinity,
+  );
+
+  const path = `M ${sx + dx * sT} ${sy + dy * sT} L ${tx - dx * tT} ${ty - dy * tT}`;
+  return <BaseEdge path={path} markerEnd={markerEnd} />;
+}
+
 const nodeTypes = { tree: TreeNode };
+const edgeTypes = { quote: QuoteEdge };
 
 function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null): Set<string> {
   const edgeIds = new Set<string>();
@@ -122,7 +161,7 @@ function buildFlow(
         id: `quote-${qid}-${n.id}`,
         source: qid,
         target: n.id,
-        type: "default",
+        type: "quote",
         className: "quote-edge",
         markerEnd: {
           type: MarkerType.ArrowClosed,
@@ -232,6 +271,7 @@ function CanvasInner() {
       nodes={flowNodes}
       edges={flowEdges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onPaneClick={() => actions.selectNode(null)}
       fitView={!ready}
