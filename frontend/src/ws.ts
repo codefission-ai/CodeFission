@@ -135,6 +135,7 @@ function handle(data: any) {
       actions.setNodeStatus(data.node_id, "active");
       actions.setStreaming(data.node_id, true);
       actions.setExpanded(data.node_id, true);
+      actions.selectNode(data.node_id);
       break;
     case WS.CHUNK:
       actions.appendChunk(data.node_id, data.text);
