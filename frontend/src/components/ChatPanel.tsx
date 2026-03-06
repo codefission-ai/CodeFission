@@ -1,8 +1,33 @@
-import { useState, useRef, useEffect, useMemo } from "react";
-import { useStore } from "../store";
+import { useState, useRef, useEffect, useMemo, memo } from "react";
+import { useStore, type CNode } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
+
+// Memoized message bubble — only re-renders when its text changes
+const MessageBubble = memo(function MessageBubble({
+  role, text, fromId, selectedId, label,
+}: {
+  role: string; text: string; fromId: string; selectedId: string; label: string;
+}) {
+  const html = useMemo(() => role === "assistant" ? renderMarkdown(text, fromId) : "", [text, fromId, role]);
+
+  return (
+    <div className={`msg ${role}`}>
+      <div className="msg-role">
+        {role === "user" ? "You" : "Assistant"}
+        {fromId !== selectedId && (
+          <span className="msg-from"> · {label || fromId}</span>
+        )}
+      </div>
+      {role === "assistant" ? (
+        <div className="msg-text" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        <div className="msg-text">{text}</div>
+      )}
+    </div>
+  );
+});
 
 export default function ChatPanel() {
   const selectedId = useStore((s) => s.selectedNodeId);
@@ -20,11 +45,11 @@ export default function ChatPanel() {
   // Walk root → selected, collect messages
   const messages = useMemo(() => {
     if (!node) return [];
-    const path: typeof node[] = [];
-    let cur = node;
+    const path: CNode[] = [];
+    let cur: CNode | undefined = node;
     while (cur) {
       path.push(cur);
-      cur = cur.parent_id ? nodes[cur.parent_id] : undefined!;
+      cur = cur.parent_id ? nodes[cur.parent_id] : undefined;
     }
     path.reverse();
     const msgs: { role: string; text: string; fromId: string }[] = [];
@@ -35,9 +60,11 @@ export default function ChatPanel() {
     return msgs;
   }, [node, nodes]);
 
+  // Only auto-scroll when new messages appear or streaming starts, not on every chunk
+  const scrollTrigger = messages.length + (isStreaming ? 1 : 0);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, node?.assistant_response, activeToolCalls.length]);
+  }, [scrollTrigger]);
 
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
@@ -60,23 +87,15 @@ export default function ChatPanel() {
         {messages.length === 0 && !isStreaming && (
           <div className="chat-placeholder">Send a message to start.</div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`msg ${m.role}`}>
-            <div className="msg-role">
-              {m.role === "user" ? "You" : "Assistant"}
-              {m.fromId !== selectedId && (
-                <span className="msg-from"> · {nodes[m.fromId]?.label || m.fromId}</span>
-              )}
-            </div>
-            {m.role === "assistant" ? (
-              <div
-                className="msg-text"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text, m.fromId) }}
-              />
-            ) : (
-              <div className="msg-text">{m.text}</div>
-            )}
-          </div>
+        {messages.map((m) => (
+          <MessageBubble
+            key={`${m.fromId}-${m.role}`}
+            role={m.role}
+            text={m.text}
+            fromId={m.fromId}
+            selectedId={selectedId!}
+            label={nodes[m.fromId]?.label || m.fromId}
+          />
         ))}
 
         {/* Active tool calls during streaming */}
