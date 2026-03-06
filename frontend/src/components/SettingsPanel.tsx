@@ -8,6 +8,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
   const [maxTurns, setMaxTurns] = useState(String(defaults.max_turns));
   const [authMode, setAuthMode] = useState(defaults.auth_mode);
   const [apiKey, setApiKey] = useState(defaults.api_key);
+  const [sandbox, setSandbox] = useState(defaults.sandbox);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
     setMaxTurns(String(defaults.max_turns));
     setAuthMode(defaults.auth_mode);
     setApiKey(defaults.api_key);
+    setSandbox(defaults.sandbox);
   }, [defaults]);
 
   const currentProvider = providers.find((p) => p.id === provider);
@@ -40,6 +42,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       default_max_turns: parseInt(maxTurns) || 25,
       auth_mode: authMode,
       api_key: apiKey,
+      sandbox,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
@@ -93,6 +96,16 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
           />
         </>
       )}
+
+      <label className="settings-label settings-checkbox-label">
+        <input
+          type="checkbox"
+          checked={sandbox}
+          onChange={(e) => setSandbox(e.target.checked)}
+        />
+        Sandbox (restrict file writes to workspace)
+      </label>
+      <p className="settings-hint">When enabled, uses Landlock (Linux) to prevent the agent from writing files outside its workspace directory.</p>
 
       <button className="settings-save-btn" onClick={handleSave}>
         {saved ? "Saved" : "Save Global Settings"}

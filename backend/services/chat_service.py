@@ -103,11 +103,16 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
     if tree and workspace:
         parts.append("\n\n## Workspace")
         parts.append(f"\nYour working directory is: {workspace}")
-        parts.append(f"\nYou MUST NOT write files outside this directory.")
-        parts.append(f"\nYou may read files anywhere on the system for reference.")
+        parts.append(
+            "\n\n### STRICT FILESYSTEM RULES"
+            "\n- ONLY write, create, modify, or delete files inside your working directory shown above."
+            "\n- NEVER write to the user's home directory, other projects, /etc, or any path outside your workspace."
+            "\n- NEVER run `rm`, `mv`, `cp`, `touch`, `tee`, `>`, or any write operation on paths outside your workspace."
+            "\n- You may READ files anywhere on the system for reference (e.g., to inspect dependencies or configs)."
+            "\n- If a task requires writing outside your workspace, explain what's needed and let the user do it."
+        )
         if tree.repo_source:
             parts.append(f"\nThis project was cloned from: {tree.repo_source}")
-            parts.append(f"\nYou can read files in {tree.repo_source} for reference, but write only in your working directory.")
         if tree.repo_mode == "new":
             parts.append("\nThis is a fresh empty repository — create any files needed from scratch.")
 

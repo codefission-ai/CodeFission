@@ -41,6 +41,7 @@ export interface GlobalDefaults {
   max_turns: number;
   auth_mode: string;
   api_key: string;
+  sandbox: boolean;
 }
 
 export interface ToolCall {
@@ -124,7 +125,7 @@ export const useStore = create<Store>(() => ({
   nodeProcesses: {},
   filesPanel: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "" },
+  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
   providers: [],
 }));
 

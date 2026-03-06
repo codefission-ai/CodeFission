@@ -150,8 +150,9 @@ class ConnectionHandler:
             ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id)
             nid = ctx.node_id
 
-            # Sandbox: restrict subprocess writes to this tree's workspace
-            set_sandbox(default_writable_paths(str(ctx.workspace.parent)))
+            # Sandbox: optionally restrict subprocess writes to this tree's workspace
+            if ctx.sandbox:
+                set_sandbox(default_writable_paths(str(ctx.workspace.parent)))
 
             # Notify client of new node
             created_payload = {"node": ctx.node.model_dump()}
@@ -384,10 +385,13 @@ class ConnectionHandler:
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
     async def handle_update_global_settings(self, data: dict):
-        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key"):
+        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key", "sandbox"):
             if key in data:
                 val = data[key]
-                await set_setting(key, str(val) if val is not None and val != "" else None)
+                if key == "sandbox":
+                    await set_setting(key, "true" if val else None)
+                else:
+                    await set_setting(key, str(val) if val is not None and val != "" else None)
         defaults = await get_global_defaults()
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 

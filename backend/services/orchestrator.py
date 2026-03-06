@@ -51,6 +51,7 @@ class ChatContext:
     auth_mode: str
     api_key: str
     after_id: str | None = None
+    sandbox: bool = False
 
 
 @dataclass
@@ -224,6 +225,10 @@ class Orchestrator:
 
         child = await get_node(nid)
 
+        # Sandbox is opt-in via global setting
+        from services.tree_service import get_setting
+        sandbox_enabled = (await get_setting("sandbox")) == "true"
+
         return ChatContext(
             node_id=nid,
             node=child,
@@ -235,6 +240,7 @@ class Orchestrator:
             auth_mode=global_cfg["auth_mode"],
             api_key=global_cfg["api_key"],
             after_id=after_id,
+            sandbox=sandbox_enabled,
         )
 
     async def complete_chat(

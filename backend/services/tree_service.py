@@ -234,12 +234,14 @@ async def get_global_defaults() -> dict:
     max_turns = int(max_turns_raw) if max_turns_raw else 25
     auth_mode = await get_setting("auth_mode") or (p.default_auth_mode if p else "cli")
     api_key = await get_setting("api_key") or ""
+    sandbox = (await get_setting("sandbox")) == "true"
     return {
         "provider": provider,
         "model": model,
         "max_turns": max_turns,
         "auth_mode": auth_mode,
         "api_key": api_key,
+        "sandbox": sandbox,
     }
 
 
