@@ -64,6 +64,15 @@ export interface ProcessInfo {
   ports: number[];
 }
 
+export interface FileQuote {
+  id: string;
+  nodeId: string;
+  type: "file" | "folder" | "diff";
+  path?: string;
+  content?: string;
+  label: string;
+}
+
 export interface FilesPanel {
   nodeId: string;
   tab: "files" | "diff";
@@ -85,7 +94,7 @@ interface Store {
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
-  pendingQuotes: string[];
+  pendingQuotes: FileQuote[];
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
   providers: ProviderInfo[];
@@ -303,15 +312,20 @@ export const actions = {
     ),
 
   // ── Quote ────────────────────────────────────────────────────
-  addQuote: (nodeId: string) =>
+  addFileQuote: (q: FileQuote) =>
+    useStore.setState((s) => {
+      // Prevent duplicate file/folder quotes (same node + type + path)
+      if (q.type !== "diff") {
+        const dup = s.pendingQuotes.some(
+          (p) => p.nodeId === q.nodeId && p.type === q.type && p.path === q.path,
+        );
+        if (dup) return {};
+      }
+      return { pendingQuotes: [...s.pendingQuotes, q] };
+    }),
+  removeFileQuote: (id: string) =>
     useStore.setState((s) => ({
-      pendingQuotes: s.pendingQuotes.includes(nodeId)
-        ? s.pendingQuotes
-        : [...s.pendingQuotes, nodeId],
-    })),
-  removeQuote: (nodeId: string) =>
-    useStore.setState((s) => ({
-      pendingQuotes: s.pendingQuotes.filter((id) => id !== nodeId),
+      pendingQuotes: s.pendingQuotes.filter((q) => q.id !== id),
     })),
 
   // ── Settings ─────────────────────────────────────────────────

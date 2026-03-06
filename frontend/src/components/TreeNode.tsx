@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -173,7 +173,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const pendingQuotes = useStore((s) => s.pendingQuotes);
-  const allNodes = useStore((s) => s.nodes);
   const selectedHasInput = useStore((s) => {
     if (!s.selectedNodeId) return false;
     const sel = s.nodes[s.selectedNodeId];
@@ -184,7 +183,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     return !!s.expandedNodes[s.selectedNodeId] && !s.streaming[s.selectedNodeId];
   });
   const selected = selectedId === node.id;
-  const isQuoted = pendingQuotes.includes(node.id);
+  const quotesFromThis = pendingQuotes.filter((q) => q.nodeId === node.id).length;
   const canShowQuote = selectedHasInput && !selected && isExpanded;
   const isRoot = !node.parent_id;
   const [input, setInput] = useState("");
@@ -227,7 +226,14 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     if (!input.trim() || isStreaming) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content: input.trim() };
     const quotes = useStore.getState().pendingQuotes;
-    if (quotes.length > 0) msg.quoted_node_ids = quotes;
+    if (quotes.length > 0) {
+      msg.file_quotes = quotes.map((q: FileQuote) => ({
+        node_id: q.nodeId,
+        type: q.type,
+        ...(q.path ? { path: q.path } : {}),
+        ...(q.content ? { content: q.content } : {}),
+      }));
+    }
     send(msg);
     setInput("");
   }, [input, isStreaming, node.id]);
@@ -252,14 +258,14 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
         <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
         {pendingQuotes.length > 0 && selected && (
           <div className="quote-chips">
-            {pendingQuotes.map((qid) => (
-              <span key={qid} className="quote-chip">
-                <span className="quote-chip-label">{allNodes[qid]?.label || qid}</span>
+            {pendingQuotes.map((q) => (
+              <span key={q.id} className="quote-chip">
+                <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={(e) => { e.stopPropagation(); actions.removeQuote(qid); }}
+                  onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
                   onMouseDown={(e) => e.preventDefault()}
-                >×</button>
+                >&times;</button>
               </span>
             ))}
           </div>
@@ -279,6 +285,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           placeholder="Type a message..."
           rows={1}
         />
+        <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
       </div>
     );
   }
@@ -318,16 +325,16 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           {/* Quote button: hover to quote this node into your message */}
           {canShowQuote && (
             <button
-              className={`quote-btn ${isQuoted ? "quoted" : ""}`}
+              className={`quote-btn ${quotesFromThis > 0 ? "quoted" : ""}`}
               onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
               onClick={(e) => {
                 e.stopPropagation();
                 e.nativeEvent.stopImmediatePropagation();
-                if (isQuoted) actions.removeQuote(node.id);
-                else actions.addQuote(node.id);
+                actions.openFilesPanel(node.id);
+                send({ type: WS.GET_NODE_FILES, node_id: node.id });
               }}
             >
-              {isQuoted ? "Quoted ✓" : "Quote"}
+              {quotesFromThis > 0 ? `Quoted (${quotesFromThis})` : "Quote"}
             </button>
           )}
           {isRoot && tree && (
@@ -403,14 +410,14 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
             <>
               {pendingQuotes.length > 0 && (
                 <div className="quote-chips">
-                  {pendingQuotes.map((qid) => (
-                    <span key={qid} className="quote-chip">
-                      <span className="quote-chip-label">{allNodes[qid]?.label || qid}</span>
+                  {pendingQuotes.map((q) => (
+                    <span key={q.id} className="quote-chip">
+                      <span className="quote-chip-label">{q.label}</span>
                       <button
                         className="quote-chip-remove"
-                        onClick={(e) => { e.stopPropagation(); actions.removeQuote(qid); }}
+                        onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
                         onMouseDown={(e) => e.preventDefault()}
-                      >×</button>
+                      >&times;</button>
                     </span>
                   ))}
                 </div>
@@ -467,6 +474,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           onQuoteText={(text) => setInput((prev) => prev + (prev ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n")}
         />
       )}
+      <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
     </div>
   );
 }

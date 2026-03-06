@@ -43,7 +43,14 @@ export default function ChatPanel() {
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content: input.trim() };
-    if (pendingQuotes.length > 0) msg.quoted_node_ids = pendingQuotes;
+    if (pendingQuotes.length > 0) {
+      msg.file_quotes = pendingQuotes.map((q) => ({
+        node_id: q.nodeId,
+        type: q.type,
+        ...(q.path ? { path: q.path } : {}),
+        ...(q.content ? { content: q.content } : {}),
+      }));
+    }
     send(msg);
     setInput("");
   };
@@ -105,14 +112,14 @@ export default function ChatPanel() {
       <div className="chat-input">
         {pendingQuotes.length > 0 && (
           <div className="quote-chips chat-quote-chips">
-            {pendingQuotes.map((qid) => (
-              <span key={qid} className="quote-chip">
-                <span className="quote-chip-label">{nodes[qid]?.label || qid}</span>
+            {pendingQuotes.map((q) => (
+              <span key={q.id} className="quote-chip">
+                <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={() => actions.removeQuote(qid)}
+                  onClick={() => actions.removeFileQuote(q.id)}
                   onMouseDown={(e) => e.preventDefault()}
-                >×</button>
+                >&times;</button>
               </span>
             ))}
           </div>

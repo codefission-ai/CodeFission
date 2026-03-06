@@ -274,7 +274,17 @@
       color: var(--text-secondary);
       box-shadow: var(--shadow-sm);
       transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, max-height 0.35s ease;
+      position: relative;
     }
+    .tree-node-worktree-id {
+      display: none;
+      position: absolute;
+      bottom: 2px; right: 6px;
+      font-size: 9px; color: var(--text-muted);
+      opacity: 0.7; pointer-events: none;
+      white-space: nowrap; font-family: monospace;
+    }
+    .tree-node:hover .tree-node-worktree-id { display: block; }
     .tree-node.tree-node-root {
       flex-direction: column;
       align-items: stretch;
@@ -1063,6 +1073,63 @@
     }
     .selection-quote-btn:hover { background: #505060; }
 
+    /* ── Quote Browser modal ─────────────────────────────────── */
+    .qb-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+    }
+    .qb-modal {
+      background: var(--bg-base); border: 1px solid var(--border-dim); border-radius: var(--radius-md);
+      width: 700px; max-width: 92vw; max-height: 80vh; display: flex; flex-direction: column;
+      box-shadow: var(--shadow-lg);
+    }
+    .qb-header {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      border-bottom: 1px solid var(--border-dim);
+    }
+    .qb-tabs { display: flex; gap: 4px; }
+    .qb-tab {
+      background: none; border: 1px solid var(--border-dim); border-radius: var(--radius-sm);
+      color: var(--text-muted); padding: 3px 12px; cursor: pointer; font-size: 12px;
+    }
+    .qb-tab.active { background: var(--bg-raised); color: var(--text-primary); border-color: var(--border-visible); }
+    .qb-title { flex: 1; font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .qb-close {
+      background: none; border: none; color: var(--text-muted); font-size: 20px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+    }
+    .qb-close:hover { color: var(--text-primary); }
+    .qb-body { flex: 1; overflow-y: auto; min-height: 200px; }
+    .qb-files { padding: 6px 0; }
+    .qb-item {
+      display: flex; align-items: center; gap: 6px; padding: 3px 8px;
+      font-size: 12px; color: var(--text-primary); font-family: var(--font-mono);
+    }
+    .qb-item:hover { background: var(--bg-hover); }
+    .qb-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .qb-add-btn {
+      background: var(--accent); border: none; border-radius: var(--radius-sm);
+      color: #fff; padding: 2px 8px; cursor: pointer;
+      font-size: 11px; font-weight: 600; flex-shrink: 0;
+    }
+    .qb-add-btn:hover { background: #505060; }
+    .qb-diff { padding: 8px; }
+    .qb-diff-text {
+      font-size: 11px; font-family: var(--font-mono); line-height: 1.5;
+      white-space: pre-wrap; word-break: break-all; margin: 0;
+      color: var(--text-secondary); user-select: text;
+    }
+    .qb-diff-text ::selection { background: rgba(58, 58, 66, 0.3); }
+    .qb-line-add { color: #4ade80; }
+    .qb-line-del { color: #f87171; }
+    .qb-line-hunk { color: #60a5fa; }
+    .qb-quoted {
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px;
+      border-top: 1px solid var(--border-dim);
+    }
+    .qb-placeholder { padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+    .qb-hint { padding: 6px 12px; font-size: 11px; color: var(--text-muted); border-bottom: 1px solid var(--border-dim); }
+
     /* KaTeX overrides for dark theme */
     .katex { color: var(--text-primary); }
     .katex-display { margin: 12px 0; overflow-x: auto; }
@@ -1240,6 +1307,25 @@
     .filebrowser-dl-btn:hover { color: var(--accent); background: var(--accent-dim); }
     .filebrowser-file:hover .filebrowser-dl-btn,
     .filebrowser-dir:hover > .filebrowser-dl-btn { display: flex; }
+
+    /* Quote buttons in file tree */
+    .filebrowser-quote-btn {
+      display: none; flex-shrink: 0;
+      padding: 1px 6px; border-radius: 3px;
+      font-size: 10px; font-weight: 600;
+      background: var(--accent); color: #fff;
+      border: none; cursor: pointer;
+      line-height: 1.4;
+    }
+    .filebrowser-quote-btn:hover { background: #505060; }
+    .filebrowser-file:hover .filebrowser-quote-btn,
+    .filebrowser-dir:hover > .filebrowser-quote-btn { display: block; }
+
+    /* Diff hint */
+    .diff-hint {
+      font-size: 11px; color: var(--text-dim);
+      padding: 4px 12px; font-style: italic;
+    }
 
     .filebrowser-dl-all {
       display: flex; align-items: center; gap: 4px;

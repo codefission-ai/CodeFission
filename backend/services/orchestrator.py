@@ -153,40 +153,90 @@ class Orchestrator:
         root_node = await get_node(tree.root_node_id)
         return updated_tree, root_node
 
-    async def _build_quote_context(
+    async def _build_file_quote_context(
         self,
-        quoted_node_ids: list[str],
+        file_quotes: list[dict],
         tree: Tree,
         root_node_id: str | None,
     ) -> str:
-        """Build prompt context from quoted nodes."""
+        """Build prompt context from file-level quotes (files, folders, diff selections)."""
+        MAX_FILE_SIZE = 50_000  # 50KB per file
+        MAX_TOTAL = 200_000    # 200KB total
         parts = [
-            "[System: The user has referenced the following node(s) from other branches in this tree:\n"
+            "[System: The user has quoted specific content from other branches:\n"
         ]
-        for qid in quoted_node_ids:
-            qnode = await get_node(qid)
-            if not qnode:
-                continue
-            ws_path = resolve_workspace(tree.id, root_node_id, qnode.id)
-            parts.append(f'\n--- Quoted: "{qnode.label}" ---')
-            parts.append(f"\nWorkspace: {ws_path}")
-            if qnode.git_branch:
-                parts.append(f"\nGit branch: {qnode.git_branch}")
-            if qnode.git_commit:
-                parts.append(f"\nCommit: {qnode.git_commit}")
-            if qnode.user_message:
-                um = qnode.user_message
-                if len(um) > 1000:
-                    um = um[:1000] + "... [truncated]"
-                parts.append(f"\nUser's question: {um}")
-            if qnode.assistant_response:
-                resp = qnode.assistant_response
-                if len(resp) > 3000:
-                    resp = resp[:3000] + "... [truncated]"
-                parts.append(f"\nAssistant's response:\n{resp}")
-            parts.append("\n---\n")
+        total = 0
+        for fq in file_quotes:
+            nid = fq["node_id"]
+            qtype = fq["type"]
+            qnode = await get_node(nid)
+            ws_path = resolve_workspace(tree.id, root_node_id, nid)
+            node_label = qnode.label if qnode else nid[:8]
+
+            if qtype == "file":
+                fpath = fq.get("path", "")
+                selected_content = fq.get("content", "")
+                if selected_content:
+                    # Text selection within a file
+                    if total + len(selected_content) <= MAX_TOTAL:
+                        total += len(selected_content)
+                        parts.append(f'\n--- File selection: {fpath} (from "{node_label}") ---\n')
+                        parts.append(selected_content)
+                        parts.append("\n---\n")
+                else:
+                    # Full file quote
+                    full = ws_path / fpath
+                    if full.exists() and full.is_file():
+                        try:
+                            content = full.read_text(errors="replace")
+                            if len(content) > MAX_FILE_SIZE:
+                                content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
+                            if total + len(content) > MAX_TOTAL:
+                                parts.append(f'\n--- File: {fpath} (from "{node_label}") --- [skipped: size limit]\n')
+                                continue
+                            total += len(content)
+                            parts.append(f'\n--- File: {fpath} (from "{node_label}") ---\n')
+                            parts.append(content)
+                            parts.append("\n---\n")
+                        except Exception:
+                            pass
+
+            elif qtype == "folder":
+                folder = fq.get("path", "")
+                full_dir = ws_path / folder
+                if full_dir.exists() and full_dir.is_dir():
+                    parts.append(f'\n--- Folder: {folder}/ (from "{node_label}") ---\n')
+                    skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv"}
+                    for f in sorted(full_dir.rglob("*")):
+                        if not f.is_file():
+                            continue
+                        if any(sd in f.parts for sd in skip_dirs):
+                            continue
+                        rel = str(f.relative_to(ws_path))
+                        try:
+                            content = f.read_text(errors="replace")
+                            if len(content) > MAX_FILE_SIZE:
+                                content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
+                            if total + len(content) > MAX_TOTAL:
+                                parts.append(f"\n## {rel} [skipped: size limit]\n")
+                                break
+                            total += len(content)
+                            parts.append(f"\n## {rel}\n{content}\n")
+                        except Exception:
+                            pass
+                    parts.append("---\n")
+
+            elif qtype == "diff":
+                content = fq.get("content", "")
+                if content:
+                    if total + len(content) <= MAX_TOTAL:
+                        total += len(content)
+                        parts.append(f'\n--- Diff selection (from "{node_label}") ---\n')
+                        parts.append(content)
+                        parts.append("\n---\n")
+
         parts.append(
-            "\nUse this context to inform your response. "
+            "\nUse this quoted context to inform your response. "
             "The user's message follows.]\n\n"
         )
         return "".join(parts)
@@ -197,7 +247,7 @@ class Orchestrator:
         message: str,
         after_id: str | None = None,
         created_by: str = "human",
-        quoted_node_ids: list[str] | None = None,
+        file_quotes: list[dict] | None = None,
     ) -> ChatContext:
         """Create a child node and resolve everything needed to stream a chat.
 
@@ -218,6 +268,8 @@ class Orchestrator:
         # Save user message, set label and status
         label = message[:40]
         update_kwargs: dict = dict(user_message=message, label=label, status="active")
+        # Derive quoted_node_ids from file_quotes for DB storage (used for visual arrows)
+        quoted_node_ids = list(set(fq["node_id"] for fq in file_quotes)) if file_quotes else []
         if quoted_node_ids:
             update_kwargs["quoted_node_ids"] = quoted_node_ids
         await update_node(nid, **update_kwargs)
@@ -262,9 +314,9 @@ class Orchestrator:
                 + sdk_msg
             )
 
-        # If quoted nodes, prepend their context
-        if quoted_node_ids:
-            quote_ctx = await self._build_quote_context(quoted_node_ids, tree, tree.root_node_id)
+        # If file quotes, prepend their context (actual file contents, folder listings, diff)
+        if file_quotes:
+            quote_ctx = await self._build_file_quote_context(file_quotes, tree, tree.root_node_id)
             sdk_msg = quote_ctx + sdk_msg
 
         # Resolve effective settings

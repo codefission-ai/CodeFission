@@ -1,8 +1,10 @@
 import { useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useStore, actions } from "../store";
+import { useStore, actions, type FileQuote } from "../store";
 import { send, WS } from "../ws";
 import hljs from "highlight.js";
+
+let _fqId = 0;
 
 // ── File type detection ──────────────────────────────────────────────
 
@@ -112,25 +114,47 @@ function DownloadBtn({ href, title, className }: { href: string; title: string; 
   );
 }
 
-function FileTreeNode({ dir, selectedFile, onSelect, nodeId, depth }: {
+function QuoteBtn({ onClick, title }: { onClick: (e: React.MouseEvent) => void; title: string }) {
+  return (
+    <button className="filebrowser-quote-btn" onClick={onClick} title={title}>
+      Quote
+    </button>
+  );
+}
+
+function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth }: {
   dir: TreeDir;
   selectedFile: string | null;
   onSelect: (path: string) => void;
   nodeId: string;
+  nodeLabel: string;
   depth: number;
 }) {
+  const addQuote = useCallback((type: FileQuote["type"], path: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const label = `${path}${type === "folder" ? "/" : ""}`;
+    actions.addFileQuote({
+      id: `fq-${++_fqId}`,
+      nodeId,
+      type,
+      path,
+      label,
+    });
+  }, [nodeId, nodeLabel]);
+
   return (
     <>
       {dir.dirs.map((d) => (
         <div key={d.path}>
           <div className="filebrowser-dir" style={{ paddingLeft: depth * 12 + 8 }}>
             <span className="filebrowser-dir-name">{d.name}/</span>
+            <QuoteBtn onClick={(e) => addQuote("folder", d.path, e)} title={`Quote ${d.name}/`} />
             <DownloadBtn
               href={`/api/download-zip/${nodeId}?subpath=${encodeURIComponent(d.path)}`}
               title={`Download ${d.name}/ as zip`}
             />
           </div>
-          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} depth={depth + 1} />
+          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} nodeLabel={nodeLabel} depth={depth + 1} />
         </div>
       ))}
       {dir.files.map((f) => {
@@ -146,6 +170,7 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, depth }: {
           >
             {icon && <span className="filebrowser-file-icon">{icon}</span>}
             <span className="filebrowser-file-name">{name}</span>
+            <QuoteBtn onClick={(e) => addQuote("file", f, e)} title={`Quote ${name}`} />
             <DownloadBtn
               href={`/api/download/${nodeId}/${f}`}
               title={`Download ${name}`}
@@ -353,8 +378,75 @@ function DiffFileSection({ file, nodeId }: { file: DiffFile; nodeId: string | un
   );
 }
 
-function DiffViewer({ diff, nodeId }: { diff: string | undefined; nodeId: string | undefined }) {
+function DiffViewer({ diff, nodeId, nodeLabel }: { diff: string | undefined; nodeId: string | undefined; nodeLabel: string }) {
   const files = useMemo(() => diff ? parseDiff(diff) : [], [diff]);
+  const diffContainerRef = useRef<HTMLDivElement>(null);
+
+  // DOM-based text selection quoting
+  useEffect(() => {
+    const el = diffContainerRef.current;
+    if (!el || !diff || !nodeId) return;
+
+    const btn = document.createElement("button");
+    btn.className = "selection-quote-btn";
+    btn.textContent = "Quote";
+    btn.style.display = "none";
+    document.body.appendChild(btn);
+
+    let selectedText = "";
+    const hideBtn = () => { btn.style.display = "none"; };
+
+    const onMouseUp = () => {
+      const sel = window.getSelection();
+      const text = sel?.toString().trim();
+      if (!text || !sel?.rangeCount) { hideBtn(); return; }
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+      selectedText = text;
+      const rect = range.getBoundingClientRect();
+      btn.style.left = `${rect.left + rect.width / 2}px`;
+      btn.style.top = `${rect.top - 4}px`;
+      btn.style.display = "";
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (btn.contains(e.target as Node)) return;
+      hideBtn();
+    };
+
+    const onBtnMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onBtnClick = (e: MouseEvent) => {
+      e.stopPropagation();
+      if (selectedText && nodeId) {
+        actions.addFileQuote({
+          id: `fq-${++_fqId}`,
+          nodeId,
+          type: "diff",
+          content: selectedText,
+          label: `diff selection`,
+        });
+      }
+      hideBtn();
+      window.getSelection()?.removeAllRanges();
+    };
+
+    el.addEventListener("mouseup", onMouseUp);
+    el.addEventListener("mousedown", onMouseDown);
+    btn.addEventListener("mousedown", onBtnMouseDown);
+    btn.addEventListener("click", onBtnClick);
+
+    return () => {
+      el.removeEventListener("mouseup", onMouseUp);
+      el.removeEventListener("mousedown", onMouseDown);
+      btn.removeEventListener("mousedown", onBtnMouseDown);
+      btn.removeEventListener("click", onBtnClick);
+      btn.remove();
+    };
+  }, [diff, nodeId, nodeLabel]);
 
   if (diff === undefined) return <div className="filebrowser-placeholder">Loading diff...</div>;
   if (diff === "") return <div className="filebrowser-placeholder">No changes</div>;
@@ -367,7 +459,8 @@ function DiffViewer({ diff, nodeId }: { diff: string | undefined; nodeId: string
   const renCount = files.filter(f => f.status === "renamed").length;
 
   return (
-    <div className="diff-viewer">
+    <div className="diff-viewer" ref={diffContainerRef}>
+      <div className="diff-hint">Select text and click Quote to add a diff selection</div>
       <div className="diff-summary">
         <span>{files.length} file{files.length !== 1 ? "s" : ""} changed</span>
         {totalAdd > 0 && <span className="diff-stat-add"> +{totalAdd}</span>}
@@ -384,13 +477,82 @@ function DiffViewer({ diff, nodeId }: { diff: string | undefined; nodeId: string
 
 // ── Content viewer ───────────────────────────────────────────────────
 
-function ContentViewer({ nodeId, filePath, content }: {
+function ContentViewer({ nodeId, filePath, content, nodeLabel }: {
   nodeId: string;
   filePath: string;
   content: string | undefined;
+  nodeLabel: string;
 }) {
   const kind = fileKind(filePath);
   const rawUrl = `/api/files/${nodeId}/${filePath}`;
+  const codeRef = useRef<HTMLDivElement>(null);
+
+  // DOM-based text selection quoting for text files
+  useEffect(() => {
+    const el = codeRef.current;
+    if (!el || !content) return;
+
+    const btn = document.createElement("button");
+    btn.className = "selection-quote-btn";
+    btn.textContent = "Quote";
+    btn.style.display = "none";
+    document.body.appendChild(btn);
+
+    let selectedText = "";
+    const hideBtn = () => { btn.style.display = "none"; };
+
+    const onMouseUp = () => {
+      const sel = window.getSelection();
+      const text = sel?.toString().trim();
+      if (!text || !sel?.rangeCount) { hideBtn(); return; }
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+      selectedText = text;
+      const rect = range.getBoundingClientRect();
+      btn.style.left = `${rect.left + rect.width / 2}px`;
+      btn.style.top = `${rect.top - 4}px`;
+      btn.style.display = "";
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (btn.contains(e.target as Node)) return;
+      hideBtn();
+    };
+
+    const onBtnMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onBtnClick = (e: MouseEvent) => {
+      e.stopPropagation();
+      if (selectedText) {
+        actions.addFileQuote({
+          id: `fq-${++_fqId}`,
+          nodeId,
+          type: "file",
+          path: filePath,
+          content: selectedText,
+          label: `${filePath} (selection)`,
+        });
+      }
+      hideBtn();
+      window.getSelection()?.removeAllRanges();
+    };
+
+    el.addEventListener("mouseup", onMouseUp);
+    el.addEventListener("mousedown", onMouseDown);
+    btn.addEventListener("mousedown", onBtnMouseDown);
+    btn.addEventListener("click", onBtnClick);
+
+    return () => {
+      el.removeEventListener("mouseup", onMouseUp);
+      el.removeEventListener("mousedown", onMouseDown);
+      btn.removeEventListener("mousedown", onBtnMouseDown);
+      btn.removeEventListener("click", onBtnClick);
+      btn.remove();
+    };
+  }, [content, nodeId, filePath, nodeLabel]);
 
   if (kind === "image") {
     return (
@@ -429,7 +591,7 @@ function ContentViewer({ nodeId, filePath, content }: {
   const lines = highlighted.split("\n");
 
   return (
-    <div className="filebrowser-code-wrap">
+    <div className="filebrowser-code-wrap" ref={codeRef}>
       <pre className="filebrowser-code">
         <code dangerouslySetInnerHTML={{
           __html: lines.map((line, i) =>
@@ -547,7 +709,7 @@ export default function FilesPanel() {
                 {files.length === 0 ? (
                   <div className="filebrowser-placeholder">No files</div>
                 ) : (
-                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} nodeId={nodeId!} depth={0} />
+                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} nodeId={nodeId!} nodeLabel={node?.label || "node"} depth={0} />
                 )}
               </div>
               {/* Content area */}
@@ -567,7 +729,7 @@ export default function FilesPanel() {
                         </svg>
                       </a>
                     </div>
-                    <ContentViewer nodeId={nodeId!} filePath={selectedFile} content={content} />
+                    <ContentViewer nodeId={nodeId!} filePath={selectedFile} content={content} nodeLabel={node?.label || "node"} />
                   </>
                 ) : (
                   <div className="filebrowser-placeholder">
@@ -579,7 +741,7 @@ export default function FilesPanel() {
           )}
           {tab === "diff" && (
             <div className="filebrowser-content">
-              <DiffViewer diff={diff} nodeId={nodeId} />
+              <DiffViewer diff={diff} nodeId={nodeId} nodeLabel={node?.label || "node"} />
             </div>
           )}
         </div>
