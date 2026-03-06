@@ -21,6 +21,7 @@ from services.workspace_service import (
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
 from services.orchestrator import Orchestrator
+from services.sandbox import set_sandbox, clear_sandbox, default_writable_paths
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +149,9 @@ class ConnectionHandler:
             # Prepare chat: create child node, resolve workspace/session/settings
             ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id)
             nid = ctx.node_id
+
+            # Sandbox: restrict subprocess writes to this tree's workspace
+            set_sandbox(default_writable_paths(str(ctx.workspace.parent)))
 
             # Notify client of new node
             created_payload = {"node": ctx.node.model_dump()}
@@ -292,6 +296,7 @@ class ConnectionHandler:
             await self.send(WS.ERROR, node_id=nid, error=str(e))
 
         finally:
+            clear_sandbox()
             self.streams.pop(nid, None)
             self.tasks.pop(nid, None)
             self.sdk_pids.pop(nid, None)

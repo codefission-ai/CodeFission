@@ -34,6 +34,8 @@ async def startup():
     loop = asyncio.get_running_loop()
     loop.set_exception_handler(_silence_asyncgen_gc)
     await init_db()
+    from services.sandbox import install_hook
+    install_hook()
 
 
 @app.on_event("shutdown")
