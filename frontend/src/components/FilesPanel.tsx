@@ -122,25 +122,31 @@ function QuoteBtn({ onClick, title }: { onClick: (e: React.MouseEvent) => void; 
   );
 }
 
-function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth }: {
+function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth, isSelfQuote }: {
   dir: TreeDir;
   selectedFile: string | null;
   onSelect: (path: string) => void;
   nodeId: string;
   nodeLabel: string;
   depth: number;
+  isSelfQuote: boolean;
 }) {
   const addQuote = useCallback((type: FileQuote["type"], path: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const label = `${path}${type === "folder" ? "/" : ""}`;
-    actions.addFileQuote({
-      id: `fq-${++_fqId}`,
-      nodeId,
-      type,
-      path,
-      label,
-    });
-  }, [nodeId, nodeLabel]);
+    if (isSelfQuote) {
+      const prefix = type === "folder" ? "Folder" : "File";
+      actions.appendToInput(`${prefix}: ${path}${type === "folder" ? "/" : ""}`);
+    } else {
+      const label = `${path}${type === "folder" ? "/" : ""}`;
+      actions.addFileQuote({
+        id: `fq-${++_fqId}`,
+        nodeId,
+        type,
+        path,
+        label,
+      });
+    }
+  }, [nodeId, nodeLabel, isSelfQuote]);
 
   return (
     <>
@@ -154,7 +160,7 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth }:
               title={`Download ${d.name}/ as zip`}
             />
           </div>
-          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} nodeLabel={nodeLabel} depth={depth + 1} />
+          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} nodeLabel={nodeLabel} depth={depth + 1} isSelfQuote={isSelfQuote} />
         </div>
       ))}
       {dir.files.map((f) => {
@@ -378,7 +384,7 @@ function DiffFileSection({ file, nodeId }: { file: DiffFile; nodeId: string | un
   );
 }
 
-function DiffViewer({ diff, nodeId, nodeLabel }: { diff: string | undefined; nodeId: string | undefined; nodeLabel: string }) {
+function DiffViewer({ diff, nodeId, nodeLabel, isSelfQuote }: { diff: string | undefined; nodeId: string | undefined; nodeLabel: string; isSelfQuote: boolean }) {
   const files = useMemo(() => diff ? parseDiff(diff) : [], [diff]);
   const diffContainerRef = useRef<HTMLDivElement>(null);
 
@@ -422,13 +428,17 @@ function DiffViewer({ diff, nodeId, nodeLabel }: { diff: string | undefined; nod
     const onBtnClick = (e: MouseEvent) => {
       e.stopPropagation();
       if (selectedText && nodeId) {
-        actions.addFileQuote({
-          id: `fq-${++_fqId}`,
-          nodeId,
-          type: "diff",
-          content: selectedText,
-          label: `diff selection`,
-        });
+        if (isSelfQuote) {
+          actions.appendToInput(`Diff:\n${selectedText}`);
+        } else {
+          actions.addFileQuote({
+            id: `fq-${++_fqId}`,
+            nodeId,
+            type: "diff",
+            content: selectedText,
+            label: `diff selection`,
+          });
+        }
       }
       hideBtn();
       window.getSelection()?.removeAllRanges();
@@ -446,7 +456,7 @@ function DiffViewer({ diff, nodeId, nodeLabel }: { diff: string | undefined; nod
       btn.removeEventListener("click", onBtnClick);
       btn.remove();
     };
-  }, [diff, nodeId, nodeLabel]);
+  }, [diff, nodeId, nodeLabel, isSelfQuote]);
 
   if (diff === undefined) return <div className="filebrowser-placeholder">Loading diff...</div>;
   if (diff === "") return <div className="filebrowser-placeholder">No changes</div>;
@@ -477,11 +487,12 @@ function DiffViewer({ diff, nodeId, nodeLabel }: { diff: string | undefined; nod
 
 // ── Content viewer ───────────────────────────────────────────────────
 
-function ContentViewer({ nodeId, filePath, content, nodeLabel }: {
+function ContentViewer({ nodeId, filePath, content, nodeLabel, isSelfQuote }: {
   nodeId: string;
   filePath: string;
   content: string | undefined;
   nodeLabel: string;
+  isSelfQuote: boolean;
 }) {
   const kind = fileKind(filePath);
   const rawUrl = `/api/files/${nodeId}/${filePath}`;
@@ -527,14 +538,18 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel }: {
     const onBtnClick = (e: MouseEvent) => {
       e.stopPropagation();
       if (selectedText) {
-        actions.addFileQuote({
-          id: `fq-${++_fqId}`,
-          nodeId,
-          type: "file",
-          path: filePath,
-          content: selectedText,
-          label: `${filePath} (selection)`,
-        });
+        if (isSelfQuote) {
+          actions.appendToInput(`File: ${filePath}\n${selectedText}`);
+        } else {
+          actions.addFileQuote({
+            id: `fq-${++_fqId}`,
+            nodeId,
+            type: "file",
+            path: filePath,
+            content: selectedText,
+            label: `${filePath} (selection)`,
+          });
+        }
       }
       hideBtn();
       window.getSelection()?.removeAllRanges();
@@ -552,7 +567,7 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel }: {
       btn.removeEventListener("click", onBtnClick);
       btn.remove();
     };
-  }, [content, nodeId, filePath, nodeLabel]);
+  }, [content, nodeId, filePath, nodeLabel, isSelfQuote]);
 
   if (kind === "image") {
     return (
@@ -611,9 +626,11 @@ export default function FilesPanel() {
   const nodeFiles = useStore((s) => s.nodeFiles);
   const nodeDiffs = useStore((s) => s.nodeDiffs);
   const fileContents = useStore((s) => s.fileContents);
+  const selectedNodeId = useStore((s) => s.selectedNodeId);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const nodeId = panel?.nodeId;
+  const isSelfQuote = nodeId === selectedNodeId;
   const tab = panel?.tab || "files";
   const selectedFile = panel?.selectedFile || null;
   const node = nodeId ? nodes[nodeId] : null;
@@ -709,7 +726,7 @@ export default function FilesPanel() {
                 {files.length === 0 ? (
                   <div className="filebrowser-placeholder">No files</div>
                 ) : (
-                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} nodeId={nodeId!} nodeLabel={node?.label || "node"} depth={0} />
+                  <FileTreeNode dir={fileTree} selectedFile={selectedFile} onSelect={handleSelectFile} nodeId={nodeId!} nodeLabel={node?.label || "node"} depth={0} isSelfQuote={isSelfQuote} />
                 )}
               </div>
               {/* Content area */}
@@ -729,7 +746,7 @@ export default function FilesPanel() {
                         </svg>
                       </a>
                     </div>
-                    <ContentViewer nodeId={nodeId!} filePath={selectedFile} content={content} nodeLabel={node?.label || "node"} />
+                    <ContentViewer nodeId={nodeId!} filePath={selectedFile} content={content} nodeLabel={node?.label || "node"} isSelfQuote={isSelfQuote} />
                   </>
                 ) : (
                   <div className="filebrowser-placeholder">
@@ -741,7 +758,7 @@ export default function FilesPanel() {
           )}
           {tab === "diff" && (
             <div className="filebrowser-content">
-              <DiffViewer diff={diff} nodeId={nodeId} nodeLabel={node?.label || "node"} />
+              <DiffViewer diff={diff} nodeId={nodeId} nodeLabel={node?.label || "node"} isSelfQuote={isSelfQuote} />
             </div>
           )}
         </div>
