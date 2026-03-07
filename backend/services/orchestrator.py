@@ -167,14 +167,38 @@ class Orchestrator:
             ws_path = resolve_workspace(tree.id, root_node_id, nid)
             node_label = qnode.label if qnode else nid[:8]
 
-            if qtype == "file":
+            # Build git ref metadata for the quoted node
+            git_ref = ""
+            if qnode and qnode.git_commit:
+                branch = qnode.git_branch or f"ct-{nid}"
+                git_ref = f", branch: {branch}, commit: {qnode.git_commit[:12]}"
+
+            if qtype == "node":
+                # Quote the node's conversation (user message + assistant response)
+                if qnode:
+                    node_parts = []
+                    if qnode.user_message:
+                        node_parts.append(f"User: {qnode.user_message}")
+                    if qnode.assistant_response:
+                        node_parts.append(f"Assistant: {qnode.assistant_response}")
+                    if node_parts:
+                        content = "\n\n".join(node_parts)
+                        if len(content) > MAX_FILE_SIZE:
+                            content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
+                        if total + len(content) <= MAX_TOTAL:
+                            total += len(content)
+                            parts.append(f'\n--- Node: "{node_label}" (node: {nid[:12]}{git_ref}) ---\n')
+                            parts.append(content)
+                            parts.append("\n---\n")
+
+            elif qtype == "file":
                 fpath = fq.get("path", "")
                 selected_content = fq.get("content", "")
                 if selected_content:
                     # Text selection within a file
                     if total + len(selected_content) <= MAX_TOTAL:
                         total += len(selected_content)
-                        parts.append(f'\n--- File selection: {fpath} (from "{node_label}") ---\n')
+                        parts.append(f'\n--- File selection: {fpath} (from "{node_label}"{git_ref}) ---\n')
                         parts.append(selected_content)
                         parts.append("\n---\n")
                 else:
@@ -195,10 +219,10 @@ class Orchestrator:
                         if len(content) > MAX_FILE_SIZE:
                             content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
                         if total + len(content) > MAX_TOTAL:
-                            parts.append(f'\n--- File: {fpath} (from "{node_label}") --- [skipped: size limit]\n')
+                            parts.append(f'\n--- File: {fpath} (from "{node_label}"{git_ref}) --- [skipped: size limit]\n')
                             continue
                         total += len(content)
-                        parts.append(f'\n--- File: {fpath} (from "{node_label}") ---\n')
+                        parts.append(f'\n--- File: {fpath} (from "{node_label}"{git_ref}) ---\n')
                         parts.append(content)
                         parts.append("\n---\n")
 
@@ -206,7 +230,7 @@ class Orchestrator:
                 folder = fq.get("path", "")
                 full_dir = ws_path / folder
                 if full_dir.exists() and full_dir.is_dir():
-                    parts.append(f'\n--- Folder: {folder}/ (from "{node_label}") ---\n')
+                    parts.append(f'\n--- Folder: {folder}/ (from "{node_label}"{git_ref}) ---\n')
                     skip_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv"}
                     for f in sorted(full_dir.rglob("*")):
                         if not f.is_file():
@@ -232,7 +256,7 @@ class Orchestrator:
                         all_files = await list_files_from_commit(tree.id, root_node_id, qnode.git_commit)
                         folder_prefix = folder.rstrip("/") + "/" if folder else ""
                         skip_dirs = {"node_modules/", "__pycache__/", ".venv/", "venv/"}
-                        parts.append(f'\n--- Folder: {folder}/ (from "{node_label}") ---\n')
+                        parts.append(f'\n--- Folder: {folder}/ (from "{node_label}"{git_ref}) ---\n')
                         for rel in all_files:
                             if folder_prefix and not rel.startswith(folder_prefix):
                                 continue
@@ -258,7 +282,7 @@ class Orchestrator:
                 if content:
                     if total + len(content) <= MAX_TOTAL:
                         total += len(content)
-                        parts.append(f'\n--- Diff selection (from "{node_label}") ---\n')
+                        parts.append(f'\n--- Diff selection (from "{node_label}"{git_ref}) ---\n')
                         parts.append(content)
                         parts.append("\n---\n")
 
@@ -381,12 +405,27 @@ class Orchestrator:
         await update_node(node_id, assistant_response=full_response, status="done")
 
         git_commit = None
+        files_changed = 0
         try:
-            commit_sha, _ = await auto_commit(workspace, user_message)
+            commit_sha, files_changed = await auto_commit(workspace, user_message)
             await update_node(node_id, git_commit=commit_sha)
             git_commit = commit_sha
         except Exception as e:
             log.warning("Auto-commit failed: %s", e)
+
+        # If no files changed, remove worktree + branch (they're just noise)
+        if files_changed == 0:
+            try:
+                node = await get_node(node_id)
+                if node and node.parent_id:
+                    tree = await get_tree(node.tree_id)
+                    if tree:
+                        from services.workspace_service import remove_worktree_and_branch
+                        await remove_worktree_and_branch(tree.id, tree.root_node_id, node_id)
+                        # Clear git_branch so it's not shown as having its own branch
+                        await update_node(node_id, git_branch=None)
+            except Exception as e:
+                log.debug("No-change worktree cleanup failed: %s", e)
 
         return ChatResult(node_id=node_id, full_response=full_response, git_commit=git_commit)
 

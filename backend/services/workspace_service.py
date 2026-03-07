@@ -152,6 +152,27 @@ async def ensure_worktree(
     return await create_worktree(tree_id, root_id, node_id, parent_commit)
 
 
+async def remove_worktree_and_branch(tree_id: str, root_id: str, node_id: str) -> bool:
+    """Remove a node's worktree AND its branch ref (no files changed, branch is noise).
+
+    Skips root nodes. Returns True if removal happened.
+    """
+    if node_id == root_id:
+        return False
+
+    removed = await remove_worktree(tree_id, root_id, node_id)
+
+    # Delete the branch ref from the main repo
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    branch_name = f"ct-{node_id}"
+    try:
+        await _run_git(main_repo, "branch", "-D", branch_name, check=False)
+    except Exception as e:
+        log.debug("Branch deletion failed for %s: %s", branch_name, e)
+
+    return removed
+
+
 async def remove_worktree(tree_id: str, root_id: str, node_id: str) -> bool:
     """Remove a node's worktree directory, keeping the branch ref.
 

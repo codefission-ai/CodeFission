@@ -294,6 +294,9 @@
     }
     .tree-node:hover { background: var(--bg-hover); border-color: var(--text-muted); box-shadow: var(--shadow-md); }
     .tree-node.selected { border-color: var(--accent); background: #e0e4ee; color: var(--text-primary); }
+    .tree-node.has-code { background: #f0f4ef; }
+    .tree-node.has-code:hover { background: #e8ece7; }
+    .tree-node.has-code.selected { background: #dce4da; }
     .tree-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1201,6 +1204,12 @@
     }
     .tree-node-action-btn:hover {
       background: var(--accent-dim); border-color: var(--accent); color: var(--text-primary);
+    }
+    .tree-node-action-btn.files-btn {
+      color: var(--green, #16a34a); border-color: rgba(22,163,74,0.3);
+    }
+    .tree-node-action-btn.files-btn:hover {
+      background: rgba(22,163,74,0.1); border-color: var(--green, #16a34a); color: var(--green, #16a34a);
     }
     .tree-node-action-btn.cancel {
       color: var(--red, #dc2626); border-color: rgba(220,38,38,0.3);

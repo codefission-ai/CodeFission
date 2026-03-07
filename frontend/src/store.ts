@@ -67,7 +67,7 @@ export interface ProcessInfo {
 export interface FileQuote {
   id: string;
   nodeId: string;
-  type: "file" | "folder" | "diff";
+  type: "node" | "file" | "folder" | "diff";
   path?: string;
   content?: string;
   label: string;

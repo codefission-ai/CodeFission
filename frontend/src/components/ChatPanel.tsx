@@ -1,8 +1,36 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useStore, actions } from "../store";
+import { useStore, actions, type FileQuote } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
+
+function quotePreview(q: FileQuote, nodes: Record<string, any>): string {
+  const qnode = nodes[q.nodeId];
+  const nodeLabel = qnode?.label || q.nodeId.slice(0, 8);
+  const branch = qnode?.git_branch || `ct-${q.nodeId}`;
+  const commit = qnode?.git_commit?.slice(0, 12) || "no commit";
+  const gitInfo = `branch: ${branch}, commit: ${commit}`;
+
+  switch (q.type) {
+    case "node": {
+      const parts: string[] = [];
+      if (qnode?.user_message) parts.push(`User: ${qnode.user_message.slice(0, 200)}`);
+      if (qnode?.assistant_response) parts.push(`Assistant: ${qnode.assistant_response.slice(0, 200)}`);
+      return `--- Node: "${nodeLabel}" (${gitInfo}) ---\n${parts.join("\n\n") || "(empty)"}`;
+    }
+    case "file":
+      if (q.content) {
+        return `--- File selection: ${q.path} (from "${nodeLabel}", ${gitInfo}) ---\n${q.content.slice(0, 500)}`;
+      }
+      return `--- File: ${q.path} (from "${nodeLabel}", ${gitInfo}) ---\n[full file contents]`;
+    case "folder":
+      return `--- Folder: ${q.path}/ (from "${nodeLabel}", ${gitInfo}) ---\n[all files in folder]`;
+    case "diff":
+      return `--- Diff selection (from "${nodeLabel}", ${gitInfo}) ---\n${(q.content || "").slice(0, 500)}`;
+    default:
+      return q.label;
+  }
+}
 
 export default function ChatPanel() {
   const selectedId = useStore((s) => s.selectedNodeId);
@@ -113,7 +141,7 @@ export default function ChatPanel() {
         {pendingQuotes.length > 0 && (
           <div className="quote-chips chat-quote-chips">
             {pendingQuotes.map((q) => (
-              <span key={q.id} className="quote-chip">
+              <span key={q.id} className="quote-chip" title={quotePreview(q, nodes)}>
                 <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"

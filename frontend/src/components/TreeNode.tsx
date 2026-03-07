@@ -186,6 +186,8 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const quotesFromThis = pendingQuotes.filter((q) => q.nodeId === node.id).length;
   const canShowQuote = selectedHasInput && !selected && isExpanded;
   const isRoot = !node.parent_id;
+  const parentCommit = useStore((s) => node.parent_id ? s.nodes[node.parent_id]?.git_commit : null);
+  const hasCodeChange = !isRoot && !!node.git_commit && node.git_commit !== parentCommit;
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -293,7 +295,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   // All nodes (including root once it has a message): collapsible
   return (
     <div
-      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${isSubtreeCollapsed ? "subtree-collapsed" : ""}`}
+      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${isSubtreeCollapsed ? "subtree-collapsed" : ""} ${hasCodeChange ? "has-code" : ""}`}
       onClick={() => {
         actions.selectNode(node.id);
         if (!isExpanded) {
@@ -330,11 +332,21 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               onClick={(e) => {
                 e.stopPropagation();
                 e.nativeEvent.stopImmediatePropagation();
-                actions.openFilesPanel(node.id);
-                send({ type: WS.GET_NODE_FILES, node_id: node.id });
+                if (quotesFromThis > 0) {
+                  // Remove all quotes from this node
+                  const toRemove = useStore.getState().pendingQuotes.filter((q) => q.nodeId === node.id);
+                  toRemove.forEach((q) => actions.removeFileQuote(q.id));
+                } else {
+                  actions.addFileQuote({
+                    id: `fq-${Date.now()}`,
+                    nodeId: node.id,
+                    type: "node",
+                    label: node.label || node.id.slice(0, 8),
+                  });
+                }
               }}
             >
-              {quotesFromThis > 0 ? `Quoted (${quotesFromThis})` : "Quote"}
+              {quotesFromThis > 0 ? "Quoted \u2713" : "Quote"}
             </button>
           )}
           {isRoot && tree && (
@@ -450,7 +462,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                   </button>
                 )}
                 {node.git_commit && (
-                  <button className="tree-node-action-btn" onClick={handleOpenFiles}>
+                  <button className={`tree-node-action-btn ${hasCodeChange ? "files-btn" : ""}`} onClick={handleOpenFiles}>
                     Files
                   </button>
                 )}
