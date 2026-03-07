@@ -1580,6 +1580,69 @@
       cursor: pointer; align-self: flex-start; transition: all 0.15s;
     }
     .settings-save-btn:hover { filter: brightness(1.1); }
+
+    /* ── Dark theme ──────────────────────────────────────────────── */
+    [data-theme="dark"] {
+      --bg-deep: #0f0f12;
+      --bg-surface: #17171c;
+      --bg-raised: #1e1e26;
+      --bg-hover: #252530;
+      --bg-active: #2c2c3a;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.45);
+      --shadow-lg: 0 8px 30px rgba(0,0,0,0.65);
+
+      --border-subtle: rgba(255,255,255,0.04);
+      --border-dim: rgba(255,255,255,0.08);
+      --border-visible: rgba(255,255,255,0.15);
+
+      --text-primary: #e8e8f2;
+      --text-secondary: #9898b0;
+      --text-muted: #60607a;
+      --text-dim: #3c3c52;
+
+      --accent: #7c7cf0;
+      --accent-dim: rgba(124,124,240,0.12);
+      --accent-glow: rgba(124,124,240,0.18);
+
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.12);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.12);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251,191,36,0.12);
+    }
+
+    /* Dark: selected & coded node hardcoded bg overrides */
+    [data-theme="dark"] .tree-node.selected { background: #22224a; }
+    [data-theme="dark"] .tree-node.has-code { background: #1a241e; }
+    [data-theme="dark"] .tree-node.has-code:hover { background: #1e2c24; }
+    [data-theme="dark"] .tree-node.has-code.selected { background: #1e2e26; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected { background: #22224a; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected:hover { background: #22224a; }
+
+    /* Dark: scrollbar */
+    [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+    [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+    /* Dark: code block inset shadow */
+    [data-theme="dark"] .msg.assistant .msg-text pre {
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    /* Dark: modal selection highlight */
+    [data-theme="dark"] .node-modal-response ::selection { background: rgba(124,124,240,0.3); }
+
+    /* Dark mode toggle button */
+    .theme-toggle {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none; border-radius: 8px;
+      color: var(--text-muted); cursor: pointer;
+      transition: background 0.15s, color 0.15s; flex-shrink: 0;
+    }
+    .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>
