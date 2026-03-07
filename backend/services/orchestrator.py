@@ -320,7 +320,8 @@ class Orchestrator:
         label = message[:40]
         update_kwargs: dict = dict(user_message=message, label=label, status="active")
         # Derive quoted_node_ids from file_quotes for DB storage (used for visual arrows)
-        quoted_node_ids = list(set(fq["node_id"] for fq in file_quotes)) if file_quotes else []
+        # Exclude self-quotes (parent node) — the tree edge already shows the connection
+        quoted_node_ids = list(set(fq["node_id"] for fq in file_quotes) - {parent_node_id}) if file_quotes else []
         if quoted_node_ids:
             update_kwargs["quoted_node_ids"] = quoted_node_ids
         await update_node(nid, **update_kwargs)
@@ -344,10 +345,10 @@ class Orchestrator:
 
             # Tell the model its workspace has changed
             sdk_msg = (
-                f"[System: The user has run a `git worktree` command. "
-                f"You are now in a DIFFERENT working directory: {workspace}\n"
+                f"[System: This conversation was forked into a new git worktree. "
+                f"Your working directory is now: {workspace}\n"
                 f"All file paths from your previous conversation history refer to a different directory "
-                f"and are NO LONGER VALID. Do NOT copy or reuse any file paths from earlier messages.\n"
+                f"that no longer exists. Do NOT reuse any file paths from earlier messages.\n"
                 f"Use ONLY your current working directory for all file operations. "
                 f"When in doubt, run `pwd` to confirm your location.]\n\n"
                 + sdk_msg

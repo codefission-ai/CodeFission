@@ -205,6 +205,15 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     return () => el.removeEventListener("wheel", stop);
   }, [selected]);
 
+  // Consume pendingInputText from store (e.g. from FilesPanel text selection quotes)
+  const pendingInputText = useStore((s) => s.pendingInputText);
+  useEffect(() => {
+    if (pendingInputText && selected) {
+      setInput((prev) => prev + pendingInputText);
+      actions.clearPendingInput();
+    }
+  }, [pendingInputText, selected]);
+
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response, node.id) : "",
     [node.assistant_response, node.id]

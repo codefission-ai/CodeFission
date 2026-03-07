@@ -95,6 +95,7 @@ interface Store {
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
   pendingQuotes: FileQuote[];
+  pendingInputText: string | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
   providers: ProviderInfo[];
@@ -136,6 +137,7 @@ export const useStore = create<Store>(() => ({
   nodeProcesses: {},
   filesPanel: null,
   pendingQuotes: [],
+  pendingInputText: null,
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
   providers: [],
@@ -327,6 +329,11 @@ export const actions = {
     useStore.setState((s) => ({
       pendingQuotes: s.pendingQuotes.filter((q) => q.id !== id),
     })),
+  appendToInput: (text: string) =>
+    useStore.setState((s) => ({
+      pendingInputText: (s.pendingInputText || "") + (s.pendingInputText ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n",
+    })),
+  clearPendingInput: () => useStore.setState({ pendingInputText: null }),
 
   // ── Settings ─────────────────────────────────────────────────
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),
