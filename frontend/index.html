@@ -1138,38 +1138,9 @@
     .katex-display { margin: 12px 0; overflow-x: auto; }
 
     /* ── Repo selector (inline in root node) ──────────────────── */
-    .repo-selector {
-      display: flex; flex-direction: column; gap: 4px;
-      width: 100%; margin-bottom: 4px;
-    }
-    .repo-selector-row {
-      display: flex; gap: 4px; align-items: center;
-    }
-    .repo-selector-select {
-      flex: 1; padding: 3px 6px; font-size: 10px;
-      background: var(--bg-surface); color: var(--text-secondary);
-      border: 1px solid var(--border-dim); border-radius: 4px;
-      outline: none; cursor: pointer;
+    .root-input-hint {
+      font-size: 9px; color: var(--text-muted); padding: 1px 2px;
       font-family: var(--font-sans);
-    }
-    .repo-selector-select:focus { border-color: var(--accent); }
-    .repo-selector-input {
-      width: 100%; padding: 4px 8px; font-size: 11px;
-      background: var(--bg-surface); color: var(--text-primary);
-      border: 1px solid var(--border-dim); border-radius: 4px;
-      outline: none; font-family: var(--font-mono);
-    }
-    .repo-selector-input::placeholder { color: var(--text-muted); }
-    .repo-selector-input:focus { border-color: var(--accent); }
-    .repo-selector-btn {
-      padding: 3px 10px; font-size: 10px; font-weight: 600;
-      background: var(--accent); color: #fff; border: none;
-      border-radius: 4px; cursor: pointer; white-space: nowrap;
-    }
-    .repo-selector-btn:hover { filter: brightness(1.15); }
-    .repo-selector-btn:disabled { opacity: 0.4; cursor: default; }
-    .repo-selector-hint {
-      font-size: 9px; color: var(--amber); padding: 0 2px;
     }
     .repo-badge {
       display: flex; align-items: center; gap: 4px;

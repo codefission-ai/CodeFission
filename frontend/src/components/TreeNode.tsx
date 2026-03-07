@@ -43,72 +43,12 @@ function RepoBadge({ tree, onBrowse }: {
   );
 }
 
-function RepoSelector({ treeId, locked, onBrowse }: {
-  treeId: string;
-  locked?: boolean;
-  onBrowse?: () => void;
-}) {
-  const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
-  const [mode, setMode] = useState("new");
-  const [source, setSource] = useState("");
-  const [setting, setSetting] = useState(false);
-
-  if (!tree) return null;
-
-  // Locked once children exist, or already configured with a source
-  if (locked || tree.repo_mode !== "new") {
-    return <RepoBadge tree={tree} onBrowse={onBrowse} />;
-  }
-
-  const needsSource = mode === "local" || mode === "url";
-
-  const handleSet = () => {
-    if (setting) return;
-    if (needsSource && !source.trim()) return;
-    setSetting(true);
-    send({
-      type: WS.SET_REPO,
-      tree_id: treeId,
-      repo_mode: mode,
-      repo_source: needsSource ? source.trim() : undefined,
-    });
-  };
-
-  return (
-    <div className="repo-selector" onClick={(e) => e.stopPropagation()}>
-      <div className="repo-selector-row">
-        <select
-          className="repo-selector-select"
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-          disabled={setting}
-        >
-          <option value="new">Empty repo</option>
-          <option value="local">Local path</option>
-          <option value="url">Git URL</option>
-        </select>
-        <button className="repo-selector-btn" onClick={handleSet} disabled={setting}>
-          {setting ? "..." : "Set"}
-        </button>
-      </div>
-      {needsSource && (
-        <>
-          <input
-            className="repo-selector-input"
-            placeholder={mode === "local" ? "/home/user/project" : "https://github.com/user/repo"}
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSet()}
-            disabled={setting}
-            autoFocus
-          />
-          {mode === "local" && source && !source.startsWith("/") && (
-            <div className="repo-selector-hint">Path should start with /</div>
-          )}
-        </>
-      )}
-    </div>
-  );
+/** Detect input type: github/git URL, local absolute path, or plain message */
+function detectInputType(text: string): "url" | "local" | "message" {
+  const t = text.trim();
+  if (/^https?:\/\//i.test(t) || /^git@/i.test(t) || t.endsWith(".git")) return "url";
+  if (t.startsWith("/") || t.startsWith("~")) return "local";
+  return "message";
 }
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
@@ -260,13 +200,47 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     send({ type: WS.GET_NODE_FILES, node_id: node.id });
   }, [node.id]);
 
-  // Root hub: repo selector (locks once children exist) + textbox
+  const [loading, setLoading] = useState(false);
+  const inputType = detectInputType(input);
+  const hasRepo = tree && tree.repo_mode !== "new";
+
+  const handleRootSend = useCallback(() => {
+    if (!input.trim() || isStreaming || loading) return;
+    const t = input.trim();
+    const type = detectInputType(t);
+
+    if (type === "url" || type === "local") {
+      // Set repo, then clear input (chat comes from the next message)
+      setLoading(true);
+      send({
+        type: WS.SET_REPO,
+        tree_id: node.tree_id,
+        repo_mode: type === "url" ? "url" : "local",
+        repo_source: t,
+      });
+      setInput("");
+      // Loading clears when tree_updated comes back (via store)
+      setTimeout(() => setLoading(false), 30000); // safety timeout
+    } else {
+      // Plain message — send as chat (empty repo auto-created)
+      handleSend();
+    }
+  }, [input, isStreaming, loading, node.tree_id, handleSend]);
+
+  // Clear loading when tree updates (repo set succeeded)
+  const treeRepoMode = tree?.repo_mode;
+  useEffect(() => {
+    if (treeRepoMode && treeRepoMode !== "new") setLoading(false);
+  }, [treeRepoMode]);
+
+  // Root hub: unified input
   if (isRoot && !node.user_message) {
-    const hasChildren = node.children_ids.length > 0;
     return (
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
         <Handle type="source" position={Position.Bottom} />
-        <RepoSelector treeId={node.tree_id} locked={hasChildren} onBrowse={handleBrowseRepo} />
+        {hasRepo && tree && (
+          <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
+        )}
         {pendingQuotes.length > 0 && selected && (
           <div className="quote-chips">
             {pendingQuotes.map((q) => (
@@ -287,15 +261,33 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => actions.selectNode(node.id)}
+          onDrop={(e) => {
+            const files = e.dataTransfer?.files;
+            if (files?.length) {
+              e.preventDefault();
+              // Use the first dropped item's path (webkitRelativePath or name)
+              const path = (files[0] as any).path || files[0].name;
+              if (path) setInput(path);
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              handleSend();
+              handleRootSend();
             }
           }}
-          placeholder="Type a message..."
+          placeholder={hasRepo ? "Type a message..." : "Path, URL, or message..."}
           rows={1}
+          disabled={loading}
         />
+        {input.trim() && !hasRepo && (
+          <div className="root-input-hint">
+            {inputType === "url" ? "⏎ clone repo" :
+             inputType === "local" ? "⏎ copy from path" :
+             "⏎ start with empty repo"}
+          </div>
+        )}
+        {loading && <div className="root-input-hint">Setting up repo...</div>}
         <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
       </div>
     );

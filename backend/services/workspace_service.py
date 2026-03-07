@@ -66,20 +66,46 @@ async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: st
     elif repo_mode in ("local", "url"):
         if not repo_source:
             raise ValueError(f"repo_source required for mode '{repo_mode}'")
-        # Clone to a temp dir then move contents into root_dir
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_clone = Path(tmp) / "clone"
-            await _run_git(Path(tmp), "clone", repo_source, str(tmp_clone))
-            # Move everything (including .git) into root_dir
-            for item in tmp_clone.iterdir():
-                dest = root_dir / item.name
-                shutil.move(str(item), str(dest))
+        source_path = Path(repo_source) if repo_mode == "local" else None
+        is_git_repo = source_path and (source_path / ".git").exists() if source_path else False
+        is_url = repo_mode == "url"
+
+        if is_git_repo or is_url:
+            # Clone (preserves original git history, our ct-* branches won't collide)
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_clone = Path(tmp) / "clone"
+                await _run_git(Path(tmp), "clone", repo_source, str(tmp_clone))
+                for item in tmp_clone.iterdir():
+                    dest = root_dir / item.name
+                    shutil.move(str(item), str(dest))
+        else:
+            # Copy files into a fresh git repo (local path without .git, or individual files)
+            await _run_git(root_dir, "init")
+            src = Path(repo_source)
+            if src.is_dir():
+                for item in src.iterdir():
+                    dest = root_dir / item.name
+                    if item.is_dir():
+                        shutil.copytree(str(item), str(dest), dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(str(item), str(dest))
+            elif src.is_file():
+                shutil.copy2(str(src), root_dir / src.name)
+            else:
+                raise ValueError(f"Source path not found: {repo_source}")
+
         # Ensure .claude/ is gitignored
         gitignore = root_dir / ".gitignore"
         existing = gitignore.read_text() if gitignore.exists() else ""
         if ".claude/" not in existing:
             with open(gitignore, "a") as f:
                 f.write("\n.claude/\n")
+
+        # Initial commit for non-git sources (cloned repos already have commits)
+        if not is_git_repo and not is_url:
+            await _run_git(root_dir, "add", "-A")
+            await _run_git(root_dir, "commit", "-m", "ct: initial commit")
+        else:
             await _run_git(root_dir, "add", ".gitignore")
             rc, _, _ = await _run_git(root_dir, "diff", "--cached", "--quiet", check=False)
             if rc != 0:
