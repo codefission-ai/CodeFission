@@ -33,12 +33,46 @@ function GearIcon() {
   );
 }
 
+function MoonIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9.528 1.718a.75.75 0 01.162.819A8.97 8.97 0 009 6a9 9 0 009 9 8.97 8.97 0 003.463-.69.75.75 0 01.981.98 10.503 10.503 0 01-9.694 6.46c-5.799 0-10.5-4.701-10.5-10.5 0-4.368 2.667-8.112 6.46-9.694a.75.75 0 01.818.162z" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="3" />
+      <line x1="8" y1="1" x2="8" y2="3" />
+      <line x1="8" y1="13" x2="8" y2="15" />
+      <line x1="1" y1="8" x2="3" y2="8" />
+      <line x1="13" y1="8" x2="15" y2="8" />
+      <line x1="3.05" y1="3.05" x2="4.46" y2="4.46" />
+      <line x1="11.54" y1="11.54" x2="12.95" y2="12.95" />
+      <line x1="12.95" y1="3.05" x2="11.54" y2="4.46" />
+      <line x1="4.46" y1="11.54" x2="3.05" y2="12.95" />
+    </svg>
+  );
+}
+
 export default function App() {
   const hasTree = useStore((s) => !!s.currentTreeId);
   const treeName = useStore((s) => {
     const tree = s.trees.find((t) => t.id === s.currentTreeId);
     return tree?.name || "";
   });
+
+  // Dark mode
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem("theme") === "dark";
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
+  }, [darkMode]);
+
   // Panel widths & collapsed state
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [chatWidth, setChatWidth] = useState(380);
@@ -135,6 +169,14 @@ export default function App() {
             >
               <ChatIcon />
               <span className="tooltip">Chat <kbd>{"\u2318"}L</kbd></span>
+            </button>
+            <button
+              className="theme-toggle has-tooltip"
+              onClick={() => setDarkMode((d) => !d)}
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <SunIcon /> : <MoonIcon />}
+              <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
             </button>
             <button
               className="icon-btn has-tooltip"

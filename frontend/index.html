@@ -1580,6 +1580,101 @@
       cursor: pointer; align-self: flex-start; transition: all 0.15s;
     }
     .settings-save-btn:hover { filter: brightness(1.1); }
+
+    /* ── Dark theme (Monokai) ────────────────────────────────────── */
+    [data-theme="dark"] {
+      /* Monokai warm olive backgrounds */
+      --bg-deep: #1e1f1c;
+      --bg-surface: #272822;
+      --bg-raised: #2d2e29;
+      --bg-hover: #35362f;
+      --bg-active: #3c3d36;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.45);
+      --shadow-lg: 0 8px 30px rgba(0,0,0,0.65);
+
+      --border-subtle: rgba(255,255,255,0.04);
+      --border-dim: rgba(255,255,255,0.08);
+      --border-visible: rgba(255,255,255,0.15);
+
+      /* Monokai text */
+      --text-primary: #f8f8f2;
+      --text-secondary: #ccccc0;
+      --text-muted: #75715e;
+      --text-dim: #4a4a3e;
+
+      /* Monokai green accent */
+      --accent: #a6e22e;
+      --accent-dim: rgba(166,226,46,0.10);
+      --accent-glow: rgba(166,226,46,0.15);
+
+      /* Monokai semantic colors */
+      --green: #a6e22e;
+      --green-dim: rgba(166,226,46,0.12);
+      --red: #f92672;
+      --red-dim: rgba(249,38,114,0.12);
+      --amber: #fd971f;
+      --amber-dim: rgba(253,151,31,0.12);
+    }
+
+    /* Dark (Monokai): selected & coded node bg overrides */
+    [data-theme="dark"] .tree-node.selected { background: #2a2b24; }
+    [data-theme="dark"] .tree-node.has-code { background: #25261f; }
+    [data-theme="dark"] .tree-node.has-code:hover { background: #2a2b23; }
+    [data-theme="dark"] .tree-node.has-code.selected { background: #2d2e26; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected { background: #2a2b24; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected:hover { background: #2a2b24; }
+
+    /* Dark: scrollbar */
+    [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+    [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+    /* Dark: code block inset shadow */
+    [data-theme="dark"] .msg.assistant .msg-text pre {
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    /* Dark: modal selection highlight */
+    [data-theme="dark"] .node-modal-response ::selection { background: rgba(166,226,46,0.25); }
+
+    /* Dark (Monokai): highlight.js syntax colors */
+    [data-theme="dark"] .hljs-keyword,
+    [data-theme="dark"] .hljs-selector-tag,
+    [data-theme="dark"] .hljs-built_in      { color: #f92672; }
+    [data-theme="dark"] .hljs-string,
+    [data-theme="dark"] .hljs-attr          { color: #e6db74; }
+    [data-theme="dark"] .hljs-comment,
+    [data-theme="dark"] .hljs-quote         { color: #75715e; font-style: italic; }
+    [data-theme="dark"] .hljs-number,
+    [data-theme="dark"] .hljs-literal       { color: #ae81ff; }
+    [data-theme="dark"] .hljs-type,
+    [data-theme="dark"] .hljs-class .hljs-title,
+    [data-theme="dark"] .hljs-title.class_  { color: #a6e22e; }
+    [data-theme="dark"] .hljs-function .hljs-title,
+    [data-theme="dark"] .hljs-title.function_ { color: #a6e22e; }
+    [data-theme="dark"] .hljs-variable,
+    [data-theme="dark"] .hljs-template-variable { color: #fd971f; }
+    [data-theme="dark"] .hljs-meta          { color: #75715e; }
+    [data-theme="dark"] .hljs-tag,
+    [data-theme="dark"] .hljs-name          { color: #f92672; }
+    [data-theme="dark"] .hljs-attribute     { color: #a6e22e; }
+    [data-theme="dark"] .hljs-symbol,
+    [data-theme="dark"] .hljs-bullet        { color: #e6db74; }
+    [data-theme="dark"] .hljs-params        { color: #fd971f; }
+    [data-theme="dark"] .hljs-regexp        { color: #e6db74; }
+    [data-theme="dark"] .hljs-selector-class,
+    [data-theme="dark"] .hljs-selector-id   { color: #a6e22e; }
+
+    /* Dark mode toggle button */
+    .theme-toggle {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none; border-radius: 8px;
+      color: var(--text-muted); cursor: pointer;
+      transition: background 0.15s, color 0.15s; flex-shrink: 0;
+    }
+    .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>
