@@ -1581,13 +1581,14 @@
     }
     .settings-save-btn:hover { filter: brightness(1.1); }
 
-    /* ── Dark theme ──────────────────────────────────────────────── */
+    /* ── Dark theme (Monokai) ────────────────────────────────────── */
     [data-theme="dark"] {
-      --bg-deep: #0f0f12;
-      --bg-surface: #17171c;
-      --bg-raised: #1e1e26;
-      --bg-hover: #252530;
-      --bg-active: #2c2c3a;
+      /* Monokai warm olive backgrounds */
+      --bg-deep: #1e1f1c;
+      --bg-surface: #272822;
+      --bg-raised: #2d2e29;
+      --bg-hover: #35362f;
+      --bg-active: #3c3d36;
 
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
       --shadow-md: 0 2px 8px rgba(0,0,0,0.45);
@@ -1597,30 +1598,33 @@
       --border-dim: rgba(255,255,255,0.08);
       --border-visible: rgba(255,255,255,0.15);
 
-      --text-primary: #e8e8f2;
-      --text-secondary: #9898b0;
-      --text-muted: #60607a;
-      --text-dim: #3c3c52;
+      /* Monokai text */
+      --text-primary: #f8f8f2;
+      --text-secondary: #ccccc0;
+      --text-muted: #75715e;
+      --text-dim: #4a4a3e;
 
-      --accent: #7c7cf0;
-      --accent-dim: rgba(124,124,240,0.12);
-      --accent-glow: rgba(124,124,240,0.18);
+      /* Monokai green accent */
+      --accent: #a6e22e;
+      --accent-dim: rgba(166,226,46,0.10);
+      --accent-glow: rgba(166,226,46,0.15);
 
-      --green: #22c55e;
-      --green-dim: rgba(34,197,94,0.12);
-      --red: #f87171;
-      --red-dim: rgba(248,113,113,0.12);
-      --amber: #fbbf24;
-      --amber-dim: rgba(251,191,36,0.12);
+      /* Monokai semantic colors */
+      --green: #a6e22e;
+      --green-dim: rgba(166,226,46,0.12);
+      --red: #f92672;
+      --red-dim: rgba(249,38,114,0.12);
+      --amber: #fd971f;
+      --amber-dim: rgba(253,151,31,0.12);
     }
 
-    /* Dark: selected & coded node hardcoded bg overrides */
-    [data-theme="dark"] .tree-node.selected { background: #22224a; }
-    [data-theme="dark"] .tree-node.has-code { background: #1a241e; }
-    [data-theme="dark"] .tree-node.has-code:hover { background: #1e2c24; }
-    [data-theme="dark"] .tree-node.has-code.selected { background: #1e2e26; }
-    [data-theme="dark"] .tree-node.tree-node-root.selected { background: #22224a; }
-    [data-theme="dark"] .tree-node.tree-node-root.selected:hover { background: #22224a; }
+    /* Dark (Monokai): selected & coded node bg overrides */
+    [data-theme="dark"] .tree-node.selected { background: #2a2b24; }
+    [data-theme="dark"] .tree-node.has-code { background: #25261f; }
+    [data-theme="dark"] .tree-node.has-code:hover { background: #2a2b23; }
+    [data-theme="dark"] .tree-node.has-code.selected { background: #2d2e26; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected { background: #2a2b24; }
+    [data-theme="dark"] .tree-node.tree-node-root.selected:hover { background: #2a2b24; }
 
     /* Dark: scrollbar */
     [data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
@@ -1632,7 +1636,35 @@
     }
 
     /* Dark: modal selection highlight */
-    [data-theme="dark"] .node-modal-response ::selection { background: rgba(124,124,240,0.3); }
+    [data-theme="dark"] .node-modal-response ::selection { background: rgba(166,226,46,0.25); }
+
+    /* Dark (Monokai): highlight.js syntax colors */
+    [data-theme="dark"] .hljs-keyword,
+    [data-theme="dark"] .hljs-selector-tag,
+    [data-theme="dark"] .hljs-built_in      { color: #f92672; }
+    [data-theme="dark"] .hljs-string,
+    [data-theme="dark"] .hljs-attr          { color: #e6db74; }
+    [data-theme="dark"] .hljs-comment,
+    [data-theme="dark"] .hljs-quote         { color: #75715e; font-style: italic; }
+    [data-theme="dark"] .hljs-number,
+    [data-theme="dark"] .hljs-literal       { color: #ae81ff; }
+    [data-theme="dark"] .hljs-type,
+    [data-theme="dark"] .hljs-class .hljs-title,
+    [data-theme="dark"] .hljs-title.class_  { color: #a6e22e; }
+    [data-theme="dark"] .hljs-function .hljs-title,
+    [data-theme="dark"] .hljs-title.function_ { color: #a6e22e; }
+    [data-theme="dark"] .hljs-variable,
+    [data-theme="dark"] .hljs-template-variable { color: #fd971f; }
+    [data-theme="dark"] .hljs-meta          { color: #75715e; }
+    [data-theme="dark"] .hljs-tag,
+    [data-theme="dark"] .hljs-name          { color: #f92672; }
+    [data-theme="dark"] .hljs-attribute     { color: #a6e22e; }
+    [data-theme="dark"] .hljs-symbol,
+    [data-theme="dark"] .hljs-bullet        { color: #e6db74; }
+    [data-theme="dark"] .hljs-params        { color: #fd971f; }
+    [data-theme="dark"] .hljs-regexp        { color: #e6db74; }
+    [data-theme="dark"] .hljs-selector-class,
+    [data-theme="dark"] .hljs-selector-id   { color: #a6e22e; }
 
     /* Dark mode toggle button */
     .theme-toggle {
