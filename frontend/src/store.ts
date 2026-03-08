@@ -183,7 +183,9 @@ export const actions = {
     }),
   selectNode: (id: string | null) => useStore.setState((s) => ({
     selectedNodeId: id,
-    pendingQuotes: id !== s.selectedNodeId ? [] : s.pendingQuotes,
+    // Only clear quotes when switching to a different non-null node;
+    // deselecting (null) and reselecting preserves them.
+    pendingQuotes: (id && s.selectedNodeId && id !== s.selectedNodeId) ? [] : s.pendingQuotes,
   })),
 
   appendChunk: (nodeId: string, text: string) =>
