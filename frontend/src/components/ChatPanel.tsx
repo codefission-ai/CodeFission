@@ -37,7 +37,7 @@ export default function ChatPanel() {
   const nodes = useStore((s) => s.nodes);
   const streaming = useStore((s) => s.streaming);
   const toolCalls = useStore((s) => s.toolCalls);
-  const pendingQuotes = useStore((s) => selectedId ? (s.pendingQuotes[selectedId] || []) : []);
+  const pendingQuotes = useStore((s) => selectedId ? s.pendingQuotes[selectedId] || [] : []);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -81,10 +81,6 @@ export default function ChatPanel() {
     }
     send(msg);
     setInput("");
-    if (pendingQuotes.length > 0) {
-      const { [selectedId]: _, ...rest } = useStore.getState().pendingQuotes;
-      useStore.setState({ pendingQuotes: rest });
-    }
   };
 
   if (!node) {
@@ -149,7 +145,7 @@ export default function ChatPanel() {
                 <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={() => actions.removeFileQuote(q.id)}
+                  onClick={() => selectedId && actions.removeFileQuote(selectedId, q.id)}
                   onMouseDown={(e) => e.preventDefault()}
                 >&times;</button>
               </span>
