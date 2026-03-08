@@ -1258,7 +1258,10 @@
       font-family: var(--font-mono);
       user-select: none;
       display: flex; align-items: center; gap: 4px;
+      cursor: pointer;
     }
+    .filebrowser-dir:hover { background: var(--bg-hover); }
+    .filebrowser-dir-arrow { font-size: 10px; width: 10px; flex-shrink: 0; }
     .filebrowser-dir-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .filebrowser-file {
       padding: 4px 8px;

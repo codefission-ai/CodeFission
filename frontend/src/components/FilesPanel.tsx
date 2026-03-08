@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useStore, actions, type FileQuote } from "../store";
 import { send, WS } from "../ws";
@@ -131,6 +131,18 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth, i
   depth: number;
   isSelfQuote: boolean;
 }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleDir = useCallback((path: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
   const addQuote = useCallback((type: FileQuote["type"], path: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (isSelfQuote) {
@@ -152,7 +164,8 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth, i
     <>
       {dir.dirs.map((d) => (
         <div key={d.path}>
-          <div className="filebrowser-dir" style={{ paddingLeft: depth * 12 + 8 }}>
+          <div className="filebrowser-dir" style={{ paddingLeft: depth * 12 + 8 }} onClick={(e) => toggleDir(d.path, e)}>
+            <span className="filebrowser-dir-arrow">{expanded.has(d.path) ? "▾" : "▸"}</span>
             <span className="filebrowser-dir-name">{d.name}/</span>
             <QuoteBtn onClick={(e) => addQuote("folder", d.path, e)} title={`Quote ${d.name}/`} />
             <DownloadBtn
@@ -160,7 +173,9 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth, i
               title={`Download ${d.name}/ as zip`}
             />
           </div>
-          <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} nodeLabel={nodeLabel} depth={depth + 1} isSelfQuote={isSelfQuote} />
+          {expanded.has(d.path) && (
+            <FileTreeNode dir={d} selectedFile={selectedFile} onSelect={onSelect} nodeId={nodeId} nodeLabel={nodeLabel} depth={depth + 1} isSelfQuote={isSelfQuote} />
+          )}
         </div>
       ))}
       {dir.files.map((f) => {
