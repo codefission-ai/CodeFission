@@ -103,6 +103,19 @@ function ProcessList({ nodeId, processes }: { nodeId: string; processes: Process
   );
 }
 
+function CopyBtn({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="root-section-copy"
+      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1200); }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      {copied ? "ok" : "cp"}
+    </button>
+  );
+}
+
 function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } }) {
   const { node, descendantCount } = data;
   const selectedId = useStore((s) => s.selectedNodeId);
@@ -218,11 +231,15 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     if (tree) setSkillInput(tree.skill);
   }, [tree?.skill]);
 
-  // Auto-resize skill textarea
+  // Auto-resize skill and repo textareas
   useLayoutEffect(() => {
     const ta = skillTextareaRef.current;
     if (ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
   }, [skillInput, selected]);
+  useLayoutEffect(() => {
+    const ta = repoTextareaRef.current;
+    if (ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+  }, [repoInput, selected]);
 
   // Debounced save for skill
   const handleSkillChange = useCallback((val: string) => {
@@ -264,7 +281,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
         {/* Section 1: Skill */}
         <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
-          <label className="root-section-label">Skill</label>
+          <label className="root-section-label">
+            Skill
+            {hasChildren && skillInput && <CopyBtn text={skillInput} />}
+          </label>
           <textarea
             ref={skillTextareaRef}
             className="root-section-input nopan nodrag"
@@ -279,7 +299,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
         {/* Section 2: Files / Repo */}
         <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
-          <label className="root-section-label">Files</label>
+          <label className="root-section-label">
+            Files
+            {hasChildren && hasRepo && tree?.repo_source && <CopyBtn text={tree.repo_source} />}
+          </label>
           {hasRepo && tree ? (
             <RepoBadge tree={tree} onBrowse={!hasChildren ? handleBrowseRepo : undefined} />
           ) : (
@@ -305,7 +328,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                   }
                 }}
                 placeholder="Drop files, paste path or GitHub URL..."
-                rows={1}
+                rows={2}
                 disabled={hasChildren || loading}
               />
               {repoInput.trim() && (

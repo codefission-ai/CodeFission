@@ -343,7 +343,27 @@
       letter-spacing: 0.5px;
       color: var(--text-muted);
       padding: 0 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
+    .root-section-copy {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 9px;
+      font-family: var(--font-mono);
+      padding: 0 3px;
+      border-radius: 3px;
+      opacity: 0.6;
+      transition: opacity 0.15s, background 0.15s;
+      margin-left: auto;
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 500;
+    }
+    .root-section-copy:hover { opacity: 1; background: var(--bg-hover); }
     .root-section-input {
       min-width: 0; width: 100%;
       padding: 4px 8px; font-size: 11px;
