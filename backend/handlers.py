@@ -31,8 +31,19 @@ log = logging.getLogger(__name__)
 @dataclass
 class StreamState:
     node_id: str
+    tree_id: str = ""
     text: str = ""
     status: str = "active"   # active | done | error
+    send_fn: object = None   # async send callable (tracks current handler)
+    sdk_pid: int | None = None
+    stream_task: asyncio.Task | None = None
+    cancelled: bool = False
+
+
+# Global registry of active streams — survives WebSocket reconnects.
+# Keyed by node_id, holds the StreamState with accumulated text and
+# a reference to the current handler's send method.
+_active_streams: dict[str, StreamState] = {}
 
 
 class ConnectionHandler:
@@ -48,18 +59,28 @@ class ConnectionHandler:
         self.sdk_pids: dict[str, int] = {}  # node_id -> SDK subprocess PID
 
     async def send(self, msg_type: str, **payload):
+        # If this stream has been claimed by a newer connection, route there
+        node_id = payload.get("node_id")
+        if node_id:
+            info = _active_streams.get(node_id)
+            if info and info.send_fn is not None and info.send_fn != self.send:
+                try:
+                    await info.send_fn(msg_type, **payload)
+                except Exception:
+                    pass
+                return
         try:
             await self.ws.send_json({"type": msg_type, **payload})
         except Exception:
-            # Socket dead — don't crash the streaming pipeline.
-            # _run_chat will keep accumulating text and save to DB on completion.
             pass
 
     def cleanup(self):
-        # Let all tasks finish — send() swallows errors on dead sockets,
-        # so _run_chat will keep going and save the response to DB.
-        # The SDK has max_turns, so tasks won't run forever.
-        pass
+        # Detach our send function from any active streams so the old
+        # (dead) socket isn't used.  Tasks keep running — send() will
+        # silently no-op until a new connection claims the stream.
+        for info in _active_streams.values():
+            if info.send_fn == self.send:
+                info.send_fn = None
 
     async def dispatch(self, data: dict):
         msg_type = data.get("type")
@@ -111,6 +132,15 @@ class ConnectionHandler:
             nodes=[n.model_dump() for n in nodes],
             node_processes=node_processes,
         )
+
+        # Reconnect any active streams for this tree to the new connection.
+        # This lets a browser refresh resume seeing streaming output.
+        for nid, info in _active_streams.items():
+            if info.tree_id == tree_id and info.status == "active":
+                info.send_fn = self.send
+                await self.send(WS.STATUS, node_id=nid, status="active")
+                if info.text:
+                    await self.send(WS.CHUNK, node_id=nid, text=info.text)
 
     async def handle_delete_tree(self, data: dict):
         tree_id = data["tree_id"]
@@ -169,8 +199,10 @@ class ConnectionHandler:
             # Send updated node data (now has user_message, status=active)
             await self.send(WS.NODE_DATA, node=ctx.node.model_dump())
 
-            # Init streaming state
-            self.streams[nid] = StreamState(node_id=nid)
+            # Init streaming state (shared with global registry for reconnect)
+            state = StreamState(node_id=nid, tree_id=ctx.node.tree_id, send_fn=self.send)
+            self.streams[nid] = state
+            _active_streams[nid] = state
             await bus.emit(STREAM_START, node_id=nid)
             await self.send(WS.STATUS, node_id=nid, status="active")
 
@@ -206,17 +238,19 @@ class ConnectionHandler:
 
             stream_task = asyncio.create_task(_pump_stream())
             self.stream_tasks[nid] = stream_task
+            state.stream_task = stream_task
 
             # Find SDK subprocess PID (direct child of our process with cwd=workspace)
             await asyncio.sleep(0.3)  # Give subprocess time to start
             self._track_sdk_pid(nid, ctx.workspace)
+            state.sdk_pid = self.sdk_pids.get(nid)
 
             # Consume events from the queue
             while True:
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
-                    if nid in self.cancelled:
+                    if state.cancelled:
                         break
                     continue
                 if event is None:
@@ -259,8 +293,7 @@ class ConnectionHandler:
                 pass
 
             # Check if this node was cancelled
-            was_cancelled = nid in self.cancelled
-            self.cancelled.discard(nid)
+            was_cancelled = state.cancelled
 
             if was_cancelled:
                 if nid in self.streams:
@@ -347,6 +380,7 @@ class ConnectionHandler:
         finally:
             clear_sandbox()
             self.streams.pop(nid, None)
+            _active_streams.pop(nid, None)
             self.tasks.pop(nid, None)
             # Kill just the SDK/CLI process if it's still alive (e.g. stuck on a
             # long-running Bash tool like a server).  We kill only the CLI itself
@@ -386,15 +420,25 @@ class ConnectionHandler:
 
     async def handle_cancel(self, data: dict):
         node_id = data["node_id"]
-        self.cancelled.add(node_id)
-        # Kill the SDK subprocess tree to unstick any hanging tool (curl, etc.)
-        sdk_pid = self.sdk_pids.get(node_id)
-        if sdk_pid:
-            kill_process_tree(sdk_pid)
-            self.sdk_pids.pop(node_id, None)
-        st = self.stream_tasks.get(node_id)
-        if st and not st.done():
-            st.cancel()
+        # Use global registry so cancel works after reconnect
+        info = _active_streams.get(node_id)
+        if info:
+            info.cancelled = True
+            if info.sdk_pid:
+                kill_process_tree(info.sdk_pid)
+                info.sdk_pid = None
+            if info.stream_task and not info.stream_task.done():
+                info.stream_task.cancel()
+        else:
+            # Fallback to instance state (shouldn't normally happen)
+            self.cancelled.add(node_id)
+            sdk_pid = self.sdk_pids.get(node_id)
+            if sdk_pid:
+                kill_process_tree(sdk_pid)
+                self.sdk_pids.pop(node_id, None)
+            st = self.stream_tasks.get(node_id)
+            if st and not st.done():
+                st.cancel()
 
     async def handle_duplicate(self, data: dict):
         """Re-run the same user message from the same parent, creating a sibling."""
