@@ -505,6 +505,8 @@ class ConnectionHandler:
             updates["model"] = data["model"] or ""
         if "max_turns" in data:
             updates["max_turns"] = data["max_turns"]
+        if "skill" in data:
+            updates["skill"] = data["skill"] or ""
         if updates:
             await update_tree(tree_id, **updates)
         tree = await get_tree(tree_id)

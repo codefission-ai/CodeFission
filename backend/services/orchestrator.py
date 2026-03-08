@@ -367,6 +367,15 @@ class Orchestrator:
                 + sdk_msg
             )
 
+        # Prepend tree-level skill/system prompt if set
+        if tree.skill:
+            sdk_msg = (
+                f"[System: The user has set the following skill/instructions for this entire tree:\n"
+                f"{tree.skill}\n"
+                f"Follow these instructions for all responses.]\n\n"
+                + sdk_msg
+            )
+
         # If file quotes, prepend their context (actual file contents, folder listings, diff)
         if file_quotes:
             quote_ctx = await self._build_file_quote_context(file_quotes, tree, tree.root_node_id)

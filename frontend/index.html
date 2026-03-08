@@ -289,9 +289,10 @@
     .tree-node.tree-node-root {
       flex-direction: column;
       align-items: stretch;
-      min-width: 180px; max-width: 260px;
+      min-width: 220px; max-width: 300px;
       padding: 6px 8px;
       cursor: default;
+      gap: 4px;
     }
     .tree-node:hover { background: var(--bg-hover); border-color: var(--text-muted); box-shadow: var(--shadow-md); }
     .tree-node.selected { border-color: var(--accent); background: #e0e4ee; color: var(--text-primary); }
@@ -327,6 +328,49 @@
     .tree-node-root-input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* Root node sections (skill, files, message) */
+    .root-section {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .root-section-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      padding: 0 2px;
+    }
+    .root-section-input {
+      min-width: 0; width: 100%;
+      padding: 4px 8px; font-size: 11px;
+      font-family: var(--font-mono);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px; outline: none;
+      resize: none; line-height: 1.4;
+      overflow: hidden;
+      min-height: 24px; max-height: 150px;
+    }
+    .root-section-input::placeholder { color: var(--text-muted); }
+    .root-section-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .root-section-locked .root-section-input {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: var(--bg-raised);
+    }
+    .root-section-locked .root-section-label {
+      opacity: 0.5;
+    }
+    .root-section-locked .repo-badge {
+      opacity: 0.5;
     }
     .stream-cursor {
       display: inline-block;

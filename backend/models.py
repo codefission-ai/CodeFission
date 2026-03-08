@@ -32,3 +32,4 @@ class Tree(BaseModel):
     max_turns: int | None = None
     repo_mode: str = "new"
     repo_source: str | None = None
+    skill: str = ""

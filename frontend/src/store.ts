@@ -25,6 +25,7 @@ export interface CTree {
   max_turns: number | null;
   repo_mode: string;
   repo_source: string | null;
+  skill: string;
 }
 
 export interface ProviderInfo {

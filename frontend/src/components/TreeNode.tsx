@@ -204,16 +204,40 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   }, [node.id]);
 
   const [loading, setLoading] = useState(false);
-  const inputType = detectInputType(input);
   const hasRepo = tree && tree.repo_mode !== "new";
+  const hasChildren = node.children_ids.length > 0;
+  const [repoInput, setRepoInput] = useState("");
+  const repoInputType = detectInputType(repoInput);
+  const [skillInput, setSkillInput] = useState(tree?.skill ?? "");
+  const skillTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
+  const skillTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const repoTextareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const handleRootSend = useCallback(() => {
-    if (!input.trim() || isStreaming || loading) return;
-    const t = input.trim();
+  // Sync skill input when tree data changes externally
+  useEffect(() => {
+    if (tree) setSkillInput(tree.skill);
+  }, [tree?.skill]);
+
+  // Auto-resize skill textarea
+  useLayoutEffect(() => {
+    const ta = skillTextareaRef.current;
+    if (ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+  }, [skillInput, selected]);
+
+  // Debounced save for skill
+  const handleSkillChange = useCallback((val: string) => {
+    setSkillInput(val);
+    clearTimeout(skillTimerRef.current);
+    skillTimerRef.current = setTimeout(() => {
+      send({ type: WS.UPDATE_TREE_SETTINGS, tree_id: node.tree_id, skill: val });
+    }, 500);
+  }, [node.tree_id]);
+
+  const handleRepoSubmit = useCallback(() => {
+    if (!repoInput.trim() || loading) return;
+    const t = repoInput.trim();
     const type = detectInputType(t);
-
     if (type === "url" || type === "local") {
-      // Set repo, then clear input (chat comes from the next message)
       setLoading(true);
       send({
         type: WS.SET_REPO,
@@ -221,14 +245,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
         repo_mode: type === "url" ? "url" : "local",
         repo_source: t,
       });
-      setInput("");
-      // Loading clears when tree_updated comes back (via store)
-      setTimeout(() => setLoading(false), 30000); // safety timeout
-    } else {
-      // Plain message — send as chat (empty repo auto-created)
-      handleSend();
+      setRepoInput("");
+      setTimeout(() => setLoading(false), 30000);
     }
-  }, [input, isStreaming, loading, node.tree_id, handleSend]);
+  }, [repoInput, loading, node.tree_id]);
 
   // Clear loading when tree updates (repo set succeeded)
   const treeRepoMode = tree?.repo_mode;
@@ -236,61 +256,105 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     if (treeRepoMode && treeRepoMode !== "new") setLoading(false);
   }, [treeRepoMode]);
 
-  // Root hub: unified input
+  // Root hub: three-section input
   if (isRoot && !node.user_message) {
     return (
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
         <Handle type="source" position={Position.Bottom} />
-        {hasRepo && tree && (
-          <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
-        )}
-        {pendingQuotes.length > 0 && selected && (
-          <div className="quote-chips">
-            {pendingQuotes.map((q) => (
-              <span key={q.id} className="quote-chip">
-                <span className="quote-chip-label">{q.label}</span>
-                <button
-                  className="quote-chip-remove"
-                  onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
-                  onMouseDown={(e) => e.preventDefault()}
-                >&times;</button>
-              </span>
-            ))}
-          </div>
-        )}
-        <textarea
-          ref={textareaRef}
-          className="tree-node-root-input nopan nodrag"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onFocus={() => actions.selectNode(node.id)}
-          onDrop={(e) => {
-            const files = e.dataTransfer?.files;
-            if (files?.length) {
-              e.preventDefault();
-              // Use the first dropped item's path (webkitRelativePath or name)
-              const path = (files[0] as any).path || files[0].name;
-              if (path) setInput(path);
-            }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleRootSend();
-            }
-          }}
-          placeholder={hasRepo ? "Type a message..." : "Path, URL, or message..."}
-          rows={1}
-          disabled={loading}
-        />
-        {input.trim() && !hasRepo && (
-          <div className="root-input-hint">
-            {inputType === "url" ? "⏎ clone repo" :
-             inputType === "local" ? "⏎ copy from path" :
-             "⏎ start with empty repo"}
-          </div>
-        )}
-        {loading && <div className="root-input-hint">Setting up repo...</div>}
+
+        {/* Section 1: Skill */}
+        <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
+          <label className="root-section-label">Skill</label>
+          <textarea
+            ref={skillTextareaRef}
+            className="root-section-input nopan nodrag"
+            value={skillInput}
+            onChange={(e) => handleSkillChange(e.target.value)}
+            onFocus={() => actions.selectNode(node.id)}
+            placeholder="System instructions for all conversations..."
+            rows={1}
+            disabled={hasChildren}
+          />
+        </div>
+
+        {/* Section 2: Files / Repo */}
+        <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
+          <label className="root-section-label">Files</label>
+          {hasRepo && tree ? (
+            <RepoBadge tree={tree} onBrowse={!hasChildren ? handleBrowseRepo : undefined} />
+          ) : (
+            <>
+              <textarea
+                ref={repoTextareaRef}
+                className="root-section-input nopan nodrag"
+                value={repoInput}
+                onChange={(e) => setRepoInput(e.target.value)}
+                onFocus={() => actions.selectNode(node.id)}
+                onDrop={(e) => {
+                  const files = e.dataTransfer?.files;
+                  if (files?.length) {
+                    e.preventDefault();
+                    const path = (files[0] as any).path || files[0].name;
+                    if (path) setRepoInput(path);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleRepoSubmit();
+                  }
+                }}
+                placeholder="Drop files, paste path or GitHub URL..."
+                rows={1}
+                disabled={hasChildren || loading}
+              />
+              {repoInput.trim() && (
+                <div className="root-input-hint">
+                  {repoInputType === "url" ? "⏎ clone repo" :
+                   repoInputType === "local" ? "⏎ copy from path" :
+                   "Enter a path or URL"}
+                </div>
+              )}
+              {loading && <div className="root-input-hint">Setting up repo...</div>}
+            </>
+          )}
+        </div>
+
+        {/* Section 3: Message */}
+        <div className="root-section">
+          <label className="root-section-label">Message</label>
+          {pendingQuotes.length > 0 && selected && (
+            <div className="quote-chips">
+              {pendingQuotes.map((q) => (
+                <span key={q.id} className="quote-chip">
+                  <span className="quote-chip-label">{q.label}</span>
+                  <button
+                    className="quote-chip-remove"
+                    onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
+                    onMouseDown={(e) => e.preventDefault()}
+                  >&times;</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            className="root-section-input nopan nodrag"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onFocus={() => actions.selectNode(node.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Type a message..."
+            rows={1}
+            disabled={loading}
+          />
+        </div>
+
         <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
       </div>
     );

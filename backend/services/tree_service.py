@@ -45,7 +45,8 @@ async def list_trees() -> list[Tree]:
         Tree(id=r["id"], name=r["name"], created_at=r["created_at"],
              provider=r["provider"], model=r["model"],
              max_turns=r["max_turns"],
-             repo_mode=r["repo_mode"], repo_source=r["repo_source"])
+             repo_mode=r["repo_mode"], repo_source=r["repo_source"],
+             skill=r["skill"])
         for r in rows
     ]
 
@@ -67,6 +68,7 @@ async def get_tree(tree_id: str) -> Tree | None:
         provider=row["provider"], model=row["model"],
         max_turns=row["max_turns"],
         repo_mode=row["repo_mode"], repo_source=row["repo_source"],
+        skill=row["skill"],
     )
 
 
@@ -192,7 +194,7 @@ async def update_tree(tree_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("repo_mode", "repo_source", "provider", "model", "max_turns"):
+        if k in ("repo_mode", "repo_source", "provider", "model", "max_turns", "skill"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
