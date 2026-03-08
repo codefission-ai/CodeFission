@@ -189,7 +189,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     }
     send(msg);
     setInput("");
-    if (quotes.length > 0) useStore.setState({ pendingQuotes: [] });
+    if (quotes.length > 0) useStore.setState({ pendingQuotes: [], pendingQuotesFor: null });
   }, [input, isStreaming, node.id]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {

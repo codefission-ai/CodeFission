@@ -95,6 +95,7 @@ interface Store {
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
   pendingQuotes: FileQuote[];
+  pendingQuotesFor: string | null;  // which node these quotes target
   pendingInputText: string | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
@@ -137,6 +138,7 @@ export const useStore = create<Store>(() => ({
   nodeProcesses: {},
   filesPanel: null,
   pendingQuotes: [],
+  pendingQuotesFor: null,
   pendingInputText: null,
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
@@ -181,12 +183,15 @@ export const actions = {
       }
       return { nodes };
     }),
-  selectNode: (id: string | null) => useStore.setState((s) => ({
-    selectedNodeId: id,
-    // Only clear quotes when switching to a different non-null node;
-    // deselecting (null) and reselecting preserves them.
-    pendingQuotes: (id && s.selectedNodeId && id !== s.selectedNodeId) ? [] : s.pendingQuotes,
-  })),
+  selectNode: (id: string | null) => useStore.setState((s) => {
+    // Clear quotes when selecting a node that isn't the quotes' target
+    const clear = id !== null && s.pendingQuotesFor !== null && id !== s.pendingQuotesFor;
+    return {
+      selectedNodeId: id,
+      pendingQuotes: clear ? [] : s.pendingQuotes,
+      pendingQuotesFor: clear ? null : s.pendingQuotesFor,
+    };
+  }),
 
   appendChunk: (nodeId: string, text: string) =>
     useStore.setState((s) => {
@@ -327,7 +332,7 @@ export const actions = {
         );
         if (dup) return {};
       }
-      return { pendingQuotes: [...s.pendingQuotes, q] };
+      return { pendingQuotes: [...s.pendingQuotes, q], pendingQuotesFor: s.selectedNodeId };
     }),
   removeFileQuote: (id: string) =>
     useStore.setState((s) => ({
