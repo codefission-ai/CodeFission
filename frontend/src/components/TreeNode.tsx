@@ -492,4 +492,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   );
 }
 
-export default memo(TreeNode);
+export default memo(TreeNode, (prev, next) =>
+  prev.data.node === next.data.node &&
+  prev.data.descendantCount === next.data.descendantCount
+);

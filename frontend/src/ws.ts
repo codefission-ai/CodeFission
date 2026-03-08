@@ -79,6 +79,27 @@ export function send(msg: Record<string, unknown>) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+// ── Chunk batching ──────────────────────────────────────────────────────
+// Accumulate text chunks per node and flush once per animation frame,
+// so rapid streaming doesn't trigger a store update + React render per chunk.
+const pendingChunks = new Map<string, string>();
+let chunkRafId: number | null = null;
+
+function flushChunks() {
+  chunkRafId = null;
+  for (const [nodeId, text] of pendingChunks) {
+    actions.appendChunk(nodeId, text);
+  }
+  pendingChunks.clear();
+}
+
+function queueChunk(nodeId: string, text: string) {
+  pendingChunks.set(nodeId, (pendingChunks.get(nodeId) || "") + text);
+  if (chunkRafId === null) {
+    chunkRafId = requestAnimationFrame(flushChunks);
+  }
+}
+
 function handle(data: any) {
   switch (data.type) {
     case WS.TREES:
@@ -135,7 +156,7 @@ function handle(data: any) {
       actions.setExpanded(data.node_id, true);
       break;
     case WS.CHUNK:
-      actions.appendChunk(data.node_id, data.text);
+      queueChunk(data.node_id, data.text);
       break;
     case WS.TOOL_START:
       actions.addToolCall(data.node_id, {
