@@ -53,6 +53,7 @@ function detectInputType(text: string): "url" | "local" | "message" {
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 const EMPTY_PROCESSES: ProcessInfo[] = [];
+const EMPTY_QUOTES: FileQuote[] = [];
 
 function ProcessList({ nodeId, processes }: { nodeId: string; processes: ProcessInfo[] }) {
   return (
@@ -112,19 +113,23 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
-  const pendingQuotes = useStore((s) => s.pendingQuotes);
-  const quotesForThis = useStore((s) => s.pendingQuotesFor === node.id);
   const selectedHasInput = useStore((s) => {
     if (!s.selectedNodeId) return false;
     const sel = s.nodes[s.selectedNodeId];
     if (!sel) return false;
-    // Root hub always has input
     if (!sel.parent_id && !sel.user_message) return true;
-    // Expanded + not streaming = has follow-up textarea
     return !!s.expandedNodes[s.selectedNodeId] && !s.streaming[s.selectedNodeId];
   });
   const selected = selectedId === node.id;
-  const quotesFromThis = pendingQuotes.filter((q) => q.nodeId === node.id).length;
+  // Quotes targeting this node (for rendering chips)
+  const myQuotes = useStore((s) => s.pendingQuotes[node.id]) ?? EMPTY_QUOTES;
+  // How many quotes from this node exist across all targets (for the "Quoted" badge)
+  const quotesFromThis = useStore((s) => {
+    for (const quotes of Object.values(s.pendingQuotes)) {
+      for (const q of quotes) { if (q.nodeId === node.id) return true; }
+    }
+    return false;
+  }) ? 1 : 0;
   const canShowQuote = selectedHasInput && !selected && isExpanded;
   const isRoot = !node.parent_id;
   const parentCommit = useStore((s) => node.parent_id ? s.nodes[node.parent_id]?.git_commit : null);
@@ -179,7 +184,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const handleSend = useCallback(() => {
     if (!input.trim() || isStreaming) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content: input.trim() };
-    const quotes = useStore.getState().pendingQuotes;
+    const quotes = useStore.getState().pendingQuotes[node.id] || [];
     if (quotes.length > 0) {
       msg.file_quotes = quotes.map((q: FileQuote) => ({
         node_id: q.nodeId,
@@ -190,7 +195,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     }
     send(msg);
     setInput("");
-    if (quotes.length > 0) useStore.setState({ pendingQuotes: [], pendingQuotesFor: null });
+    if (quotes.length > 0) actions.clearNodeQuotes(node.id);
   }, [input, isStreaming, node.id]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {
@@ -245,14 +250,14 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
         {hasRepo && tree && (
           <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
         )}
-        {pendingQuotes.length > 0 && selected && quotesForThis && (
+        {myQuotes.length > 0 && selected && (
           <div className="quote-chips">
-            {pendingQuotes.map((q) => (
+            {myQuotes.map((q) => (
               <span key={q.id} className="quote-chip">
                 <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
+                  onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(node.id, q.id); }}
                   onMouseDown={(e) => e.preventDefault()}
                 >&times;</button>
               </span>
@@ -337,12 +342,16 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               onClick={(e) => {
                 e.stopPropagation();
                 e.nativeEvent.stopImmediatePropagation();
+                const targetId = useStore.getState().selectedNodeId;
+                if (!targetId) return;
                 if (quotesFromThis > 0) {
-                  // Remove all quotes from this node
-                  const toRemove = useStore.getState().pendingQuotes.filter((q) => q.nodeId === node.id);
-                  toRemove.forEach((q) => actions.removeFileQuote(q.id));
+                  // Remove all quotes from this source node across targets
+                  const allQuotes = useStore.getState().pendingQuotes;
+                  for (const [tid, quotes] of Object.entries(allQuotes)) {
+                    quotes.filter((q) => q.nodeId === node.id).forEach((q) => actions.removeFileQuote(tid, q.id));
+                  }
                 } else {
-                  actions.addFileQuote({
+                  actions.addFileQuote(targetId, {
                     id: `fq-${Date.now()}`,
                     nodeId: node.id,
                     type: "node",
@@ -425,14 +434,14 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
           {!isStreaming && selected && (
             <>
-              {pendingQuotes.length > 0 && quotesForThis && (
+              {myQuotes.length > 0 && (
                 <div className="quote-chips">
-                  {pendingQuotes.map((q) => (
+                  {myQuotes.map((q) => (
                     <span key={q.id} className="quote-chip">
                       <span className="quote-chip-label">{q.label}</span>
                       <button
                         className="quote-chip-remove"
-                        onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
+                        onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(node.id, q.id); }}
                         onMouseDown={(e) => e.preventDefault()}
                       >&times;</button>
                     </span>

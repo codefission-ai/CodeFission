@@ -94,8 +94,7 @@ interface Store {
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
-  pendingQuotes: FileQuote[];
-  pendingQuotesFor: string | null;  // which node these quotes target
+  pendingQuotes: Record<string, FileQuote[]>;  // targetNodeId -> quotes
   pendingInputText: string | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
@@ -137,8 +136,7 @@ export const useStore = create<Store>(() => ({
   fileContents: {},
   nodeProcesses: {},
   filesPanel: null,
-  pendingQuotes: [],
-  pendingQuotesFor: null,
+  pendingQuotes: {},
   pendingInputText: null,
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
@@ -315,21 +313,33 @@ export const actions = {
     ),
 
   // ── Quote ────────────────────────────────────────────────────
-  addFileQuote: (q: FileQuote) =>
+  addFileQuote: (targetNodeId: string, q: FileQuote) =>
     useStore.setState((s) => {
-      // Prevent duplicate file/folder quotes (same node + type + path)
+      const existing = s.pendingQuotes[targetNodeId] || [];
+      // Prevent duplicate file/folder quotes (same source node + type + path)
       if (q.type !== "diff") {
-        const dup = s.pendingQuotes.some(
+        const dup = existing.some(
           (p) => p.nodeId === q.nodeId && p.type === q.type && p.path === q.path,
         );
         if (dup) return {};
       }
-      return { pendingQuotes: [...s.pendingQuotes, q], pendingQuotesFor: s.selectedNodeId };
+      return { pendingQuotes: { ...s.pendingQuotes, [targetNodeId]: [...existing, q] } };
     }),
-  removeFileQuote: (id: string) =>
-    useStore.setState((s) => ({
-      pendingQuotes: s.pendingQuotes.filter((q) => q.id !== id),
-    })),
+  removeFileQuote: (targetNodeId: string, id: string) =>
+    useStore.setState((s) => {
+      const existing = s.pendingQuotes[targetNodeId] || [];
+      const filtered = existing.filter((q) => q.id !== id);
+      if (filtered.length === 0) {
+        const { [targetNodeId]: _, ...rest } = s.pendingQuotes;
+        return { pendingQuotes: rest };
+      }
+      return { pendingQuotes: { ...s.pendingQuotes, [targetNodeId]: filtered } };
+    }),
+  clearNodeQuotes: (targetNodeId: string) =>
+    useStore.setState((s) => {
+      const { [targetNodeId]: _, ...rest } = s.pendingQuotes;
+      return { pendingQuotes: rest };
+    }),
   appendToInput: (text: string) =>
     useStore.setState((s) => ({
       pendingInputText: (s.pendingInputText || "") + (s.pendingInputText ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n",
