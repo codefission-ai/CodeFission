@@ -8,6 +8,7 @@ import {
   useInternalNode,
   BaseEdge,
   MarkerType,
+  applyNodeChanges,
   type Node,
   type Edge,
   type EdgeProps,
@@ -55,7 +56,15 @@ function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
   return <BaseEdge path={path} markerEnd={markerEnd} />;
 }
 
-const nodeTypes = { tree: TreeNode };
+function NoteNode() {
+  return (
+    <div className="sticky-note nopan-select">
+      <div className="sticky-note-body" />
+    </div>
+  );
+}
+
+const nodeTypes = { tree: TreeNode, note: NoteNode };
 const edgeTypes = { quote: QuoteEdge };
 
 function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null): Set<string> {
@@ -200,9 +209,13 @@ function CanvasInner() {
 
   const layoutTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
 
+  // Track note nodes separately so ReactFlow owns their position during drag
+  const [noteNodes, setNoteNodes] = useState<Node[]>([]);
+
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let needsLayout = false;
     let heightChanged = false;
+    const noteChanges: NodeChange[] = [];
     for (const change of changes) {
       if (change.type === "dimensions" && (change as NodeDimensionChange).dimensions) {
         const dim = (change as NodeDimensionChange).dimensions!;
@@ -213,11 +226,17 @@ function CanvasInner() {
           measuredRef.current[change.id] = { width: dim.width, height: dim.height };
         }
       }
+      // Let ReactFlow handle note node position/dimension changes natively
+      if ("id" in change && (change as any).id?.startsWith?.("note-")) {
+        noteChanges.push(change);
+      }
+    }
+    if (noteChanges.length > 0) {
+      setNoteNodes((nds) => applyNodeChanges(noteChanges, nds));
     }
     if (needsLayout) {
       clearTimeout(heightTimerRef.current);
       clearTimeout(layoutTimerRef.current);
-      // Batch rapid layout changes (e.g. new node + measurement)
       if (!ready) {
         setLayoutVersion((v) => v + 1);
         setReady(true);
@@ -262,13 +281,29 @@ function CanvasInner() {
   }
   prevPositionsRef.current = newPositions;
 
+  const addNote = useCallback(() => {
+    const vp = reactFlowInstance.getViewport();
+    const x = (-vp.x + window.innerWidth / 2) / vp.zoom - 75;
+    const y = (-vp.y + window.innerHeight / 2) / vp.zoom - 50;
+    setNoteNodes((prev) => [...prev, {
+      id: `note-${Date.now()}`,
+      type: "note",
+      position: { x, y },
+      data: {},
+      draggable: true,
+    }]);
+  }, [reactFlowInstance]);
+
+  // Merge tree nodes + note nodes
+  const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
+
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;
   }
 
   return (
     <ReactFlow
-      nodes={flowNodes}
+      nodes={allNodes}
       edges={flowEdges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
@@ -286,7 +321,7 @@ function CanvasInner() {
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
-      <ZoomControls />
+      <ZoomControls onAddNote={addNote} />
     </ReactFlow>
   );
 }
@@ -294,10 +329,13 @@ function CanvasInner() {
 const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 const modKey = isMac ? "⌘" : "Ctrl";
 
-function ZoomControls() {
+function ZoomControls({ onAddNote }: { onAddNote: () => void }) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
   return (
     <div className="zoom-controls">
+      <button className="has-tooltip" onClick={onAddNote}>
+        ▪<span className="tooltip">Add note</span>
+      </button>
       <button className="has-tooltip" onClick={() => zoomIn({ duration: 150 })}>
         +<span className="tooltip">Zoom in <kbd>{modKey}+Scroll</kbd></span>
       </button>

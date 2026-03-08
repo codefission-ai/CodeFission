@@ -264,6 +264,8 @@
     /* React Flow overrides for dark theme */
     .react-flow__background { background: var(--bg-deep) !important; }
     .react-flow__node { transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); will-change: transform; }
+    .react-flow__node.dragging,
+    .react-flow__node[data-id^="note-"] { transition: none; }
     .react-flow__edge path { transition: d 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
     .react-flow__handle { transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
     .tree-node {
@@ -723,6 +725,26 @@
     .zoom-controls .has-tooltip > .tooltip {
       top: auto;
       bottom: calc(100% + 6px);
+    }
+
+    /* ── Sticky note ───────────────────────────────────────────── */
+    .sticky-note {
+      width: 150px;
+      height: 100px;
+      background: #fef9c3;
+      border: 1px solid #e5d990;
+      border-radius: 3px;
+      box-shadow: 2px 2px 6px rgba(0,0,0,0.10);
+      cursor: grab;
+    }
+    .sticky-note:active { cursor: grabbing; }
+    .sticky-note-body {
+      width: 100%;
+      height: 100%;
+    }
+    [data-theme="dark"] .sticky-note {
+      background: #3d3a20;
+      border-color: #5a5530;
     }
 
     /* ── Chat panel ─────────────────────────────────────────────── */
