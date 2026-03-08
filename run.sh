@@ -12,4 +12,4 @@ if [ ! -d "$DIST" ] || [ -n "$(find "$FRONTEND/src" "$FRONTEND/index.html" -newe
 fi
 
 PORT="${1:-8080}"
-exec uv run --directory "$DIR" uvicorn main:app --host 0.0.0.0 --port "$PORT" --app-dir "$DIR/backend"
+exec uv run --directory "$DIR" uvicorn main:app --host 0.0.0.0 --port "$PORT" --app-dir "$DIR/backend" --ws-ping-interval 30 --ws-ping-timeout 10

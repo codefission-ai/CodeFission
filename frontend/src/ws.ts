@@ -58,25 +58,98 @@ export const WS = {
 
 let ws: WebSocket | null = null;
 
+// ── Reconnect with exponential backoff + jitter ─────────────────────────
+const BACKOFF_BASE = 500;    // start at 500ms
+const BACKOFF_MAX = 30_000;  // cap at 30s
+let backoffAttempt = 0;
+
+function scheduleReconnect() {
+  const delay = Math.min(BACKOFF_BASE * 2 ** backoffAttempt, BACKOFF_MAX);
+  const jitter = delay * 0.5 * Math.random();
+  backoffAttempt++;
+  setTimeout(connectWs, delay + jitter);
+}
+
+// ── Heartbeat (client-initiated ping/pong) ──────────────────────────────
+const PING_INTERVAL = 25_000;  // send ping every 25s
+const PONG_TIMEOUT = 10_000;   // expect pong within 10s
+let pingTimer: ReturnType<typeof setInterval> | null = null;
+let pongTimer: ReturnType<typeof setTimeout> | null = null;
+let awaitingPong = false;
+
+function startHeartbeat() {
+  stopHeartbeat();
+  pingTimer = setInterval(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    awaitingPong = true;
+    ws.send(JSON.stringify({ type: "ping" }));
+    pongTimer = setTimeout(() => {
+      if (awaitingPong) {
+        // Server didn't respond — connection is dead
+        ws?.close();
+      }
+    }, PONG_TIMEOUT);
+  }, PING_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+  if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+  awaitingPong = false;
+}
+
+function receivedPong() {
+  awaitingPong = false;
+  if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+}
+
+// ── Message queue (buffer sends while disconnected) ─────────────────────
+let sendQueue: Record<string, unknown>[] = [];
+
 export function connectWs() {
   if (ws && ws.readyState === WebSocket.OPEN) return;
+  // Clean up any lingering socket
+  if (ws) {
+    ws.onclose = null;
+    ws.onerror = null;
+    ws.onmessage = null;
+    try { ws.close(); } catch {}
+    ws = null;
+  }
+
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(`${proto}//${location.host}/ws`);
 
   ws.onopen = () => {
     actions.setConnected(true);
+    backoffAttempt = 0;
+    startHeartbeat();
+    // Flush queued messages
+    for (const msg of sendQueue) {
+      ws!.send(JSON.stringify(msg));
+    }
+    sendQueue = [];
     send({ type: WS.LIST_TREES });
   };
   ws.onclose = () => {
     actions.setConnected(false);
-    setTimeout(connectWs, 2000);
+    stopHeartbeat();
+    scheduleReconnect();
   };
   ws.onerror = () => ws?.close();
   ws.onmessage = (e) => handle(JSON.parse(e.data));
 }
 
 export function send(msg: Record<string, unknown>) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  } else {
+    // Queue messages that matter (skip ephemeral ones like expanded/collapsed state)
+    const t = msg.type as string;
+    if (t !== WS.SET_EXPANDED && t !== WS.SET_SUBTREE_COLLAPSED && t !== WS.SELECT_TREE) {
+      sendQueue.push(msg);
+    }
+  }
 }
 
 // ── Chunk batching ──────────────────────────────────────────────────────
@@ -102,6 +175,9 @@ function queueChunk(nodeId: string, text: string) {
 
 function handle(data: any) {
   switch (data.type) {
+    case "pong":
+      receivedPong();
+      break;
     case WS.TREES:
       actions.setTrees(data.trees);
       if (data.expanded_nodes) actions.loadExpandedNodes(data.expanded_nodes);

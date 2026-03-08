@@ -84,6 +84,9 @@ class ConnectionHandler:
 
     async def dispatch(self, data: dict):
         msg_type = data.get("type")
+        if msg_type == "ping":
+            await self.send("pong")
+            return
         handler = self._dispatch_table.get(msg_type)
         if handler:
             await handler(self, data)

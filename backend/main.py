@@ -52,7 +52,7 @@ async def websocket_endpoint(ws: WebSocket):
         while True:
             data = await ws.receive_json()
             await handler.dispatch(data)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         handler.cleanup()
 
 
