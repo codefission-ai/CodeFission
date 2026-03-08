@@ -263,7 +263,7 @@
 
     /* React Flow overrides for dark theme */
     .react-flow__background { background: var(--bg-deep) !important; }
-    .react-flow__node { transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+    .react-flow__node { transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); will-change: transform; }
     .react-flow__edge path { transition: d 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
     .react-flow__handle { transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
     .tree-node {
@@ -275,6 +275,7 @@
       box-shadow: var(--shadow-sm);
       transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, max-height 0.35s ease;
       position: relative;
+      will-change: transform;
     }
     .tree-node-worktree-id {
       display: none;
