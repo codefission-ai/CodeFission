@@ -260,7 +260,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
         )}
         <textarea
           ref={textareaRef}
-          className="tree-node-root-input"
+          className="tree-node-root-input nopan nodrag"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onFocus={() => actions.selectNode(node.id)}
@@ -441,7 +441,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               <div className="tree-node-input">
                 <textarea
                   ref={textareaRef}
-                  className="tree-node-textarea"
+                  className="tree-node-textarea nopan nodrag"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onFocus={() => actions.selectNode(node.id)}
