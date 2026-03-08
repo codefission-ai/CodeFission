@@ -113,6 +113,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const pendingQuotes = useStore((s) => s.pendingQuotes);
+  const quotesForThis = useStore((s) => s.pendingQuotesFor === node.id);
   const selectedHasInput = useStore((s) => {
     if (!s.selectedNodeId) return false;
     const sel = s.nodes[s.selectedNodeId];
@@ -244,7 +245,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
         {hasRepo && tree && (
           <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
         )}
-        {pendingQuotes.length > 0 && selected && (
+        {pendingQuotes.length > 0 && selected && quotesForThis && (
           <div className="quote-chips">
             {pendingQuotes.map((q) => (
               <span key={q.id} className="quote-chip">
@@ -424,7 +425,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 
           {!isStreaming && selected && (
             <>
-              {pendingQuotes.length > 0 && (
+              {pendingQuotes.length > 0 && quotesForThis && (
                 <div className="quote-chips">
                   {pendingQuotes.map((q) => (
                     <span key={q.id} className="quote-chip">

@@ -183,15 +183,7 @@ export const actions = {
       }
       return { nodes };
     }),
-  selectNode: (id: string | null) => useStore.setState((s) => {
-    // Clear quotes when selecting a node that isn't the quotes' target
-    const clear = id !== null && s.pendingQuotesFor !== null && id !== s.pendingQuotesFor;
-    return {
-      selectedNodeId: id,
-      pendingQuotes: clear ? [] : s.pendingQuotes,
-      pendingQuotesFor: clear ? null : s.pendingQuotesFor,
-    };
-  }),
+  selectNode: (id: string | null) => useStore.setState({ selectedNodeId: id }),
 
   appendChunk: (nodeId: string, text: string) =>
     useStore.setState((s) => {
