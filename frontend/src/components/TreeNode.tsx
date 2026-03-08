@@ -167,7 +167,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       ta.style.height = "auto";
       ta.style.height = ta.scrollHeight + "px";
     }
-  }, [input]);
+  }, [input, selected]);
 
   const dot =
     isStreaming ? "#16a34a" :
