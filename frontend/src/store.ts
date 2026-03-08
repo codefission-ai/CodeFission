@@ -94,7 +94,7 @@ interface Store {
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
   filesPanel: FilesPanel | null;
-  pendingQuotes: Record<string, FileQuote[]>;  // targetNodeId -> quotes
+  pendingQuotes: Record<string, FileQuote[]>;  // targetNodeId -> quotes for that node's input
   pendingInputText: string | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
@@ -313,32 +313,32 @@ export const actions = {
     ),
 
   // ── Quote ────────────────────────────────────────────────────
-  addFileQuote: (targetNodeId: string, q: FileQuote) =>
+  addFileQuote: (q: FileQuote) =>
     useStore.setState((s) => {
-      const existing = s.pendingQuotes[targetNodeId] || [];
-      // Prevent duplicate file/folder quotes (same source node + type + path)
+      const target = s.selectedNodeId;
+      if (!target) return {};
+      const existing = s.pendingQuotes[target] || [];
+      // Prevent duplicate file/folder quotes (same source + type + path)
       if (q.type !== "diff") {
         const dup = existing.some(
           (p) => p.nodeId === q.nodeId && p.type === q.type && p.path === q.path,
         );
         if (dup) return {};
       }
-      return { pendingQuotes: { ...s.pendingQuotes, [targetNodeId]: [...existing, q] } };
+      return { pendingQuotes: { ...s.pendingQuotes, [target]: [...existing, q] } };
     }),
-  removeFileQuote: (targetNodeId: string, id: string) =>
+  removeFileQuote: (id: string) =>
     useStore.setState((s) => {
-      const existing = s.pendingQuotes[targetNodeId] || [];
-      const filtered = existing.filter((q) => q.id !== id);
-      if (filtered.length === 0) {
-        const { [targetNodeId]: _, ...rest } = s.pendingQuotes;
-        return { pendingQuotes: rest };
+      const pendingQuotes = { ...s.pendingQuotes };
+      for (const targetId of Object.keys(pendingQuotes)) {
+        const filtered = pendingQuotes[targetId].filter((q) => q.id !== id);
+        if (filtered.length !== pendingQuotes[targetId].length) {
+          if (filtered.length === 0) delete pendingQuotes[targetId];
+          else pendingQuotes[targetId] = filtered;
+          break;
+        }
       }
-      return { pendingQuotes: { ...s.pendingQuotes, [targetNodeId]: filtered } };
-    }),
-  clearNodeQuotes: (targetNodeId: string) =>
-    useStore.setState((s) => {
-      const { [targetNodeId]: _, ...rest } = s.pendingQuotes;
-      return { pendingQuotes: rest };
+      return { pendingQuotes };
     }),
   appendToInput: (text: string) =>
     useStore.setState((s) => ({

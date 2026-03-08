@@ -37,7 +37,7 @@ export default function ChatPanel() {
   const nodes = useStore((s) => s.nodes);
   const streaming = useStore((s) => s.streaming);
   const toolCalls = useStore((s) => s.toolCalls);
-  const myQuotes = useStore((s) => selectedId ? (s.pendingQuotes[selectedId] || []) : []);
+  const pendingQuotes = useStore((s) => selectedId ? (s.pendingQuotes[selectedId] || []) : []);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -71,8 +71,8 @@ export default function ChatPanel() {
   const handleSend = () => {
     if (!input.trim() || !selectedId || isStreaming) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content: input.trim() };
-    if (myQuotes.length > 0) {
-      msg.file_quotes = myQuotes.map((q) => ({
+    if (pendingQuotes.length > 0) {
+      msg.file_quotes = pendingQuotes.map((q) => ({
         node_id: q.nodeId,
         type: q.type,
         ...(q.path ? { path: q.path } : {}),
@@ -81,7 +81,10 @@ export default function ChatPanel() {
     }
     send(msg);
     setInput("");
-    if (myQuotes.length > 0 && selectedId) actions.clearNodeQuotes(selectedId);
+    if (pendingQuotes.length > 0) {
+      const { [selectedId]: _, ...rest } = useStore.getState().pendingQuotes;
+      useStore.setState({ pendingQuotes: rest });
+    }
   };
 
   if (!node) {
@@ -139,14 +142,14 @@ export default function ChatPanel() {
       </div>
 
       <div className="chat-input">
-        {myQuotes.length > 0 && selectedId && (
+        {pendingQuotes.length > 0 && (
           <div className="quote-chips chat-quote-chips">
-            {myQuotes.map((q) => (
+            {pendingQuotes.map((q) => (
               <span key={q.id} className="quote-chip" title={quotePreview(q, nodes)}>
                 <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={() => actions.removeFileQuote(selectedId!, q.id)}
+                  onClick={() => actions.removeFileQuote(q.id)}
                   onMouseDown={(e) => e.preventDefault()}
                 >&times;</button>
               </span>
