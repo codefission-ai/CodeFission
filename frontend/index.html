@@ -729,23 +729,46 @@
 
     /* ── Sticky note ───────────────────────────────────────────── */
     .sticky-note {
-      width: 150px;
-      height: 100px;
+      width: 180px;
+      min-height: 100px;
       background: #fef9c3;
       border: 1px solid #e5d990;
-      border-radius: 3px;
-      box-shadow: 2px 2px 6px rgba(0,0,0,0.10);
+      border-radius: 4px;
+      box-shadow: 2px 2px 8px rgba(0,0,0,0.12);
+      display: flex;
+      flex-direction: column;
+    }
+    .sticky-note-drag-handle {
+      height: 14px;
+      background: #f5e678;
+      border-radius: 3px 3px 0 0;
       cursor: grab;
+      flex-shrink: 0;
     }
-    .sticky-note:active { cursor: grabbing; }
-    .sticky-note-body {
+    .sticky-note-drag-handle:active { cursor: grabbing; }
+    .sticky-note-input {
+      flex: 1;
       width: 100%;
-      height: 100%;
+      min-height: 80px;
+      padding: 6px 8px;
+      font-size: 11px;
+      font-family: var(--font-sans);
+      line-height: 1.45;
+      background: transparent;
+      color: #1a1a1e;
+      border: none;
+      outline: none;
+      resize: none;
+      overflow: hidden;
     }
+    .sticky-note-input::placeholder { color: #b0a860; }
     [data-theme="dark"] .sticky-note {
       background: #3d3a20;
       border-color: #5a5530;
     }
+    [data-theme="dark"] .sticky-note-drag-handle { background: #4a4620; }
+    [data-theme="dark"] .sticky-note-input { color: #f8f8f2; }
+    [data-theme="dark"] .sticky-note-input::placeholder { color: #6a6530; }
 
     /* ── Chat panel ─────────────────────────────────────────────── */
     .chat {

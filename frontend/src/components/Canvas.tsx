@@ -56,10 +56,23 @@ function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
   return <BaseEdge path={path} markerEnd={markerEnd} />;
 }
 
-function NoteNode() {
+function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void } }) {
+  const [text, setText] = useState(data.text ?? "");
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
   return (
-    <div className="sticky-note nopan-select">
-      <div className="sticky-note-body" />
+    <div className="sticky-note">
+      <div className="sticky-note-drag-handle" />
+      <textarea
+        ref={taRef}
+        className="sticky-note-input nopan nodrag"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          data.onTextChange?.(id, e.target.value);
+        }}
+        placeholder="Write a note..."
+      />
     </div>
   );
 }
@@ -281,6 +294,12 @@ function CanvasInner() {
   }
   prevPositionsRef.current = newPositions;
 
+  // Stable ref callback so note data objects don't change on re-render
+  const noteTextRef = useRef<Record<string, string>>({});
+  const onNoteTextChange = useCallback((id: string, text: string) => {
+    noteTextRef.current[id] = text;
+  }, []);
+
   const addNote = useCallback(() => {
     const vp = reactFlowInstance.getViewport();
     const x = (-vp.x + window.innerWidth / 2) / vp.zoom - 75;
@@ -289,10 +308,10 @@ function CanvasInner() {
       id: `note-${Date.now()}`,
       type: "note",
       position: { x, y },
-      data: {},
+      data: { text: "", onTextChange: onNoteTextChange },
       draggable: true,
     }]);
-  }, [reactFlowInstance]);
+  }, [reactFlowInstance, onNoteTextChange]);
 
   // Merge tree nodes + note nodes
   const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
