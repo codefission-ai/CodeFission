@@ -139,6 +139,8 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     const el = responseRef.current;
     if (!el || !selected) return;
     const stop = (e: WheelEvent) => {
+      // Let Cmd/Ctrl+Scroll through for canvas zoom
+      if (e.metaKey || e.ctrlKey) return;
       if (el.scrollHeight > el.clientHeight) e.stopPropagation();
     };
     el.addEventListener("wheel", stop, { passive: false });
