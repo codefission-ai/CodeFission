@@ -168,6 +168,9 @@ function handle(data: any) {
     case WS.NODE_PROCESSES:
       actions.setNodeProcesses(data.node_id, data.processes || []);
       break;
+    case "tree_node_processes":
+      actions.replaceAllNodeProcesses(data.tree_node_processes || {});
+      break;
     case WS.ERROR:
       actions.setNodeStatus(data.node_id, "error");
       actions.setStreaming(data.node_id, false);

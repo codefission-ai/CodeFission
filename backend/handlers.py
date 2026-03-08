@@ -11,7 +11,7 @@ from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
 from services.tree_service import (
     list_trees, get_tree, get_all_nodes, get_node,
-    delete_tree, update_tree,
+    delete_tree, update_tree, update_node,
     get_setting, set_setting, get_global_defaults,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
@@ -19,7 +19,7 @@ from services.workspace_service import (
     resolve_workspace, cleanup_tree_workspace,
     list_files, get_diff, read_file,
     list_files_from_commit, read_file_from_commit, get_diff_from_commits,
-    remove_worktree,
+    remove_worktree, remove_worktree_and_branch,
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
 from services.orchestrator import Orchestrator
@@ -225,7 +225,6 @@ class ConnectionHandler:
                     raise event
 
                 if isinstance(event, SessionInit):
-                    from services.tree_service import update_node
                     await update_node(nid, session_id=event.session_id)
 
                 elif isinstance(event, TextDelta):
@@ -282,6 +281,8 @@ class ConnectionHandler:
                                 await remove_worktree(tree.id, tree.root_node_id, nid)
                 except Exception:
                     log.debug("Ephemeral worktree removal after cancel failed for %s", nid, exc_info=True)
+                # Broadcast tree-wide process state so UI updates all nodes
+                await self._send_tree_processes(ctx.workspace.parent)
             else:
                 full_response = self.streams[nid].text
                 self.streams[nid].status = "done"
@@ -292,12 +293,14 @@ class ConnectionHandler:
                     done_payload["git_commit"] = result.git_commit
                 # Brief delay to let SDK/tool subprocesses fully exit
                 await asyncio.sleep(0.15)
-                # Scan for orphaned processes in the workspace
-                procs = list_processes(ctx.workspace)
-                if procs:
+                # Tree-wide process scan — catches changes on ALL nodes
+                tree_ws = ctx.workspace.parent
+                tree_procs_raw = list_tree_processes(tree_ws) if tree_ws.exists() else {}
+                this_node_procs = tree_procs_raw.get(nid, [])
+                if this_node_procs:
                     done_payload["processes"] = [
                         {"pid": p.pid, "command": p.command, "ports": p.ports}
-                        for p in procs
+                        for p in this_node_procs
                     ]
                 else:
                     # No running processes — remove ephemeral worktree
@@ -306,10 +309,17 @@ class ConnectionHandler:
                         if node:
                             tree = await get_tree(node.tree_id)
                             if tree:
-                                await remove_worktree(tree.id, tree.root_node_id, nid)
+                                if result.files_changed == 0 and node.parent_id:
+                                    # No file changes — branch is noise, remove both
+                                    await remove_worktree_and_branch(tree.id, tree.root_node_id, nid)
+                                    await update_node(nid, git_branch=None)
+                                else:
+                                    await remove_worktree(tree.id, tree.root_node_id, nid)
                     except Exception:
                         log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
                 await self.send(WS.DONE, **done_payload)
+                # Broadcast tree-wide process state so UI updates all nodes
+                await self._send_tree_processes(tree_ws)
 
         except Exception as e:
             import traceback
@@ -329,6 +339,8 @@ class ConnectionHandler:
                         procs = list_processes(ws_path) if ws_path.exists() else []
                         if not procs:
                             await remove_worktree(tree.id, tree.root_node_id, nid)
+                        # Broadcast tree-wide process state so UI updates all nodes
+                        await self._send_tree_processes(ws_path.parent)
             except Exception:
                 log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
 
@@ -336,7 +348,16 @@ class ConnectionHandler:
             clear_sandbox()
             self.streams.pop(nid, None)
             self.tasks.pop(nid, None)
-            self.sdk_pids.pop(nid, None)
+            # Kill just the SDK/CLI process if it's still alive (e.g. stuck on a
+            # long-running Bash tool like a server).  We kill only the CLI itself
+            # — not its process tree — so user-started servers survive as orphans.
+            sdk_pid = self.sdk_pids.pop(nid, None)
+            if sdk_pid:
+                import os, signal
+                try:
+                    os.kill(sdk_pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
 
     def _track_sdk_pid(self, node_id: str, workspace):
         """Find the SDK subprocess PID by scanning /proc for direct children with matching cwd."""
@@ -527,6 +548,42 @@ class ConnectionHandler:
 
     # ── Process management ─────────────────────────────────────────────
 
+    async def _send_tree_processes(self, tree_ws):
+        """Scan and broadcast tree-wide process state so the UI stays in sync."""
+        try:
+            if not tree_ws.exists():
+                return
+            raw = list_tree_processes(tree_ws)
+            tree_procs = {}
+            for nid, procs in raw.items():
+                tree_procs[nid] = [
+                    {"pid": p.pid, "command": p.command, "ports": p.ports}
+                    for p in procs
+                ]
+            await self.send("tree_node_processes", tree_node_processes=tree_procs)
+        except Exception:
+            log.debug("Tree-wide process scan failed", exc_info=True)
+
+    async def _cleanup_node_worktree(self, node, tree):
+        """Remove a node's worktree after all processes have exited.
+
+        Also removes the branch ref if the node has no unique file changes
+        (i.e. its commit matches the parent's commit).
+        """
+        try:
+            node_id = node.id
+            if not node.parent_id:
+                return  # Never remove root workspace
+            # Check if node has unique changes vs parent
+            parent = await get_node(node.parent_id)
+            if parent and node.git_commit and node.git_commit == parent.git_commit:
+                await remove_worktree_and_branch(tree.id, tree.root_node_id, node_id)
+                await update_node(node_id, git_branch=None)
+            else:
+                await remove_worktree(tree.id, tree.root_node_id, node_id)
+        except Exception:
+            log.debug("Worktree cleanup failed for %s", node.id, exc_info=True)
+
     async def _resolve_node_workspace(self, node_id: str) -> tuple:
         """Resolve workspace path for a node. Returns (node, tree, workspace) or sends error."""
         node = await get_node(node_id)
@@ -554,29 +611,29 @@ class ConnectionHandler:
     async def handle_kill_process(self, data: dict):
         node_id = data["node_id"]
         pid = data["pid"]
-        _, _, ws_path = await self._resolve_node_workspace(node_id)
+        node, tree, ws_path = await self._resolve_node_workspace(node_id)
         if not ws_path:
             return
         kill_process(pid, ws_path)
-        # Send back updated process list
+        # Broadcast tree-wide process state (killing one process may affect others)
+        await self._send_tree_processes(ws_path.parent)
+        # If no more processes on this node, clean up the worktree
         procs = list_processes(ws_path)
-        await self.send(WS.NODE_PROCESSES, node_id=node_id, processes=[
-            {"pid": p.pid, "command": p.command, "ports": p.ports}
-            for p in procs
-        ])
+        if not procs and tree and node:
+            await self._cleanup_node_worktree(node, tree)
 
     async def handle_kill_all_processes(self, data: dict):
         node_id = data["node_id"]
-        _, _, ws_path = await self._resolve_node_workspace(node_id)
+        node, tree, ws_path = await self._resolve_node_workspace(node_id)
         if not ws_path:
             return
         kill_all_in_workspace(ws_path)
-        # Send back updated (now empty) process list
+        # Broadcast tree-wide process state
+        await self._send_tree_processes(ws_path.parent)
+        # If no more processes on this node, clean up the worktree
         procs = list_processes(ws_path)
-        await self.send(WS.NODE_PROCESSES, node_id=node_id, processes=[
-            {"pid": p.pid, "command": p.command, "ports": p.ports}
-            for p in procs
-        ])
+        if not procs and tree and node:
+            await self._cleanup_node_worktree(node, tree)
 
     # ── Dispatch table (class-level) ──────────────────────────────────
 

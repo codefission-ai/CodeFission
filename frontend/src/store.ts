@@ -300,6 +300,8 @@ export const actions = {
     useStore.setState((s) => ({
       nodeProcesses: { ...s.nodeProcesses, [nodeId]: processes },
     })),
+  replaceAllNodeProcesses: (map: Record<string, ProcessInfo[]>) =>
+    useStore.setState({ nodeProcesses: map }),
 
   openFilesPanel: (nodeId: string, tab: "files" | "diff" = "files") =>
     useStore.setState({ filesPanel: { nodeId, tab, selectedFile: null } }),

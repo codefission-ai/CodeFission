@@ -63,6 +63,7 @@ class ChatResult:
     node_id: str
     full_response: str
     git_commit: str | None = None
+    files_changed: int = 0
 
 
 @dataclass
@@ -414,21 +415,12 @@ class Orchestrator:
         except Exception as e:
             log.warning("Auto-commit failed: %s", e)
 
-        # If no files changed, remove worktree + branch (they're just noise)
-        if files_changed == 0:
-            try:
-                node = await get_node(node_id)
-                if node and node.parent_id:
-                    tree = await get_tree(node.tree_id)
-                    if tree:
-                        from services.workspace_service import remove_worktree_and_branch
-                        await remove_worktree_and_branch(tree.id, tree.root_node_id, node_id)
-                        # Clear git_branch so it's not shown as having its own branch
-                        await update_node(node_id, git_branch=None)
-            except Exception as e:
-                log.debug("No-change worktree cleanup failed: %s", e)
-
-        return ChatResult(node_id=node_id, full_response=full_response, git_commit=git_commit)
+        # Worktree cleanup is deferred to the caller, which checks for
+        # running processes before removing the worktree directory.
+        return ChatResult(
+            node_id=node_id, full_response=full_response,
+            git_commit=git_commit, files_changed=files_changed,
+        )
 
     async def cancel_chat(
         self,
