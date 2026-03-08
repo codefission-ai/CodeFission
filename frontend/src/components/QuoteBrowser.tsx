@@ -68,18 +68,12 @@ interface Props {
 export default function QuoteBrowser({ nodeId, nodeLabel, onClose }: Props) {
   const files = useStore((s) => s.nodeFiles[nodeId] || []);
   const diff = useStore((s) => s.nodeDiffs[nodeId]);
-  const selectedId = useStore((s) => s.selectedNodeId);
-  const nodeQuotes = useStore((s) => {
-    // Quotes sourced from this node, across all targets
-    const result: import("../store").FileQuote[] = [];
-    for (const list of Object.values(s.pendingQuotes)) {
-      for (const q of list) { if (q.nodeId === nodeId) result.push(q); }
-    }
-    return result;
-  });
+  const pendingQuotes = useStore((s) => s.pendingQuotes);
   const [tab, setTab] = useState<"files" | "diff">("files");
   const overlayRef = useRef<HTMLDivElement>(null);
   const diffRef = useRef<HTMLPreElement>(null);
+
+  const nodeQuotes = pendingQuotes.filter((q) => q.nodeId === nodeId);
 
   // Fetch files and diff on mount
   useEffect(() => {
@@ -232,7 +226,7 @@ export default function QuoteBrowser({ nodeId, nodeLabel, onClose }: Props) {
                 <span className="quote-chip-label">
                   {q.type === "folder" ? "\u{1F4C1}" : q.type === "file" ? "\u{1F4C4}" : "\u{1F4CB}"} {q.path || "diff"}
                 </span>
-                <button className="quote-chip-remove" onClick={() => selectedId && actions.removeFileQuote(selectedId, q.id)}>&times;</button>
+                <button className="quote-chip-remove" onClick={() => actions.removeFileQuote(q.id)}>&times;</button>
               </span>
             ))}
           </div>

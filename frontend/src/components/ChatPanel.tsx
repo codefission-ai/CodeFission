@@ -37,7 +37,7 @@ export default function ChatPanel() {
   const nodes = useStore((s) => s.nodes);
   const streaming = useStore((s) => s.streaming);
   const toolCalls = useStore((s) => s.toolCalls);
-  const pendingQuotes = useStore((s) => selectedId ? s.pendingQuotes[selectedId] || [] : []);
+  const pendingQuotes = useStore((s) => s.pendingQuotes);
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -145,7 +145,7 @@ export default function ChatPanel() {
                 <span className="quote-chip-label">{q.label}</span>
                 <button
                   className="quote-chip-remove"
-                  onClick={() => selectedId && actions.removeFileQuote(selectedId, q.id)}
+                  onClick={() => actions.removeFileQuote(q.id)}
                   onMouseDown={(e) => e.preventDefault()}
                 >&times;</button>
               </span>

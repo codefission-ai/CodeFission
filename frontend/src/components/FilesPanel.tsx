@@ -150,16 +150,13 @@ function FileTreeNode({ dir, selectedFile, onSelect, nodeId, nodeLabel, depth, i
       actions.appendToInput(`${prefix}: ${path}${type === "folder" ? "/" : ""}`);
     } else {
       const label = `${path}${type === "folder" ? "/" : ""}`;
-      const targetId = useStore.getState().selectedNodeId;
-      if (targetId) {
-        actions.addFileQuote(targetId, {
-          id: `fq-${++_fqId}`,
-          nodeId,
-          type,
-          path,
-          label,
-        });
-      }
+      actions.addFileQuote({
+        id: `fq-${++_fqId}`,
+        nodeId,
+        type,
+        path,
+        label,
+      });
     }
   }, [nodeId, nodeLabel, isSelfQuote]);
 
@@ -449,16 +446,13 @@ function DiffViewer({ diff, nodeId, nodeLabel, isSelfQuote }: { diff: string | u
         if (isSelfQuote) {
           actions.appendToInput(`Diff:\n${selectedText}`);
         } else {
-          const targetId = useStore.getState().selectedNodeId;
-          if (targetId) {
-            actions.addFileQuote(targetId, {
-              id: `fq-${++_fqId}`,
-              nodeId,
-              type: "diff",
-              content: selectedText,
-              label: `diff selection`,
-            });
-          }
+          actions.addFileQuote({
+            id: `fq-${++_fqId}`,
+            nodeId,
+            type: "diff",
+            content: selectedText,
+            label: `diff selection`,
+          });
         }
       }
       hideBtn();
@@ -562,17 +556,14 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel, isSelfQuote }: {
         if (isSelfQuote) {
           actions.appendToInput(`File: ${filePath}\n${selectedText}`);
         } else {
-          const targetId = useStore.getState().selectedNodeId;
-          if (targetId) {
-            actions.addFileQuote(targetId, {
-              id: `fq-${++_fqId}`,
-              nodeId,
-              type: "file",
-              path: filePath,
-              content: selectedText,
-              label: `${filePath} (selection)`,
-            });
-          }
+          actions.addFileQuote({
+            id: `fq-${++_fqId}`,
+            nodeId,
+            type: "file",
+            path: filePath,
+            content: selectedText,
+            label: `${filePath} (selection)`,
+          });
         }
       }
       hideBtn();
