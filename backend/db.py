@@ -92,6 +92,10 @@ async def init_db():
         if "skill" not in columns:
             await db.execute("ALTER TABLE trees ADD COLUMN skill TEXT NOT NULL DEFAULT ''")
 
+        # Migrate: add notes to trees
+        if "notes" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN notes TEXT NOT NULL DEFAULT '[]'")
+
         # Migrate: rename provider "anthropic" → "claude-code"
         await db.execute("UPDATE trees SET provider = 'claude-code' WHERE provider = 'anthropic'")
 

@@ -174,6 +174,16 @@ class Orchestrator:
                 branch = qnode.git_branch or f"ct-{nid}"
                 git_ref = f", branch: {branch}, commit: {qnode.git_commit[:12]}"
 
+            if qtype == "note":
+                # Quote a sticky note's text content
+                note_content = fq.get("content", "")
+                if note_content and total + len(note_content) <= MAX_TOTAL:
+                    total += len(note_content)
+                    parts.append(f'\n--- Note ---\n')
+                    parts.append(note_content)
+                    parts.append("\n---\n")
+                continue
+
             if qtype == "node":
                 # Quote the node's conversation (user message + assistant response)
                 if qnode:

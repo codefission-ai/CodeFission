@@ -33,3 +33,4 @@ class Tree(BaseModel):
     repo_mode: str = "new"
     repo_source: str | None = None
     skill: str = ""
+    notes: str = "[]"  # JSON array of {id, text, x, y, width, height}

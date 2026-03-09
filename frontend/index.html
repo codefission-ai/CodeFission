@@ -729,8 +729,9 @@
 
     /* ── Sticky note ───────────────────────────────────────────── */
     .sticky-note {
-      width: 180px;
-      min-height: 100px;
+      width: 100%;
+      height: 100%;
+      min-height: 80px;
       background: #fef9c3;
       border: 1px solid #e5d990;
       border-radius: 4px;
@@ -739,13 +740,25 @@
       flex-direction: column;
     }
     .sticky-note-drag-handle {
-      height: 14px;
+      height: 22px;
       background: #f5e678;
       border-radius: 3px 3px 0 0;
       cursor: grab;
       flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 3px;
+      padding: 0 4px;
     }
     .sticky-note-drag-handle:active { cursor: grabbing; }
+    .note-quote-btn { font-size: 9px; padding: 1px 6px; line-height: 14px; border: 1px solid rgba(0,0,0,0.15); border-radius: 3px; cursor: pointer; background: #fffde0; color: #555; font-weight: 600; }
+    .note-quote-btn:hover { background: #fff8b0; border-color: rgba(0,0,0,0.25); }
+    .note-quote-btn.quoted { background: #3b82f6; color: #fff; border-color: #2563eb; }
+    .note-action-btn { font-size: 11px; padding: 0 4px; line-height: 14px; border: 1px solid rgba(0,0,0,0.12); border-radius: 3px; cursor: pointer; background: #fffde0; color: #666; }
+    .note-action-btn:hover { background: #fff8b0; }
+    .sticky-note-locked { opacity: 0.7; }
+    .sticky-note-locked .sticky-note-input { color: #999; cursor: default; }
     .sticky-note-input {
       flex: 1;
       width: 100%;
@@ -759,7 +772,7 @@
       border: none;
       outline: none;
       resize: none;
-      overflow: hidden;
+      overflow: auto;
     }
     .sticky-note-input::placeholder { color: #b0a860; }
     [data-theme="dark"] .sticky-note {
@@ -767,8 +780,17 @@
       border-color: #5a5530;
     }
     [data-theme="dark"] .sticky-note-drag-handle { background: #4a4620; }
+    [data-theme="dark"] .note-quote-btn { background: #4a4620; color: #ccc; border-color: #5a5530; }
+    [data-theme="dark"] .note-quote-btn:hover { background: #5a5520; }
+    [data-theme="dark"] .note-action-btn { background: #4a4620; color: #aaa; border-color: #5a5530; }
+    [data-theme="dark"] .note-action-btn:hover { background: #5a5520; }
+    [data-theme="dark"] .sticky-note-locked .sticky-note-input { color: #777; }
     [data-theme="dark"] .sticky-note-input { color: #f8f8f2; }
     [data-theme="dark"] .sticky-note-input::placeholder { color: #6a6530; }
+    .sticky-note-resize-ctrl { background: transparent !important; border: none !important; width: 12px !important; height: 12px !important; right: 0 !important; bottom: 0 !important; cursor: se-resize; }
+    .sticky-note-resize-ctrl::after { content: ""; position: absolute; right: 2px; bottom: 2px; width: 6px; height: 6px; border-right: 2px solid #c4b84a; border-bottom: 2px solid #c4b84a; opacity: 0; transition: opacity 0.15s; }
+    .sticky-note-resize-ctrl:hover::after { opacity: 1; }
+    [data-theme="dark"] .sticky-note-resize-ctrl::after { border-color: #6a6530; }
 
     /* ── Chat panel ─────────────────────────────────────────────── */
     .chat {

@@ -26,6 +26,7 @@ export interface CTree {
   repo_mode: string;
   repo_source: string | null;
   skill: string;
+  notes: string;  // JSON array of {id, text, x, y, width, height}
 }
 
 export interface ProviderInfo {
@@ -68,7 +69,7 @@ export interface ProcessInfo {
 export interface FileQuote {
   id: string;
   nodeId: string;
-  type: "node" | "file" | "folder" | "diff";
+  type: "node" | "file" | "folder" | "diff" | "note";
   path?: string;
   content?: string;
   label: string;
