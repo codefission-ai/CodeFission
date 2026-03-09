@@ -5,12 +5,9 @@ import {
   Background,
   BackgroundVariant,
   useReactFlow,
-  useStoreApi,
-  MarkerType,
   applyNodeChanges,
   type Node,
   type Edge,
-  type EdgeProps,
   type NodeChange,
   type NodeDimensionChange,
   PanOnScrollMode,
@@ -33,67 +30,57 @@ interface StickyNote {
   height: number;
 }
 
-// Module-level registry so onNodeDrag can imperatively update edge SVG paths
-// without going through React's render cycle at all.
-const quoteEdgeRegistry = new Map<
-  string,
-  { el: SVGPathElement; source: string; target: string }
->();
+// Renders quote arrows as a standalone SVG overlay outside of ReactFlow's edge
+// system. Uses requestAnimationFrame + getBoundingClientRect to read actual DOM
+// positions — the arrow tracks the node's real visual position (including CSS
+// transforms applied during drag) with zero lag.
+function QuoteArrowOverlay({ connections }: { connections: { source: string; target: string }[] }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pathRefs = useRef<(SVGPathElement | null)[]>([]);
+  const connectionsRef = useRef(connections);
+  connectionsRef.current = connections;
 
-function computeQuotePath(
-  sx: number, sy: number, sw: number, sh: number,
-  tx: number, ty: number,
-) {
-  const x1 = sx + sw / 2, y1 = sy + sh;
-  const x2 = tx, y2 = ty;
-  const midY = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
-}
-
-function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
-  const pathRef = useRef<SVGPathElement>(null);
-  const store = useStoreApi();
-
-  const getPath = useCallback(() => {
-    const { nodeLookup } = store.getState();
-    const sn = nodeLookup.get(source);
-    const tn = nodeLookup.get(target);
-    if (!sn || !tn) return "";
-    return computeQuotePath(
-      sn.internals?.positionAbsolute?.x ?? 0,
-      sn.internals?.positionAbsolute?.y ?? 0,
-      sn.measured?.width ?? 0,
-      sn.measured?.height ?? 0,
-      (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2,
-      tn.internals?.positionAbsolute?.y ?? 0,
-    );
-  }, [source, target, store]);
-
-  // Register SVG path element so onNodeDrag can update it imperatively
   useEffect(() => {
-    const el = pathRef.current;
-    if (el) quoteEdgeRegistry.set(`${source}\0${target}`, { el, source, target });
-    return () => { quoteEdgeRegistry.delete(`${source}\0${target}`); };
-  }, [source, target]);
-
-  // Store subscription handles non-drag updates (layout changes, new nodes, etc.)
-  useEffect(() => {
+    let rafId: number;
     const update = () => {
-      if (pathRef.current) pathRef.current.setAttribute("d", getPath());
+      const svg = svgRef.current;
+      const container = svg?.parentElement;
+      if (!svg || !container) { rafId = requestAnimationFrame(update); return; }
+      const cRect = container.getBoundingClientRect();
+      const conns = connectionsRef.current;
+      for (let i = 0; i < conns.length; i++) {
+        const pathEl = pathRefs.current[i];
+        if (!pathEl) continue;
+        const srcEl = container.querySelector<HTMLElement>(`[data-id="${conns[i].source}"]`);
+        const tgtEl = container.querySelector<HTMLElement>(`[data-id="${conns[i].target}"]`);
+        if (!srcEl || !tgtEl) { pathEl.removeAttribute("d"); continue; }
+        const s = srcEl.getBoundingClientRect();
+        const t = tgtEl.getBoundingClientRect();
+        const sx = s.left + s.width / 2 - cRect.left;
+        const sy = s.bottom - cRect.top;
+        const tx = t.left + t.width / 2 - cRect.left;
+        const ty = t.top - cRect.top;
+        const midY = (sy + ty) / 2;
+        pathEl.setAttribute("d", `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`);
+      }
+      rafId = requestAnimationFrame(update);
     };
-    update();
-    return store.subscribe(update);
-  }, [store, getPath]);
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
+  if (connections.length === 0) return null;
   return (
-    <path
-      ref={pathRef}
-      fill="none"
-      stroke="#3b82f6"
-      strokeWidth={1.5}
-      strokeDasharray="6 3"
-      markerEnd={markerEnd as string}
-    />
+    <svg ref={svgRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible", zIndex: 5 }}>
+      <defs>
+        <marker id="quote-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+        </marker>
+      </defs>
+      {connections.map((c, i) => (
+        <path key={`${c.source}\0${c.target}`} ref={el => { pathRefs.current[i] = el; }} fill="none" stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="6 3" markerEnd="url(#quote-arrow)" />
+      ))}
+    </svg>
   );
 }
 
@@ -177,7 +164,6 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
 }
 
 const nodeTypes = { tree: TreeNode, note: NoteNode };
-const edgeTypes = { quote: QuoteEdge };
 
 function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null): Set<string> {
   const edgeIds = new Set<string>();
@@ -273,28 +259,17 @@ function buildFlow(
       };
     });
 
-  // Quote edges: dashed arrows from quoted nodes → quoting node
+  // Quote connections: rendered by QuoteArrowOverlay (outside ReactFlow edges)
+  const quoteConnections: { source: string; target: string }[] = [];
   for (const n of visibleList) {
     if (!n.quoted_node_ids || n.quoted_node_ids.length === 0) continue;
     for (const qid of n.quoted_node_ids) {
       if (hiddenIds.has(qid) || (!nodes[qid] && !qid.startsWith("note-"))) continue;
-      flowEdges.push({
-        id: `quote-${qid}-${n.id}`,
-        source: qid,
-        target: n.id,
-        type: "quote",
-        className: "quote-edge",
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: "#3b82f6",
-          width: 16,
-          height: 16,
-        },
-      });
+      quoteConnections.push({ source: qid, target: n.id });
     }
   }
 
-  return { flowNodes, flowEdges };
+  return { flowNodes, flowEdges, quoteConnections };
 }
 
 export default function Canvas() {
@@ -374,7 +349,7 @@ function CanvasInner() {
     }
   }, [ready]);
 
-  const { flowNodes, flowEdges } = useMemo(
+  const { flowNodes, flowEdges, quoteConnections } = useMemo(
     () => buildFlow(nodes, expandedNodes, collapsedSubtrees, measuredRef.current, ready, selectedNodeId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, expandedNodes, collapsedSubtrees, layoutVersion, ready, selectedNodeId],
@@ -494,55 +469,34 @@ function CanvasInner() {
   // Merge tree nodes + note nodes
   const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
 
-  // Imperatively update quote edge SVG paths during drag — runs synchronously
-  // in the mouse-event handler, so the arrow and node move in the same paint frame.
-  const rfStoreApi = useStoreApi();
-  const onNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
-    const { nodeLookup } = rfStoreApi.getState();
-    quoteEdgeRegistry.forEach(({ el, source, target }) => {
-      if (source !== node.id && target !== node.id) return;
-      const sn = nodeLookup.get(source);
-      const tn = nodeLookup.get(target);
-      if (!sn || !tn) return;
-      const sx = source === node.id ? node.position.x : (sn.internals?.positionAbsolute?.x ?? 0);
-      const sy = source === node.id ? node.position.y : (sn.internals?.positionAbsolute?.y ?? 0);
-      const sw = sn.measured?.width ?? 0;
-      const sh = sn.measured?.height ?? 0;
-      const tx_ = target === node.id ? node.position.x + (tn.measured?.width ?? 0) / 2
-        : (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2;
-      const ty_ = target === node.id ? node.position.y
-        : (tn.internals?.positionAbsolute?.y ?? 0);
-      el.setAttribute("d", computeQuotePath(sx, sy, sw, sh, tx_, ty_));
-    });
-  }, [rfStoreApi]);
-
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;
   }
 
   return (
-    <ReactFlow
-      nodes={allNodes}
-      edges={flowEdges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onNodeDrag={onNodeDrag}
-      onPaneClick={() => actions.selectNode(null)}
-      fitView={!ready}
-      minZoom={0.3}
-      maxZoom={2}
-      zoomOnScroll={true}
-      zoomOnPinch={true}
-      panOnScroll={true}
-      panOnScrollMode={PanOnScrollMode.Free}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
-      <ZoomControls onAddNote={addNote} />
-    </ReactFlow>
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <ReactFlow
+        nodes={allNodes}
+        edges={flowEdges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onPaneClick={() => actions.selectNode(null)}
+        fitView={!ready}
+        minZoom={0.3}
+        maxZoom={2}
+        zoomOnScroll={true}
+        zoomOnPinch={true}
+        panOnScroll={true}
+        panOnScrollMode={PanOnScrollMode.Free}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
+        <ZoomControls onAddNote={addNote} />
+      </ReactFlow>
+      <QuoteArrowOverlay connections={quoteConnections} />
+    </div>
   );
 }
 
