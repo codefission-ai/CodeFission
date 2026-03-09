@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, getSubtreeIds } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -223,19 +223,16 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const s = useStore.getState();
-    if (s.streaming[node.id]) return; // can't delete streaming node
-    const ids = getSubtreeIds(s.nodes, node.id);
+    if (s.streaming[node.id]) return;
+    const ids = [node.id];
     actions.softDeleteNodes(ids);
-    // Clear any existing toast timer
     const prev = s.deleteToast;
     if (prev?.timer) clearTimeout(prev.timer);
-    const childCount = ids.length - 1;
-    const label = `Deleted node${childCount > 0 ? ` + ${childCount} ${childCount === 1 ? "child" : "children"}` : ""}`;
     const timer = setTimeout(() => {
       actions.commitDeleteNodes(ids);
       send({ type: WS.DELETE_NODE, node_id: node.id });
     }, 10000);
-    actions.setDeleteToast({ ids, label, timer });
+    actions.setDeleteToast({ ids, label: "Deleted node", timer });
   }, [node.id]);
 
   const [loading, setLoading] = useState(false);
@@ -419,7 +416,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
       {hasVisibleChildren && <Handle type="source" position={Position.Bottom} />}
-      {!isRoot && (
+      {!isRoot && !hasVisibleChildren && (
         <div className="delete-circle-zone">
           <button className="delete-circle" title="Delete" onMouseDown={(e) => e.preventDefault()} onClick={handleDelete}>×</button>
         </div>
