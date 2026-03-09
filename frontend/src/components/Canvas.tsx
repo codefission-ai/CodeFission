@@ -44,7 +44,7 @@ function QuoteArrowOverlay({ connections }: { connections: { source: string; tar
     let rafId: number;
     const update = () => {
       const svg = svgRef.current;
-      const container = svg?.parentElement;
+      const container = svg?.closest(".react-flow") as HTMLElement | null;
       if (!svg || !container) { rafId = requestAnimationFrame(update); return; }
       const cRect = container.getBoundingClientRect();
       const conns = connectionsRef.current;
@@ -56,12 +56,23 @@ function QuoteArrowOverlay({ connections }: { connections: { source: string; tar
         if (!srcEl || !tgtEl) { pathEl.removeAttribute("d"); continue; }
         const s = srcEl.getBoundingClientRect();
         const t = tgtEl.getBoundingClientRect();
-        const sx = s.left + s.width / 2 - cRect.left;
-        const sy = s.bottom - cRect.top;
-        const tx = t.left + t.width / 2 - cRect.left;
-        const ty = t.top - cRect.top;
-        const midY = (sy + ty) / 2;
-        pathEl.setAttribute("d", `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`);
+        // Centers relative to container
+        const scx = s.left + s.width / 2 - cRect.left;
+        const scy = s.top + s.height / 2 - cRect.top;
+        const tcx = t.left + t.width / 2 - cRect.left;
+        const tcy = t.top + t.height / 2 - cRect.top;
+        const dx = tcx - scx, dy = tcy - scy;
+        if (dx === 0 && dy === 0) { pathEl.removeAttribute("d"); continue; }
+        // Ray-rectangle intersection: find where center→center line exits each node
+        const sT = Math.min(
+          dx !== 0 ? (s.width / 2) / Math.abs(dx) : Infinity,
+          dy !== 0 ? (s.height / 2) / Math.abs(dy) : Infinity,
+        );
+        const tT = Math.min(
+          dx !== 0 ? (t.width / 2) / Math.abs(dx) : Infinity,
+          dy !== 0 ? (t.height / 2) / Math.abs(dy) : Infinity,
+        );
+        pathEl.setAttribute("d", `M ${scx + dx * sT} ${scy + dy * sT} L ${tcx - dx * tT} ${tcy - dy * tT}`);
       }
       rafId = requestAnimationFrame(update);
     };
@@ -71,7 +82,7 @@ function QuoteArrowOverlay({ connections }: { connections: { source: string; tar
 
   if (connections.length === 0) return null;
   return (
-    <svg ref={svgRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible", zIndex: 5 }}>
+    <svg ref={svgRef} style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "visible", zIndex: 3 }}>
       <defs>
         <marker id="quote-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
@@ -494,8 +505,8 @@ function CanvasInner() {
       >
         <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />
         <ZoomControls onAddNote={addNote} />
+        <QuoteArrowOverlay connections={quoteConnections} />
       </ReactFlow>
-      <QuoteArrowOverlay connections={quoteConnections} />
     </div>
   );
 }
