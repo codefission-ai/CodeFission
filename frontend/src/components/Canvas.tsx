@@ -33,38 +33,61 @@ interface StickyNote {
   height: number;
 }
 
+// Module-level registry so onNodeDrag can imperatively update edge SVG paths
+// without going through React's render cycle at all.
+const quoteEdgeRegistry = new Map<
+  string,
+  { el: SVGPathElement; source: string; target: string }
+>();
+
+function computeQuotePath(
+  sx: number, sy: number, sw: number, sh: number,
+  tx: number, ty: number,
+) {
+  const x1 = sx + sw / 2, y1 = sy + sh;
+  const x2 = tx, y2 = ty;
+  const midY = (y1 + y2) / 2;
+  return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+}
+
 function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
   const pathRef = useRef<SVGPathElement>(null);
   const store = useStoreApi();
 
-  // Compute bezier path from node positions in the store
   const getPath = useCallback(() => {
     const { nodeLookup } = store.getState();
     const sn = nodeLookup.get(source);
     const tn = nodeLookup.get(target);
     if (!sn || !tn) return "";
-    // Source: bottom-center (Handle at Position.Bottom)
-    const sx = (sn.internals?.positionAbsolute?.x ?? 0) + (sn.measured?.width ?? 0) / 2;
-    const sy = (sn.internals?.positionAbsolute?.y ?? 0) + (sn.measured?.height ?? 0);
-    // Target: top-center (Handle at Position.Top)
-    const tx = (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2;
-    const ty = tn.internals?.positionAbsolute?.y ?? 0;
-    const midY = (sy + ty) / 2;
-    return `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
+    return computeQuotePath(
+      sn.internals?.positionAbsolute?.x ?? 0,
+      sn.internals?.positionAbsolute?.y ?? 0,
+      sn.measured?.width ?? 0,
+      sn.measured?.height ?? 0,
+      (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2,
+      tn.internals?.positionAbsolute?.y ?? 0,
+    );
   }, [source, target, store]);
 
-  // Subscribe directly to the zustand store — updates DOM synchronously,
-  // bypassing React's render cycle so the arrow follows the node without lag.
+  // Register SVG path element so onNodeDrag can update it imperatively
   useEffect(() => {
-    return store.subscribe(() => {
+    const el = pathRef.current;
+    if (el) quoteEdgeRegistry.set(`${source}\0${target}`, { el, source, target });
+    return () => { quoteEdgeRegistry.delete(`${source}\0${target}`); };
+  }, [source, target]);
+
+  // Store subscription handles non-drag updates (layout changes, new nodes, etc.)
+  useEffect(() => {
+    const update = () => {
       if (pathRef.current) pathRef.current.setAttribute("d", getPath());
-    });
+    };
+    update();
+    return store.subscribe(update);
   }, [store, getPath]);
 
   return (
     <path
       ref={pathRef}
-      d={getPath()}
       fill="none"
       stroke="#3b82f6"
       strokeWidth={1.5}
@@ -471,6 +494,28 @@ function CanvasInner() {
   // Merge tree nodes + note nodes
   const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
 
+  // Imperatively update quote edge SVG paths during drag — runs synchronously
+  // in the mouse-event handler, so the arrow and node move in the same paint frame.
+  const rfStoreApi = useStoreApi();
+  const onNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
+    const { nodeLookup } = rfStoreApi.getState();
+    quoteEdgeRegistry.forEach(({ el, source, target }) => {
+      if (source !== node.id && target !== node.id) return;
+      const sn = nodeLookup.get(source);
+      const tn = nodeLookup.get(target);
+      if (!sn || !tn) return;
+      const sx = source === node.id ? node.position.x : (sn.internals?.positionAbsolute?.x ?? 0);
+      const sy = source === node.id ? node.position.y : (sn.internals?.positionAbsolute?.y ?? 0);
+      const sw = sn.measured?.width ?? 0;
+      const sh = sn.measured?.height ?? 0;
+      const tx_ = target === node.id ? node.position.x + (tn.measured?.width ?? 0) / 2
+        : (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2;
+      const ty_ = target === node.id ? node.position.y
+        : (tn.internals?.positionAbsolute?.y ?? 0);
+      el.setAttribute("d", computeQuotePath(sx, sy, sw, sh, tx_, ty_));
+    });
+  }, [rfStoreApi]);
+
   if (flowNodes.length === 0) {
     return <div className="canvas-empty">Create a tree to get started</div>;
   }
@@ -482,6 +527,7 @@ function CanvasInner() {
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
+      onNodeDrag={onNodeDrag}
       onPaneClick={() => actions.selectNode(null)}
       fitView={!ready}
       minZoom={0.3}
