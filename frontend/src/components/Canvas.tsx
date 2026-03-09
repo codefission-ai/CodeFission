@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -15,11 +15,24 @@ import {
   type NodeChange,
   type NodeDimensionChange,
   PanOnScrollMode,
+  NodeResizeControl,
+  Handle,
+  Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
-import { useStore, actions, type CNode } from "../store";
+import { useStore, actions, type CNode, type FileQuote } from "../store";
+import { send, WS } from "../ws";
 import { layoutTree } from "../layout";
+
+interface StickyNote {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
   const sourceNode = useInternalNode(source);
@@ -56,23 +69,81 @@ function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
   return <BaseEdge path={path} markerEnd={markerEnd} />;
 }
 
-function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void } }) {
+function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void; onDuplicate?: (id: string) => void } }) {
   const [text, setText] = useState(data.text ?? "");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
+  const selectedHasInput = useStore((s) => {
+    if (!s.selectedNodeId) return false;
+    const sel = s.nodes[s.selectedNodeId];
+    if (!sel) return false;
+    if (!sel.parent_id) return true;
+    return !!s.expandedNodes[s.selectedNodeId] && !s.streaming[s.selectedNodeId];
+  });
+  const pendingQuotes = useStore((s) => s.pendingQuotes);
+  const quotesFromThis = pendingQuotes.filter((q) => q.nodeId === id).length;
+  const isQuoted = quotesFromThis > 0;
+  const canQuote = selectedHasInput;
+
+  // Check if any tree node references this note in quoted_node_ids (sent quote)
+  const isReferenced = useStore((s) => Object.values(s.nodes).some((n) => n.quoted_node_ids?.includes(id)));
+  const locked = isQuoted || isReferenced;
+
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) return;
+    e.stopPropagation();
+  }, []);
+
   return (
-    <div className="sticky-note">
-      <div className="sticky-note-drag-handle" />
+    <div className={`sticky-note ${locked ? "sticky-note-locked" : ""}`}>
+      <NodeResizeControl minWidth={120} minHeight={80} position="bottom-right" className="sticky-note-resize-ctrl" />
+      <div className="sticky-note-drag-handle">
+        {locked && (
+          <button
+            className="note-action-btn nopan nodrag"
+            title="Duplicate & edit"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.stopPropagation(); data.onDuplicate?.(id); }}
+          >⧉</button>
+        )}
+        {canQuote && (
+          <button
+            className={`note-quote-btn nopan nodrag ${isQuoted ? "quoted" : ""}`}
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isQuoted) {
+                const toRemove = useStore.getState().pendingQuotes.filter((q: FileQuote) => q.nodeId === id);
+                toRemove.forEach((q: FileQuote) => actions.removeFileQuote(q.id));
+              } else {
+                actions.addFileQuote({
+                  id: `fq-${Date.now()}`,
+                  nodeId: id,
+                  type: "note",
+                  content: text,
+                  label: text.slice(0, 20) || "Note",
+                });
+              }
+            }}
+          >
+            {isQuoted ? "Quoted ✓" : "Quote"}
+          </button>
+        )}
+      </div>
       <textarea
         ref={taRef}
         className="sticky-note-input nopan nodrag"
         value={text}
+        readOnly={locked}
+        onWheel={onWheel}
         onChange={(e) => {
+          if (locked) return;
           setText(e.target.value);
           data.onTextChange?.(id, e.target.value);
         }}
         placeholder="Write a note..."
       />
+      <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />
     </div>
   );
 }
@@ -178,7 +249,7 @@ function buildFlow(
   for (const n of visibleList) {
     if (!n.quoted_node_ids || n.quoted_node_ids.length === 0) continue;
     for (const qid of n.quoted_node_ids) {
-      if (hiddenIds.has(qid) || !nodes[qid]) continue;
+      if (hiddenIds.has(qid) || (!nodes[qid] && !qid.startsWith("note-"))) continue;
       flowEdges.push({
         id: `quote-${qid}-${n.id}`,
         source: qid,
@@ -223,7 +294,12 @@ function CanvasInner() {
   const layoutTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
 
   // Track note nodes separately so ReactFlow owns their position during drag
+  const currentTreeId = useStore((s) => s.currentTreeId);
+  const treeNotes = useStore((s) => s.trees.find((t) => t.id === s.currentTreeId)?.notes ?? "[]");
   const [noteNodes, setNoteNodes] = useState<Node[]>([]);
+  const notesInitRef = useRef(false);
+
+  const saveNotesRef = useRef<() => void>(() => {});
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
     let needsLayout = false;
@@ -246,6 +322,10 @@ function CanvasInner() {
     }
     if (noteChanges.length > 0) {
       setNoteNodes((nds) => applyNodeChanges(noteChanges, nds));
+      // Save position/size changes for notes
+      if (noteChanges.some((c) => c.type === "position" || c.type === "dimensions")) {
+        saveNotesRef.current();
+      }
     }
     if (needsLayout) {
       clearTimeout(heightTimerRef.current);
@@ -294,11 +374,78 @@ function CanvasInner() {
   }
   prevPositionsRef.current = newPositions;
 
-  // Stable ref callback so note data objects don't change on re-render
+  // Stable ref callbacks so note data objects don't change on re-render
   const noteTextRef = useRef<Record<string, string>>({});
   const onNoteTextChange = useCallback((id: string, text: string) => {
     noteTextRef.current[id] = text;
+    saveNotesRef.current();
   }, []);
+
+  const onNoteDuplicate = useCallback((sourceId: string) => {
+    setNoteNodes((prev) => {
+      const src = prev.find((n) => n.id === sourceId);
+      if (!src) return prev;
+      const newId = `note-${Date.now()}`;
+      const srcText = noteTextRef.current[sourceId] ?? "";
+      noteTextRef.current[newId] = srcText;
+      return [...prev, {
+        id: newId,
+        type: "note" as const,
+        position: { x: src.position.x + 30, y: src.position.y + 30 },
+        data: { text: srcText, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
+        draggable: true,
+        style: { width: (src.style?.width as number) ?? 180, height: (src.style?.height as number) ?? 140 },
+      }];
+    });
+    setTimeout(() => saveNotesRef.current(), 100);
+  }, [onNoteTextChange]);
+  const onNoteDuplicateRef = useRef(onNoteDuplicate);
+  onNoteDuplicateRef.current = onNoteDuplicate;
+
+  // Load notes from tree on mount
+  useEffect(() => {
+    if (notesInitRef.current) return;
+    notesInitRef.current = true;
+    try {
+      const saved: StickyNote[] = JSON.parse(treeNotes);
+      if (saved.length > 0) {
+        const loaded: Node[] = saved.map((n) => {
+          noteTextRef.current[n.id] = n.text;
+          return {
+            id: n.id,
+            type: "note" as const,
+            position: { x: n.x, y: n.y },
+            data: { text: n.text, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
+            draggable: true,
+            style: { width: n.width, height: n.height },
+          };
+        });
+        setNoteNodes(loaded);
+      }
+    } catch {}
+  }, [treeNotes, onNoteTextChange]);
+
+  // Save notes to backend (debounced)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
+  const saveNotesDebounced = useCallback(() => {
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      if (!currentTreeId) return;
+      setNoteNodes((cur) => {
+        const data: StickyNote[] = cur.map((n) => ({
+          id: n.id,
+          text: noteTextRef.current[n.id] ?? "",
+          x: n.position.x,
+          y: n.position.y,
+          width: (n.style?.width as number) ?? 180,
+          height: (n.style?.height as number) ?? 140,
+        }));
+        send({ type: WS.UPDATE_TREE_SETTINGS, tree_id: currentTreeId, notes: JSON.stringify(data) });
+        return cur;
+      });
+    }, 800);
+  }, [currentTreeId]);
+  saveNotesRef.current = saveNotesDebounced;
 
   const addNote = useCallback(() => {
     const vp = reactFlowInstance.getViewport();
@@ -308,10 +455,13 @@ function CanvasInner() {
       id: `note-${Date.now()}`,
       type: "note",
       position: { x, y },
-      data: { text: "", onTextChange: onNoteTextChange },
+      data: { text: "", onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
       draggable: true,
+      style: { width: 180, height: 140 },
     }]);
-  }, [reactFlowInstance, onNoteTextChange]);
+    // Save after adding
+    setTimeout(() => saveNotesDebounced(), 100);
+  }, [reactFlowInstance, onNoteTextChange, saveNotesDebounced]);
 
   // Merge tree nodes + note nodes
   const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
@@ -353,7 +503,7 @@ function ZoomControls({ onAddNote }: { onAddNote: () => void }) {
   return (
     <div className="zoom-controls">
       <button className="has-tooltip" onClick={onAddNote}>
-        ▪<span className="tooltip">Add note</span>
+        🗒<span className="tooltip">Add note</span>
       </button>
       <button className="has-tooltip" onClick={() => zoomIn({ duration: 150 })}>
         +<span className="tooltip">Zoom in <kbd>{modKey}+Scroll</kbd></span>
