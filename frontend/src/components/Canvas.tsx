@@ -216,7 +216,7 @@ function buildFlow(
 ) {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
-  if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[] };
+  if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[], quoteConnections: [] as { source: string; target: string }[] };
 
   const hiddenIds = getHiddenIds(nodes, collapsedSubtrees);
 
