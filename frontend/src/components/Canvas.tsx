@@ -239,18 +239,27 @@ function buildFlow(
   selectedNodeId: string | null,
   pendingDeleteNodes?: Set<string>,
 ) {
-  const list = Object.values(nodes);
+  // Build a filtered nodes map that excludes pending deletes so layout recalculates
+  let effectiveNodes = nodes;
+  if (pendingDeleteNodes && pendingDeleteNodes.size > 0) {
+    effectiveNodes = {};
+    for (const [id, n] of Object.entries(nodes)) {
+      if (pendingDeleteNodes.has(id)) continue;
+      // Also strip deleted children from children_ids so layout treats parent as leaf
+      const filtered = n.children_ids.filter((cid) => !pendingDeleteNodes.has(cid));
+      effectiveNodes[id] = filtered.length !== n.children_ids.length ? { ...n, children_ids: filtered } : n;
+    }
+  }
+
+  const list = Object.values(effectiveNodes);
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[], quoteConnections: [] as { source: string; target: string }[] };
 
-  const hiddenIds = getHiddenIds(nodes, collapsedSubtrees);
-  if (pendingDeleteNodes) {
-    for (const id of pendingDeleteNodes) hiddenIds.add(id);
-  }
+  const hiddenIds = getHiddenIds(effectiveNodes, collapsedSubtrees);
 
   const hasMeasured = Object.keys(measured).length > 0;
   const { positions } = layoutTree(
-    nodes,
+    effectiveNodes,
     expandedNodes,
     hasMeasured ? measured : undefined,
     collapsedSubtrees,
@@ -264,12 +273,12 @@ function buildFlow(
     position: positions[n.id] || { x: 0, y: 0 },
     data: {
       node: n,
-      descendantCount: collapsedSubtrees[n.id] ? getDescendantCount(nodes, n.id) : 0,
+      descendantCount: collapsedSubtrees[n.id] ? getDescendantCount(effectiveNodes, n.id) : 0,
     },
     style: { opacity: ready ? 1 : 0 },
   }));
 
-  const pathEdges = getAncestorPath(nodes, selectedNodeId);
+  const pathEdges = getAncestorPath(effectiveNodes, selectedNodeId);
 
   const flowEdges: Edge[] = visibleList
     .filter((n) => n.parent_id && !hiddenIds.has(n.parent_id!))
@@ -292,7 +301,7 @@ function buildFlow(
   for (const n of visibleList) {
     if (!n.quoted_node_ids || n.quoted_node_ids.length === 0) continue;
     for (const qid of n.quoted_node_ids) {
-      if (hiddenIds.has(qid) || (!nodes[qid] && !qid.startsWith("note-"))) continue;
+      if (hiddenIds.has(qid) || (!effectiveNodes[qid] && !qid.startsWith("note-"))) continue;
       quoteConnections.push({ source: qid, target: n.id });
     }
   }
