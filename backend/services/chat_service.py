@@ -139,6 +139,13 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
         parts.append(
             "\n\nAll your file changes are automatically committed after each response. "
             "Focus on writing code and making changes — git operations are handled for you."
+            "\n\nFILE PERSISTENCE: Your worktree is ephemeral — it is deleted after your "
+            "response completes. Only git-tracked files survive (via the auto-commit). "
+            "NEVER save generated files (images, plots, screenshots, data, etc.) to `tmp/`, "
+            "`/tmp/`, or any gitignored directory. Save them directly in your working "
+            "directory (e.g., `./output.png`, `./results.csv`) so they are committed and "
+            "persist. If you reference a file in your response with `![](path)`, that file "
+            "MUST be git-tracked or it will be lost."
             "\n\nIMPORTANT: Other branches in this repo belong to sibling conversation nodes "
             "and are completely independent. Do NOT use `git log --all`, `git branch`, "
             "`git show` on other branches, or reference any branch other than your own. "
