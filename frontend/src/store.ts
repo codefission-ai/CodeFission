@@ -126,6 +126,24 @@ function isDescendantOf(nodes: Record<string, CNode>, candidateId: string, ances
   return false;
 }
 
+/**
+ * A node/note is a DAG leaf if nothing visible depends on it:
+ * - No visible node has it as parent (tree edge)
+ * - No visible node quotes it (quote edge via quoted_node_ids)
+ */
+export function isDagLeaf(
+  nodes: Record<string, CNode>,
+  id: string,
+  pendingDeleteNodes: Set<string>,
+): boolean {
+  for (const n of Object.values(nodes)) {
+    if (pendingDeleteNodes.has(n.id)) continue;
+    if (n.parent_id === id) return false;         // tree child
+    if (n.quoted_node_ids?.includes(id)) return false; // quote ref
+  }
+  return true;
+}
+
 export function getSubtreeIds(nodes: Record<string, CNode>, rootId: string): string[] {
   const ids = [rootId];
   const stack = [...(nodes[rootId]?.children_ids || [])];

@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
-import { useStore, actions, type CNode, type FileQuote } from "../store";
+import { useStore, actions, type CNode, type FileQuote, isDagLeaf } from "../store";
 import { send, WS } from "../ws";
 import { layoutTree } from "../layout";
 
@@ -111,12 +111,9 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const isQuoted = quotesFromThis > 0;
   const canQuote = selectedHasInput;
 
-  // Check if any non-pending-delete tree node references this note in quoted_node_ids
-  const isReferenced = useStore((s) => {
-    const pending = s.pendingDeleteNodes;
-    return Object.values(s.nodes).some((n) => !pending.has(n.id) && n.quoted_node_ids?.includes(id));
-  });
-  const locked = isQuoted || isReferenced;
+  // Note is a DAG leaf if no visible node quotes it
+  const isLeaf = useStore((s) => isDagLeaf(s.nodes, id, s.pendingDeleteNodes));
+  const locked = isQuoted || !isLeaf;
 
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) return;

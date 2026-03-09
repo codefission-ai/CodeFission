@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, isDagLeaf } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -122,10 +122,8 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
   const isSubtreeCollapsed = useStore((s) => s.collapsedSubtrees[node.id]);
-  const hasVisibleChildren = useStore((s) => {
-    const pending = s.pendingDeleteNodes;
-    return node.children_ids.some((cid) => !pending.has(cid));
-  });
+  const isLeaf = useStore((s) => isDagLeaf(s.nodes, node.id, s.pendingDeleteNodes));
+  const hasVisibleChildren = useStore((s) => node.children_ids.some((cid) => !s.pendingDeleteNodes.has(cid)));
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
@@ -416,7 +414,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
       {hasVisibleChildren && <Handle type="source" position={Position.Bottom} />}
-      {!isRoot && !hasVisibleChildren && (
+      {!isRoot && isLeaf && (
         <div className="delete-circle-zone">
           <button className="delete-circle" title="Delete" onMouseDown={(e) => e.preventDefault()} onClick={handleDelete}>×</button>
         </div>
