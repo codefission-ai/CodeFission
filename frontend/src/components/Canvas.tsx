@@ -456,7 +456,7 @@ function CanvasInner() {
       return [...prev, {
         id: newId,
         type: "note" as const,
-        position: { x: src.position.x + 30, y: src.position.y + 30 },
+        position: { x: src.position.x + 30, y: src.position.y - ((src.style?.height as number) ?? 140) - 20 },
         data: { text: srcText, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current, onDelete: onNoteDeleteRef.current },
         draggable: true,
         style: { width: (src.style?.width as number) ?? 180, height: (src.style?.height as number) ?? 140 },
