@@ -5,8 +5,7 @@ import {
   Background,
   BackgroundVariant,
   useReactFlow,
-  useInternalNode,
-  BaseEdge,
+  useStoreApi,
   MarkerType,
   applyNodeChanges,
   type Node,
@@ -35,38 +34,44 @@ interface StickyNote {
 }
 
 function QuoteEdge({ source, target, markerEnd }: EdgeProps) {
-  const sourceNode = useInternalNode(source);
-  const targetNode = useInternalNode(target);
-  if (!sourceNode || !targetNode) return null;
+  const pathRef = useRef<SVGPathElement>(null);
+  const store = useStoreApi();
 
-  const sw = sourceNode.measured?.width ?? 0;
-  const sh = sourceNode.measured?.height ?? 0;
-  const tw = targetNode.measured?.width ?? 0;
-  const th = targetNode.measured?.height ?? 0;
+  // Compute bezier path from node positions in the store
+  const getPath = useCallback(() => {
+    const { nodeLookup } = store.getState();
+    const sn = nodeLookup.get(source);
+    const tn = nodeLookup.get(target);
+    if (!sn || !tn) return "";
+    // Source: bottom-center (Handle at Position.Bottom)
+    const sx = (sn.internals?.positionAbsolute?.x ?? 0) + (sn.measured?.width ?? 0) / 2;
+    const sy = (sn.internals?.positionAbsolute?.y ?? 0) + (sn.measured?.height ?? 0);
+    // Target: top-center (Handle at Position.Top)
+    const tx = (tn.internals?.positionAbsolute?.x ?? 0) + (tn.measured?.width ?? 0) / 2;
+    const ty = tn.internals?.positionAbsolute?.y ?? 0;
+    const midY = (sy + ty) / 2;
+    return `M ${sx} ${sy} C ${sx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`;
+  }, [source, target, store]);
 
-  // Node centers
-  const sx = (sourceNode.internals?.positionAbsolute?.x ?? 0) + sw / 2;
-  const sy = (sourceNode.internals?.positionAbsolute?.y ?? 0) + sh / 2;
-  const tx = (targetNode.internals?.positionAbsolute?.x ?? 0) + tw / 2;
-  const ty = (targetNode.internals?.positionAbsolute?.y ?? 0) + th / 2;
+  // Subscribe directly to the zustand store — updates DOM synchronously,
+  // bypassing React's render cycle so the arrow follows the node without lag.
+  useEffect(() => {
+    return store.subscribe(() => {
+      if (pathRef.current) pathRef.current.setAttribute("d", getPath());
+    });
+  }, [store, getPath]);
 
-  const dx = tx - sx;
-  const dy = ty - sy;
-  if (dx === 0 && dy === 0) return null;
-
-  // Intersection with source rectangle edge
-  const sT = Math.min(
-    dx !== 0 ? (sw / 2) / Math.abs(dx) : Infinity,
-    dy !== 0 ? (sh / 2) / Math.abs(dy) : Infinity,
+  return (
+    <path
+      ref={pathRef}
+      d={getPath()}
+      fill="none"
+      stroke="#3b82f6"
+      strokeWidth={1.5}
+      strokeDasharray="6 3"
+      markerEnd={markerEnd as string}
+    />
   );
-  // Intersection with target rectangle edge
-  const tT = Math.min(
-    dx !== 0 ? (tw / 2) / Math.abs(dx) : Infinity,
-    dy !== 0 ? (th / 2) / Math.abs(dy) : Infinity,
-  );
-
-  const path = `M ${sx + dx * sT} ${sy + dy * sT} L ${tx - dx * tT} ${ty - dy * tT}`;
-  return <BaseEdge path={path} markerEnd={markerEnd} />;
 }
 
 function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void; onDuplicate?: (id: string) => void } }) {
