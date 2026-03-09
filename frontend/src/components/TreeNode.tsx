@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, getSubtreeIds } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -122,6 +122,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
   const isSubtreeCollapsed = useStore((s) => s.collapsedSubtrees[node.id]);
+  const hasVisibleChildren = useStore((s) => {
+    const pending = s.pendingDeleteNodes;
+    return node.children_ids.some((cid) => !pending.has(cid));
+  });
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
@@ -216,6 +220,24 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     send({ type: WS.GET_NODE_FILES, node_id: node.id });
   }, [node.id]);
 
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const s = useStore.getState();
+    if (s.streaming[node.id]) return; // can't delete streaming node
+    const ids = getSubtreeIds(s.nodes, node.id);
+    actions.softDeleteNodes(ids);
+    // Clear any existing toast timer
+    const prev = s.deleteToast;
+    if (prev?.timer) clearTimeout(prev.timer);
+    const childCount = ids.length - 1;
+    const label = `Deleted node${childCount > 0 ? ` + ${childCount} ${childCount === 1 ? "child" : "children"}` : ""}`;
+    const timer = setTimeout(() => {
+      actions.commitDeleteNodes(ids);
+      send({ type: WS.DELETE_NODE, node_id: node.id });
+    }, 10000);
+    actions.setDeleteToast({ ids, label, timer });
+  }, [node.id]);
+
   const [loading, setLoading] = useState(false);
   const hasRepo = tree && tree.repo_mode !== "new";
   const hasChildren = node.children_ids.length > 0;
@@ -277,7 +299,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   if (isRoot && !node.user_message) {
     return (
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
-        <Handle type="source" position={Position.Bottom} />
+        {hasVisibleChildren && <Handle type="source" position={Position.Bottom} />}
 
         {/* Section 1: Skill */}
         <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
@@ -396,7 +418,12 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       }}
     >
       {!isRoot && <Handle type="target" position={Position.Top} />}
-      <Handle type="source" position={Position.Bottom} />
+      {hasVisibleChildren && <Handle type="source" position={Position.Bottom} />}
+      {!isRoot && (
+        <div className="delete-circle-zone">
+          <button className="delete-circle" title="Delete" onMouseDown={(e) => e.preventDefault()} onClick={handleDelete}>×</button>
+        </div>
+      )}
       {!isExpanded && <span className="tree-node-dot" style={{ background: dot }} />}
       {!isExpanded && (
         <span className="tree-node-label">

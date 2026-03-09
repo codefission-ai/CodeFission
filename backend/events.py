@@ -77,6 +77,7 @@ class WS:
     GET_NODE_PROCESSES = "get_node_processes"
     KILL_PROCESS = "kill_process"
     KILL_ALL_PROCESSES = "kill_all_processes"
+    DELETE_NODE = "delete_node"
 
     # Outbound
     SETTINGS = "settings"
@@ -99,3 +100,4 @@ class WS:
     DONE = "done"
     ERROR = "error"
     NODE_PROCESSES = "node_processes"
+    NODES_DELETED = "nodes_deleted"

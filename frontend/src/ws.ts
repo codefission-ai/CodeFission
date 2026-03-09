@@ -34,6 +34,7 @@ export const WS = {
   GET_NODE_PROCESSES: "get_node_processes",
   KILL_PROCESS: "kill_process",
   KILL_ALL_PROCESSES: "kill_all_processes",
+  DELETE_NODE: "delete_node",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -54,6 +55,7 @@ export const WS = {
   ERROR: "error",
   SETTINGS: "settings",
   NODE_PROCESSES: "node_processes",
+  NODES_DELETED: "nodes_deleted",
 } as const;
 
 let ws: WebSocket | null = null;
@@ -267,6 +269,12 @@ function handle(data: any) {
       break;
     case "tree_node_processes":
       actions.replaceAllNodeProcesses(data.tree_node_processes || {});
+      break;
+    case WS.NODES_DELETED:
+      actions.commitDeleteNodes(data.deleted_ids || []);
+      if (data.updated_nodes) {
+        for (const n of data.updated_nodes) actions.upsertNode(n);
+      }
       break;
     case WS.ERROR:
       actions.setNodeStatus(data.node_id, "error");

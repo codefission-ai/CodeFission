@@ -1811,6 +1811,53 @@
       transition: background 0.15s, color 0.15s; flex-shrink: 0;
     }
     .theme-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* ── Delete circle (top-left hover reveal) ────────────────── */
+    .delete-circle-zone {
+      position: absolute; top: -8px; left: -8px;
+      width: 22px; height: 22px;
+      z-index: 10;
+    }
+    .delete-circle {
+      width: 18px; height: 18px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--red, #dc2626); color: #fff;
+      border: 2px solid var(--bg-deep, #fff);
+      font-size: 12px; line-height: 1; font-weight: 700;
+      cursor: pointer; padding: 0;
+      opacity: 0; transition: opacity 0.12s;
+      pointer-events: none;
+    }
+    .delete-circle-zone:hover .delete-circle {
+      opacity: 1; pointer-events: auto;
+    }
+    [data-theme="dark"] .delete-circle { background: #f87171; border-color: var(--bg-deep, #1a1a1e); color: #1a1a1e; }
+
+    /* ── Undo toast ─────────────────────────────────────────────── */
+    .undo-toast {
+      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px; border-radius: 8px;
+      background: var(--text-primary, #1a1a1e); color: #fff;
+      font-size: 13px; font-weight: 500;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      z-index: 100;
+      animation: undo-toast-in 0.2s ease-out;
+    }
+    .undo-toast-btn {
+      padding: 2px 10px; font-size: 12px; font-weight: 600;
+      background: rgba(255,255,255,0.15); color: #fff;
+      border: 1px solid rgba(255,255,255,0.25); border-radius: 4px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .undo-toast-btn:hover { background: rgba(255,255,255,0.25); }
+    @keyframes undo-toast-in {
+      from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    [data-theme="dark"] .undo-toast { background: #e0e0e5; color: #1a1a1e; }
+    [data-theme="dark"] .undo-toast-btn { background: rgba(0,0,0,0.1); color: #1a1a1e; border-color: rgba(0,0,0,0.15); }
+    [data-theme="dark"] .undo-toast-btn:hover { background: rgba(0,0,0,0.2); }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>

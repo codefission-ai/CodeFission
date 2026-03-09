@@ -99,6 +99,8 @@ interface Store {
   pendingQuotes: FileQuote[];
   pendingQuotesFor: string | null;  // which node these quotes target
   pendingInputText: string | null;
+  pendingDeleteNodes: Set<string>;
+  deleteToast: { ids: string[]; label: string; timer: ReturnType<typeof setTimeout> } | null;
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
   providers: ProviderInfo[];
@@ -124,6 +126,18 @@ function isDescendantOf(nodes: Record<string, CNode>, candidateId: string, ances
   return false;
 }
 
+export function getSubtreeIds(nodes: Record<string, CNode>, rootId: string): string[] {
+  const ids = [rootId];
+  const stack = [...(nodes[rootId]?.children_ids || [])];
+  while (stack.length) {
+    const cid = stack.pop()!;
+    ids.push(cid);
+    const child = nodes[cid];
+    if (child) stack.push(...child.children_ids);
+  }
+  return ids;
+}
+
 export const useStore = create<Store>(() => ({
   connected: false,
   trees: [],
@@ -142,6 +156,8 @@ export const useStore = create<Store>(() => ({
   pendingQuotes: [],
   pendingQuotesFor: null,
   pendingInputText: null,
+  pendingDeleteNodes: new Set<string>(),
+  deleteToast: null,
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
   providers: [],
@@ -345,6 +361,78 @@ export const actions = {
       pendingInputText: (s.pendingInputText || "") + (s.pendingInputText ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n",
     })),
   clearPendingInput: () => useStore.setState({ pendingInputText: null }),
+
+  // ── Soft delete / undo ───────────────────────────────────────
+  softDeleteNodes: (ids: string[]) =>
+    useStore.setState((s) => {
+      const next = new Set(s.pendingDeleteNodes);
+      for (const id of ids) next.add(id);
+      // Move selection to parent if selected node is being deleted
+      let selectedNodeId = s.selectedNodeId;
+      if (selectedNodeId && next.has(selectedNodeId)) {
+        const node = s.nodes[selectedNodeId];
+        selectedNodeId = node?.parent_id || null;
+      }
+      return { pendingDeleteNodes: next, selectedNodeId };
+    }),
+  undoDeleteNodes: (ids: string[]) =>
+    useStore.setState((s) => {
+      const next = new Set(s.pendingDeleteNodes);
+      for (const id of ids) next.delete(id);
+      return { pendingDeleteNodes: next, deleteToast: null };
+    }),
+  commitDeleteNodes: (ids: string[]) =>
+    useStore.setState((s) => {
+      const idSet = new Set(ids);
+      const nodes = { ...s.nodes };
+      for (const id of ids) delete nodes[id];
+      // Clean children_ids on surviving parents
+      for (const id of ids) {
+        const node = s.nodes[id];
+        if (node?.parent_id && nodes[node.parent_id]) {
+          const p = nodes[node.parent_id];
+          const filtered = p.children_ids.filter((c) => !idSet.has(c));
+          if (filtered.length !== p.children_ids.length) {
+            nodes[node.parent_id] = { ...p, children_ids: filtered };
+          }
+        }
+      }
+      // Clean up associated state
+      const pendingDeleteNodes = new Set(s.pendingDeleteNodes);
+      const expandedNodes = { ...s.expandedNodes };
+      const collapsedSubtrees = { ...s.collapsedSubtrees };
+      const streaming = { ...s.streaming };
+      const toolCalls = { ...s.toolCalls };
+      const nodeFiles = { ...s.nodeFiles };
+      const nodeDiffs = { ...s.nodeDiffs };
+      const nodeProcesses = { ...s.nodeProcesses };
+      const pendingQuotes = s.pendingQuotes.filter((q) => !idSet.has(q.nodeId));
+      for (const id of ids) {
+        pendingDeleteNodes.delete(id);
+        delete expandedNodes[id];
+        delete collapsedSubtrees[id];
+        delete streaming[id];
+        delete toolCalls[id];
+        delete nodeFiles[id];
+        delete nodeDiffs[id];
+        delete nodeProcesses[id];
+      }
+      // Clean fileContents keys
+      const fileContents = { ...s.fileContents };
+      for (const key of Object.keys(fileContents)) {
+        const nid = key.split(":")[0];
+        if (idSet.has(nid)) delete fileContents[key];
+      }
+      const filesPanel = s.filesPanel && idSet.has(s.filesPanel.nodeId) ? null : s.filesPanel;
+      const selectedNodeId = s.selectedNodeId && idSet.has(s.selectedNodeId) ? null : s.selectedNodeId;
+      return {
+        nodes, pendingDeleteNodes, expandedNodes, collapsedSubtrees, streaming,
+        toolCalls, nodeFiles, nodeDiffs, nodeProcesses, fileContents, filesPanel,
+        selectedNodeId, pendingQuotes, deleteToast: null,
+      };
+    }),
+  setDeleteToast: (toast: Store["deleteToast"]) =>
+    useStore.setState({ deleteToast: toast }),
 
   // ── Settings ─────────────────────────────────────────────────
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),

@@ -95,7 +95,7 @@ function QuoteArrowOverlay({ connections }: { connections: { source: string; tar
   );
 }
 
-function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void; onDuplicate?: (id: string) => void } }) {
+function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChange?: (id: string, text: string) => void; onDuplicate?: (id: string) => void; onDelete?: (id: string) => void } }) {
   const [text, setText] = useState(data.text ?? "");
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -111,8 +111,11 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const isQuoted = quotesFromThis > 0;
   const canQuote = selectedHasInput;
 
-  // Check if any tree node references this note in quoted_node_ids (sent quote)
-  const isReferenced = useStore((s) => Object.values(s.nodes).some((n) => n.quoted_node_ids?.includes(id)));
+  // Check if any non-pending-delete tree node references this note in quoted_node_ids
+  const isReferenced = useStore((s) => {
+    const pending = s.pendingDeleteNodes;
+    return Object.values(s.nodes).some((n) => !pending.has(n.id) && n.quoted_node_ids?.includes(id));
+  });
   const locked = isQuoted || isReferenced;
 
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -122,6 +125,16 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
 
   return (
     <div className={`sticky-note ${locked ? "sticky-note-locked" : ""}`}>
+      {!locked && (
+        <div className="delete-circle-zone nopan nodrag">
+          <button
+            className="delete-circle nopan nodrag"
+            title="Delete note"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.stopPropagation(); data.onDelete?.(id); }}
+          >×</button>
+        </div>
+      )}
       <NodeResizeControl minWidth={120} minHeight={80} position="bottom-right" className="sticky-note-resize-ctrl" />
       <div className="sticky-note-drag-handle">
         {locked && (
@@ -224,12 +237,16 @@ function buildFlow(
   measured: Record<string, { width: number; height: number }>,
   ready: boolean,
   selectedNodeId: string | null,
+  pendingDeleteNodes?: Set<string>,
 ) {
   const list = Object.values(nodes);
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[], quoteConnections: [] as { source: string; target: string }[] };
 
   const hiddenIds = getHiddenIds(nodes, collapsedSubtrees);
+  if (pendingDeleteNodes) {
+    for (const id of pendingDeleteNodes) hiddenIds.add(id);
+  }
 
   const hasMeasured = Object.keys(measured).length > 0;
   const { positions } = layoutTree(
@@ -360,10 +377,13 @@ function CanvasInner() {
     }
   }, [ready]);
 
+  const pendingDeleteNodes = useStore((s) => s.pendingDeleteNodes);
+  const deleteToast = useStore((s) => s.deleteToast);
+
   const { flowNodes, flowEdges, quoteConnections } = useMemo(
-    () => buildFlow(nodes, expandedNodes, collapsedSubtrees, measuredRef.current, ready, selectedNodeId),
+    () => buildFlow(nodes, expandedNodes, collapsedSubtrees, measuredRef.current, ready, selectedNodeId, pendingDeleteNodes),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, expandedNodes, collapsedSubtrees, layoutVersion, ready, selectedNodeId],
+    [nodes, expandedNodes, collapsedSubtrees, layoutVersion, ready, selectedNodeId, pendingDeleteNodes],
   );
 
   // Compensate viewport when layout shifts the selected node (e.g. sibling added)
@@ -395,6 +415,31 @@ function CanvasInner() {
     saveNotesRef.current();
   }, []);
 
+  const deletedNotesRef = useRef<Map<string, Node>>(new Map());
+  const onNoteDelete = useCallback((noteId: string) => {
+    setNoteNodes((prev) => {
+      const removed = prev.find((n) => n.id === noteId);
+      if (removed) deletedNotesRef.current.set(noteId, removed);
+      return prev.filter((n) => n.id !== noteId);
+    });
+    // Save immediately so refresh doesn't resurrect the note
+    setTimeout(() => saveNotesRef.current(), 50);
+    // Clear any existing toast timer
+    const prev = useStore.getState().deleteToast;
+    if (prev?.timer) clearTimeout(prev.timer);
+    const timer = setTimeout(() => {
+      deletedNotesRef.current.delete(noteId);
+      actions.setDeleteToast(null);
+    }, 10000);
+    actions.setDeleteToast({
+      ids: [noteId],
+      label: "Deleted note",
+      timer,
+    });
+  }, []);
+  const onNoteDeleteRef = useRef(onNoteDelete);
+  onNoteDeleteRef.current = onNoteDelete;
+
   const onNoteDuplicate = useCallback((sourceId: string) => {
     setNoteNodes((prev) => {
       const src = prev.find((n) => n.id === sourceId);
@@ -406,7 +451,7 @@ function CanvasInner() {
         id: newId,
         type: "note" as const,
         position: { x: src.position.x + 30, y: src.position.y + 30 },
-        data: { text: srcText, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
+        data: { text: srcText, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current, onDelete: onNoteDeleteRef.current },
         draggable: true,
         style: { width: (src.style?.width as number) ?? 180, height: (src.style?.height as number) ?? 140 },
       }];
@@ -429,7 +474,7 @@ function CanvasInner() {
             id: n.id,
             type: "note" as const,
             position: { x: n.x, y: n.y },
-            data: { text: n.text, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
+            data: { text: n.text, onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current, onDelete: onNoteDeleteRef.current },
             draggable: true,
             style: { width: n.width, height: n.height },
           };
@@ -469,13 +514,33 @@ function CanvasInner() {
       id: `note-${Date.now()}`,
       type: "note",
       position: { x, y },
-      data: { text: "", onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current },
+      data: { text: "", onTextChange: onNoteTextChange, onDuplicate: onNoteDuplicateRef.current, onDelete: onNoteDeleteRef.current },
       draggable: true,
       style: { width: 180, height: 140 },
     }]);
     // Save after adding
     setTimeout(() => saveNotesDebounced(), 100);
   }, [reactFlowInstance, onNoteTextChange, saveNotesDebounced]);
+
+  const handleUndoDelete = useCallback(() => {
+    const toast = useStore.getState().deleteToast;
+    if (!toast) return;
+    clearTimeout(toast.timer);
+    const ids = toast.ids;
+    // Check if it's a note delete (ids start with "note-")
+    if (ids.length === 1 && ids[0].startsWith("note-")) {
+      const restored = deletedNotesRef.current.get(ids[0]);
+      if (restored) {
+        setNoteNodes((prev) => [...prev, restored]);
+        deletedNotesRef.current.delete(ids[0]);
+        setTimeout(() => saveNotesRef.current(), 100);
+      }
+    } else {
+      // Node undo
+      actions.undoDeleteNodes(ids);
+    }
+    actions.setDeleteToast(null);
+  }, []);
 
   // Merge tree nodes + note nodes
   const allNodes = useMemo(() => [...flowNodes, ...noteNodes], [flowNodes, noteNodes]);
@@ -507,6 +572,12 @@ function CanvasInner() {
         <ZoomControls onAddNote={addNote} />
         <QuoteArrowOverlay connections={quoteConnections} />
       </ReactFlow>
+      {deleteToast && (
+        <div className="undo-toast">
+          <span>{deleteToast.label}</span>
+          <button className="undo-toast-btn" onClick={handleUndoDelete}>Undo</button>
+        </div>
+      )}
     </div>
   );
 }

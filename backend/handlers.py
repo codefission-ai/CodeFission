@@ -11,7 +11,7 @@ from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
 from services.tree_service import (
     list_trees, get_tree, get_all_nodes, get_node,
-    delete_tree, update_tree, update_node,
+    delete_tree, delete_subtree, update_tree, update_node,
     get_setting, set_setting, get_global_defaults,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
@@ -686,6 +686,59 @@ class ConnectionHandler:
         if not procs and tree and node:
             await self._cleanup_node_worktree(node, tree)
 
+    # ── Node deletion ─────────────────────────────────────────────────
+
+    async def handle_delete_node(self, data: dict):
+        node_id = data["node_id"]
+        node = await get_node(node_id)
+        if not node:
+            await self.send(WS.ERROR, error="Node not found")
+            return
+        if not node.parent_id:
+            await self.send(WS.ERROR, error="Cannot delete root node")
+            return
+
+        # Check no node in subtree is actively streaming
+        stack = [node_id]
+        while stack:
+            nid = stack.pop()
+            if nid in _active_streams and _active_streams[nid].status == "active":
+                await self.send(WS.ERROR, error="Cannot delete a node that is streaming. Cancel it first.")
+                return
+            n = await get_node(nid)
+            if n:
+                stack.extend(n.children_ids)
+
+        tree = await get_tree(node.tree_id)
+        deleted_ids, updated_nodes = await delete_subtree(node_id)
+
+        # Clean up git worktrees/branches for deleted nodes
+        if tree:
+            for did in deleted_ids:
+                try:
+                    await remove_worktree_and_branch(tree.id, tree.root_node_id, did)
+                except Exception:
+                    log.debug("Worktree cleanup failed for deleted node %s", did, exc_info=True)
+
+        # Clean up expanded_nodes and collapsed_subtrees settings
+        deleted_set = set(deleted_ids)
+        raw_exp = await get_setting("expanded_nodes")
+        if raw_exp:
+            exp_map = json.loads(raw_exp)
+            cleaned = {k: v for k, v in exp_map.items() if k not in deleted_set}
+            if len(cleaned) != len(exp_map):
+                await set_setting("expanded_nodes", json.dumps(cleaned))
+        raw_cs = await get_setting("collapsed_subtrees")
+        if raw_cs:
+            cs_map = json.loads(raw_cs)
+            cleaned = {k: v for k, v in cs_map.items() if k not in deleted_set}
+            if len(cleaned) != len(cs_map):
+                await set_setting("collapsed_subtrees", json.dumps(cleaned))
+
+        await self.send(WS.NODES_DELETED,
+                        deleted_ids=deleted_ids,
+                        updated_nodes=[n.model_dump() for n in updated_nodes])
+
     # ── Dispatch table (class-level) ──────────────────────────────────
 
     _dispatch_table: dict = {
@@ -711,4 +764,5 @@ class ConnectionHandler:
         WS.GET_NODE_PROCESSES: handle_get_node_processes,
         WS.KILL_PROCESS: handle_kill_process,
         WS.KILL_ALL_PROCESSES: handle_kill_all_processes,
+        WS.DELETE_NODE: handle_delete_node,
     }

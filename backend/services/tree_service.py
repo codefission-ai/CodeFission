@@ -207,6 +207,51 @@ async def update_tree(tree_id: str, **kwargs):
             await db.commit()
 
 
+async def delete_subtree(node_id: str) -> tuple[list[str], list[Node]]:
+    """Delete a non-root node and all its descendants.
+
+    Returns (deleted_ids, updated_surviving_nodes) where updated_surviving_nodes
+    are nodes whose quoted_node_ids were cleaned of references to deleted nodes.
+    """
+    node = await get_node(node_id)
+    if not node:
+        raise ValueError(f"Node {node_id} not found")
+    if not node.parent_id:
+        raise ValueError("Cannot delete root node")
+
+    # Collect all descendant IDs via DFS
+    deleted_ids = [node_id]
+    stack = list(node.children_ids)
+    while stack:
+        cid = stack.pop()
+        deleted_ids.append(cid)
+        child = await get_node(cid)
+        if child:
+            stack.extend(child.children_ids)
+
+    deleted_set = set(deleted_ids)
+
+    async with get_db() as db:
+        # Delete all nodes in subtree
+        placeholders = ",".join("?" for _ in deleted_ids)
+        await db.execute(f"DELETE FROM nodes WHERE id IN ({placeholders})", deleted_ids)
+        await db.commit()
+
+    # Clean quoted_node_ids on surviving nodes that reference any deleted ID
+    all_nodes = await get_all_nodes(node.tree_id)
+    updated_nodes: list[Node] = []
+    for n in all_nodes:
+        if not n.quoted_node_ids:
+            continue
+        cleaned = [qid for qid in n.quoted_node_ids if qid not in deleted_set]
+        if len(cleaned) != len(n.quoted_node_ids):
+            await update_node(n.id, quoted_node_ids=cleaned)
+            n.quoted_node_ids = cleaned
+            updated_nodes.append(n)
+
+    return deleted_ids, updated_nodes
+
+
 async def delete_tree(tree_id: str):
     async with get_db() as db:
         await db.execute("DELETE FROM nodes WHERE tree_id = ?", (tree_id,))
