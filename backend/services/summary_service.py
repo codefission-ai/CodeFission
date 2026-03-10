@@ -1,9 +1,10 @@
-"""Auto-name trees by sending context to a small LLM."""
+"""Auto-name trees using the Claude Agent SDK."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
@@ -24,41 +25,6 @@ def _format_prompt(skill: str, repo_info: str, first_message: str) -> str:
     )
 
 
-async def _generate_via_api(prompt: str, model: str, api_key: str) -> str | None:
-    """Use the Anthropic SDK directly (requires API key)."""
-    import anthropic
-
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    resp = await client.messages.create(
-        model=model,
-        max_tokens=30,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return resp.content[0].text.strip()
-
-
-async def _generate_via_cli(prompt: str, model: str) -> str | None:
-    """Use `claude -p` subprocess with stdin (works with CLI/OAuth auth)."""
-    proc = await asyncio.create_subprocess_exec(
-        "claude", "-p", "--model", model, "--no-session-persistence",
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(input=prompt.encode()),
-            timeout=30,
-        )
-    except asyncio.TimeoutError:
-        proc.kill()
-        return None
-    if proc.returncode != 0:
-        log.debug("claude CLI failed (rc=%d): %s", proc.returncode, stderr.decode(errors="replace")[:200])
-        return None
-    return stdout.decode(errors="replace").strip()
-
-
 async def generate_tree_name(
     skill: str,
     repo_info: str,
@@ -67,19 +33,40 @@ async def generate_tree_name(
     auth_mode: str = "cli",
     api_key: str | None = None,
 ) -> str | None:
-    """Generate a short tree name. Uses API key if available, otherwise CLI."""
+    """Generate a short tree name using the Claude Agent SDK.
+
+    Reuses the same auth infrastructure as chat (CLI OAuth or API key).
+    No tools, no file access, single turn.
+    """
     try:
+        from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, AssistantMessage, query
+        from claude_agent_sdk.types import TextBlock
+        from services.chat_service import _sdk_env
+
         prompt = _format_prompt(skill, repo_info, first_message)
 
-        if api_key and auth_mode == "api_key":
-            raw = await _generate_via_api(prompt, model, api_key)
-        else:
-            raw = await _generate_via_cli(prompt, model)
+        options = ClaudeAgentOptions(
+            model=model,
+            max_turns=1,
+            permission_mode="plan",
+            cwd="/tmp",
+            env=_sdk_env(auth_mode, api_key or ""),
+            debug_stderr=open(os.devnull, "w"),
+        )
 
-        if not raw:
+        text = ""
+        async with asyncio.timeout(30):
+            async for msg in query(prompt=prompt, options=options):
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            text += block.text
+                elif isinstance(msg, ResultMessage):
+                    break
+
+        if not text:
             return None
-        # Sanitize: first line, strip quotes, cap length
-        name = raw.split("\n")[0].strip('"\'').strip()
+        name = text.split("\n")[0].strip('"\'').strip()
         return name[:60] if name else None
     except Exception:
         log.warning("Auto-naming failed", exc_info=True)
