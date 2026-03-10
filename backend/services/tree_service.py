@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from config import DATA_DIR
 from db import get_db
 from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
 from providers import PROVIDERS, DEFAULT_PROVIDER as FALLBACK_PROVIDER
@@ -195,7 +196,7 @@ async def update_tree(tree_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("repo_mode", "repo_source", "provider", "model", "max_turns", "skill", "notes"):
+        if k in ("name", "repo_mode", "repo_source", "provider", "model", "max_turns", "skill", "notes"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
@@ -289,6 +290,7 @@ async def get_global_defaults() -> dict:
     auth_mode = await get_setting("auth_mode") or (p.default_auth_mode if p else "cli")
     api_key = await get_setting("api_key") or ""
     sandbox = (await get_setting("sandbox")) == "true"
+    summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
     return {
         "provider": provider,
         "model": model,
@@ -296,6 +298,8 @@ async def get_global_defaults() -> dict:
         "auth_mode": auth_mode,
         "api_key": api_key,
         "sandbox": sandbox,
+        "summary_model": summary_model,
+        "data_dir": str(DATA_DIR),
     }
 
 

@@ -485,6 +485,45 @@
     }
     .tree-node-textarea::placeholder { color: var(--text-muted); }
     .tree-node-textarea:focus { border-color: var(--accent); }
+
+    /* ── Drop zone ─────────────────────────────────────────────── */
+    .drop-zone { position: relative; width: 100%; }
+    .drop-zone-active textarea {
+      border-color: #3b82f6 !important;
+      background: rgba(59, 130, 246, 0.05) !important;
+    }
+    .drop-zone-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(59, 130, 246, 0.08);
+      border: 2px dashed #3b82f6; border-radius: 4px;
+      color: #3b82f6; font-size: 11px; font-weight: 600;
+      pointer-events: none; z-index: 2;
+    }
+
+    /* ── Upload badge ──────────────────────────────────────────── */
+    .upload-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 8px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-dim);
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      min-height: 28px;
+    }
+    .upload-badge-text {
+      color: var(--text-primary);
+      cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .upload-badge-text:hover { text-decoration: underline; }
+    .upload-badge-hint {
+      color: var(--text-muted);
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
     .tree-node-send {
       padding: 4px 8px;
       background: var(--accent);
@@ -1858,6 +1897,15 @@
     [data-theme="dark"] .undo-toast { background: #e0e0e5; color: #1a1a1e; }
     [data-theme="dark"] .undo-toast-btn { background: rgba(0,0,0,0.1); color: #1a1a1e; border-color: rgba(0,0,0,0.15); }
     [data-theme="dark"] .undo-toast-btn:hover { background: rgba(0,0,0,0.2); }
+
+    [data-theme="dark"] .drop-zone-active textarea {
+      border-color: #60a5fa !important;
+      background: rgba(96, 165, 250, 0.08) !important;
+    }
+    [data-theme="dark"] .drop-zone-overlay {
+      background: rgba(96, 165, 250, 0.1);
+      border-color: #60a5fa; color: #93bbfc;
+    }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>

@@ -9,6 +9,8 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
   const [authMode, setAuthMode] = useState(defaults.auth_mode);
   const [apiKey, setApiKey] = useState(defaults.api_key);
   const [sandbox, setSandbox] = useState(defaults.sandbox);
+  const [summaryModel, setSummaryModel] = useState(defaults.summary_model);
+  const [dataDir, setDataDir] = useState(defaults.data_dir);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -18,6 +20,8 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
     setAuthMode(defaults.auth_mode);
     setApiKey(defaults.api_key);
     setSandbox(defaults.sandbox);
+    setSummaryModel(defaults.summary_model);
+    setDataDir(defaults.data_dir);
   }, [defaults]);
 
   const currentProvider = providers.find((p) => p.id === provider);
@@ -43,6 +47,8 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       auth_mode: authMode,
       api_key: apiKey,
       sandbox,
+      summary_model: summaryModel,
+      data_dir: dataDir !== defaults.data_dir ? dataDir : undefined,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
@@ -106,6 +112,23 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
         Sandbox (restrict file writes to workspace)
       </label>
       <p className="settings-hint">When enabled, uses Landlock (Linux) to prevent the agent from writing files outside its workspace directory.</p>
+
+      <label className="settings-label">Auto-name Model</label>
+      <select className="settings-select" value={summaryModel} onChange={(e) => setSummaryModel(e.target.value)}>
+        <option value="">Disabled</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+      </select>
+      <p className="settings-hint">Small model used to auto-name new trees. "Disabled" turns off auto-naming.</p>
+
+      <label className="settings-label">Data Directory</label>
+      <input
+        className="settings-input"
+        type="text"
+        value={dataDir}
+        onChange={(e) => setDataDir(e.target.value)}
+      />
+      <p className="settings-hint">Where DB and workspaces are stored. Requires restart to take effect.</p>
 
       <button className="settings-save-btn" onClick={handleSave}>
         {saved ? "Saved" : "Save Global Settings"}

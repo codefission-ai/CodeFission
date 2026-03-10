@@ -202,6 +202,12 @@ class ConnectionHandler:
             # Send updated node data (now has user_message, status=active)
             await self.send(WS.NODE_DATA, node=ctx.node.model_dump())
 
+            # Auto-name tree on first message
+            tree = await get_tree(ctx.node.tree_id)
+            if tree and tree.name == "Untitled":
+                log.info("Triggering auto-name for tree %s", tree.id)
+                asyncio.create_task(self._auto_name_tree(tree.id, msg, tree))
+
             # Init streaming state (shared with global registry for reconnect)
             state = StreamState(node_id=nid, tree_id=ctx.node.tree_id, send_fn=self.send)
             self.streams[nid] = state
@@ -421,6 +427,35 @@ class ConnectionHandler:
                     OSError, IndexError, ValueError):
                 continue
 
+    async def _auto_name_tree(self, tree_id: str, first_message: str, tree):
+        """Background task: generate a short name for a tree and push it to the client."""
+        try:
+            from services.summary_service import generate_tree_name
+
+            defaults = await get_global_defaults()
+            summary_model = defaults.get("summary_model") or ""
+            if not summary_model:
+                return  # auto-naming disabled
+            api_key = defaults.get("api_key") or None
+
+            repo_info = tree.repo_source or tree.repo_mode
+            auth_mode = defaults.get("auth_mode", "cli")
+            name = await generate_tree_name(
+                skill=tree.skill,
+                repo_info=repo_info,
+                first_message=first_message,
+                model=summary_model,
+                auth_mode=auth_mode,
+                api_key=api_key,
+            )
+            if name:
+                await update_tree(tree_id, name=name)
+                updated = await get_tree(tree_id)
+                if updated:
+                    await self.send(WS.TREE_UPDATED, tree=updated.model_dump())
+        except Exception:
+            log.debug("Auto-name tree failed for %s", tree_id, exc_info=True)
+
     async def handle_cancel(self, data: dict):
         node_id = data["node_id"]
         # Use global registry so cancel works after reconnect
@@ -489,13 +524,17 @@ class ConnectionHandler:
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
     async def handle_update_global_settings(self, data: dict):
-        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key", "sandbox"):
+        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key", "sandbox", "summary_model"):
             if key in data:
                 val = data[key]
                 if key == "sandbox":
                     await set_setting(key, "true" if val else None)
                 else:
                     await set_setting(key, str(val) if val is not None and val != "" else None)
+        # data_dir is saved to config file (requires restart)
+        if "data_dir" in data and data["data_dir"]:
+            from config import save_config
+            save_config({"data_dir": data["data_dir"]})
         defaults = await get_global_defaults()
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
@@ -712,13 +751,16 @@ class ConnectionHandler:
         tree = await get_tree(node.tree_id)
         deleted_ids, updated_nodes = await delete_subtree(node_id)
 
-        # Clean up git worktrees/branches for deleted nodes
+        # Kill processes and clean up git worktrees/branches for deleted nodes
         if tree:
             for did in deleted_ids:
                 try:
+                    ws_path = resolve_workspace(tree.id, tree.root_node_id, did)
+                    if ws_path.exists():
+                        kill_all_in_workspace(ws_path)
                     await remove_worktree_and_branch(tree.id, tree.root_node_id, did)
                 except Exception:
-                    log.debug("Worktree cleanup failed for deleted node %s", did, exc_info=True)
+                    log.debug("Cleanup failed for deleted node %s", did, exc_info=True)
 
         # Clean up expanded_nodes and collapsed_subtrees settings
         deleted_set = set(deleted_ids)

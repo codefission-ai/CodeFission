@@ -197,6 +197,8 @@ function handle(data: any) {
       actions.selectTree(data.tree.id);
       send({ type: WS.SELECT_TREE, tree_id: data.tree.id });
       actions.setNodes([data.root]);
+      actions.selectNode(data.root.id);
+      actions.setExpanded(data.root.id, true);
       break;
     case WS.TREE_DELETED:
       actions.removeTree(data.tree_id);

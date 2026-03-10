@@ -5,9 +5,9 @@ import sys
 # Allow running inside a Claude Code session
 os.environ.pop("CLAUDECODE", None)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
 from pathlib import Path
 
 # Add backend to path for imports
@@ -54,6 +54,84 @@ async def websocket_endpoint(ws: WebSocket):
             await handler.dispatch(data)
     except (WebSocketDisconnect, RuntimeError):
         handler.cleanup()
+
+
+# ── Upload files into a node's workspace ──────────────────────────────
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB total
+
+
+@app.post("/api/trees/{tree_id}/nodes/{node_id}/upload")
+async def upload_node_files(
+    tree_id: str,
+    node_id: str,
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(...),
+):
+    """Upload files into a node's workspace (additive merge).
+
+    `files` and `paths` are parallel arrays — paths[i] is the relative
+    path (preserving folder structure) for files[i].
+    """
+    from services.tree_service import get_node, get_tree, update_node
+    from services.workspace_service import (
+        setup_repo, ensure_worktree, auto_commit,
+    )
+
+    if len(files) != len(paths):
+        raise HTTPException(400, "files and paths must have same length")
+    if not files:
+        raise HTTPException(400, "No files provided")
+
+    node = await get_node(node_id)
+    if not node:
+        raise HTTPException(404, "Node not found")
+    tree = await get_tree(tree_id)
+    if not tree or tree.id != node.tree_id:
+        raise HTTPException(404, "Tree not found")
+
+    root_id = tree.root_node_id
+    if not root_id:
+        raise HTTPException(400, "Tree has no root node")
+
+    # Ensure workspace exists
+    await setup_repo(tree_id, root_id, tree.repo_mode or "new", tree.repo_source)
+    ws_path = await ensure_worktree(
+        tree_id, root_id, node_id,
+        node.parent_id, node.git_commit,
+    )
+
+    # Write files (additive, overwrite same-name)
+    ws_resolved = ws_path.resolve()
+    total_bytes = 0
+    written = []
+    for upload_file, rel_path in zip(files, paths):
+        rel = Path(rel_path)
+        if rel.is_absolute() or ".." in rel.parts:
+            continue
+        dest = (ws_path / rel).resolve()
+        if not str(dest).startswith(str(ws_resolved)):
+            continue
+
+        content = await upload_file.read()
+        total_bytes += len(content)
+        if total_bytes > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"Total upload exceeds {MAX_UPLOAD_BYTES // (1024*1024)}MB limit")
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(content)
+        written.append(str(rel))
+
+    if not written:
+        raise HTTPException(400, "No valid files written")
+
+    sha, _ = await auto_commit(ws_path, f"uploaded {len(written)} file(s)")
+    await update_node(node_id, git_commit=sha)
+
+    return JSONResponse({
+        "files_written": written,
+        "git_commit": sha,
+        "count": len(written),
+    })
 
 
 # ── Raw file serving for binary content (images, video, audio) ──────

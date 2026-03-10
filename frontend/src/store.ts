@@ -45,6 +45,8 @@ export interface GlobalDefaults {
   auth_mode: string;
   api_key: string;
   sandbox: boolean;
+  summary_model: string;
+  data_dir: string;
 }
 
 export interface ToolCall {
@@ -177,7 +179,7 @@ export const useStore = create<Store>(() => ({
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false },
+  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
   providers: [],
 }));
 

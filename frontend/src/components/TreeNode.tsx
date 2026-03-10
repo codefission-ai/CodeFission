@@ -6,6 +6,107 @@ import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
 import NodeModal from "./NodeModal";
 
+// ── Drag & drop file upload helpers ──────────────────────────────────
+
+interface DroppedFile {
+  path: string;
+  file: File;
+}
+
+function readEntry(entry: FileSystemEntry, basePath: string): Promise<DroppedFile[]> {
+  return new Promise((resolve) => {
+    if (entry.isFile) {
+      (entry as FileSystemFileEntry).file((f) => {
+        resolve([{ path: basePath + f.name, file: f }]);
+      }, () => resolve([]));
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const results: DroppedFile[] = [];
+      const readBatch = () => {
+        reader.readEntries(async (entries) => {
+          if (entries.length === 0) { resolve(results); return; }
+          for (const e of entries) {
+            const sub = await readEntry(e, basePath + entry.name + "/");
+            results.push(...sub);
+          }
+          readBatch();
+        }, () => resolve(results));
+      };
+      readBatch();
+    } else {
+      resolve([]);
+    }
+  });
+}
+
+interface DropResult {
+  files: DroppedFile[];
+  label: string;  // e.g. "my-project" for single folder, "3 files" for multiple
+}
+
+/** Collect all files from a drop event (supports folders via webkitGetAsEntry).
+ *  Single folder drop: strip folder prefix so contents become workspace root. */
+async function collectDroppedFiles(e: React.DragEvent): Promise<DropResult> {
+  const items = e.dataTransfer?.items;
+  if (!items) return { files: [], label: "" };
+
+  const topEntries: FileSystemEntry[] = [];
+  const looseFallback: DroppedFile[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const entry = items[i].webkitGetAsEntry?.();
+    if (entry) {
+      topEntries.push(entry);
+    } else {
+      const f = items[i].getAsFile();
+      if (f) looseFallback.push({ path: f.name, file: f });
+    }
+  }
+
+  const nested = await Promise.all(topEntries.map((ent) => readEntry(ent, "")));
+  const all = looseFallback.concat(...nested);
+
+  // Single directory dropped → strip its name prefix so contents become workspace root
+  const isSingleDir = topEntries.length === 1 && topEntries[0].isDirectory && looseFallback.length === 0;
+  if (isSingleDir) {
+    const prefix = topEntries[0].name + "/";
+    for (const f of all) {
+      if (f.path.startsWith(prefix)) f.path = f.path.slice(prefix.length);
+    }
+    return { files: all, label: topEntries[0].name };
+  }
+
+  const dirs = topEntries.filter((ent) => ent.isDirectory).length;
+  const fileCount = topEntries.length - dirs + looseFallback.length;
+  const parts: string[] = [];
+  if (dirs > 0) parts.push(`${dirs} folder${dirs > 1 ? "s" : ""}`);
+  if (fileCount > 0) parts.push(`${fileCount} file${fileCount > 1 ? "s" : ""}`);
+  return { files: all, label: parts.join(", ") };
+}
+
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+async function uploadFiles(treeId: string, nodeId: string, files: DroppedFile[]): Promise<{ count: number; git_commit: string } | null> {
+  const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
+  if (totalSize > MAX_UPLOAD_BYTES) {
+    alert(`Upload too large (${(totalSize / 1024 / 1024).toFixed(1)}MB). Max is 50MB.`);
+    return null;
+  }
+  const form = new FormData();
+  for (const f of files) {
+    form.append("files", f.file);
+    form.append("paths", f.path);
+  }
+  const resp = await fetch(`/api/trees/${treeId}/nodes/${nodeId}/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!resp.ok) {
+    console.error("Upload failed:", await resp.text());
+    return null;
+  }
+  return resp.json();
+}
+
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text || "";
   return text.slice(0, max) + "...";
@@ -233,6 +334,41 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     actions.setDeleteToast({ ids, label: "Deleted node", timer });
   }, [node.id]);
 
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadInfo, setUploadInfo] = useState<{ label: string; count: number } | null>(null);
+
+  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const { files, label } = await collectDroppedFiles(e);
+    if (!files.length) return;
+    setUploading(true);
+    const result = await uploadFiles(node.tree_id, node.id, files);
+    setUploading(false);
+    if (result) {
+      actions.updateNodeGit(node.id, result.git_commit);
+      send({ type: WS.GET_NODE_FILES, node_id: node.id });
+      setUploadInfo((prev) => ({
+        label: prev ? prev.label + ", " + label : label,
+        count: (prev?.count || 0) + result.count,
+      }));
+    }
+  }, [node.tree_id, node.id]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const hasRepo = tree && tree.repo_mode !== "new";
   const hasChildren = node.children_ids.length > 0;
@@ -314,40 +450,59 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           />
         </div>
 
-        {/* Section 2: Files / Repo */}
+        {/* Section 2: Repo */}
         <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
           <label className="root-section-label">
-            Files
+            Repo
             {hasChildren && hasRepo && tree?.repo_source && <CopyBtn text={tree.repo_source} />}
           </label>
           {hasRepo && tree ? (
             <RepoBadge tree={tree} onBrowse={!hasChildren ? handleBrowseRepo : undefined} />
+          ) : uploadInfo ? (
+            <div
+              className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleFileDrop}
+            >
+              <div className="upload-badge" onClick={(e) => e.stopPropagation()}>
+                <span
+                  className="upload-badge-text"
+                  onClick={handleBrowseRepo}
+                  title="Browse files"
+                >
+                  {uploadInfo.label} ({uploadInfo.count} file{uploadInfo.count !== 1 ? "s" : ""})
+                </span>
+                {uploading && <span className="upload-badge-hint">uploading...</span>}
+              </div>
+              {dragOver && <div className="drop-zone-overlay">Drop more files</div>}
+            </div>
           ) : (
             <>
-              <textarea
-                ref={repoTextareaRef}
-                className="root-section-input nopan nodrag"
-                value={repoInput}
-                onChange={(e) => setRepoInput(e.target.value)}
-                onFocus={() => actions.selectNode(node.id)}
-                onDrop={(e) => {
-                  const files = e.dataTransfer?.files;
-                  if (files?.length) {
-                    e.preventDefault();
-                    const path = (files[0] as any).path || files[0].name;
-                    if (path) setRepoInput(path);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleRepoSubmit();
-                  }
-                }}
-                placeholder="Drop files, paste path or GitHub URL..."
-                rows={2}
-                disabled={hasChildren || loading}
-              />
+              <div
+                className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleFileDrop}
+              >
+                <textarea
+                  ref={repoTextareaRef}
+                  className="root-section-input nopan nodrag"
+                  value={repoInput}
+                  onChange={(e) => setRepoInput(e.target.value)}
+                  onFocus={() => actions.selectNode(node.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleRepoSubmit();
+                    }
+                  }}
+                  placeholder={uploading ? "Uploading..." : "Drop a folder, paste a path or GitHub URL..."}
+                  rows={2}
+                  disabled={hasChildren || loading || uploading}
+                />
+                {dragOver && <div className="drop-zone-overlay">Drop files here</div>}
+              </div>
               {repoInput.trim() && (
                 <div className="root-input-hint">
                   {repoInputType === "url" ? "⏎ clone repo" :
