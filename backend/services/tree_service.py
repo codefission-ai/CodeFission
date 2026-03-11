@@ -310,9 +310,9 @@ async def get_global_defaults() -> dict:
     """Return global default settings (from settings table + provider registry)."""
     provider = await get_setting("default_provider") or FALLBACK_PROVIDER
     p = PROVIDERS.get(provider)
-    model = await get_setting("default_model") or (p.default_model if p else "claude-sonnet-4-6")
+    model = await get_setting("default_model") or (p.default_model if p else "claude-opus-4-6")
     max_turns_raw = await get_setting("default_max_turns")
-    max_turns = int(max_turns_raw) if max_turns_raw else 25
+    max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
     auth_mode = await get_setting("auth_mode") or (p.default_auth_mode if p else "cli")
     api_key = await get_setting("api_key") or ""
     sandbox = (await get_setting("sandbox")) == "true"

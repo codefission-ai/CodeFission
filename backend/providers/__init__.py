@@ -27,7 +27,7 @@ PROVIDERS: dict[str, Provider] = {
             "claude-opus-4-6",
             "claude-haiku-4-5-20251001",
         ],
-        default_model="claude-sonnet-4-6",
+        default_model="claude-opus-4-6",
         auth_modes=["cli", "api_key"],
         default_auth_mode="cli",
     ),

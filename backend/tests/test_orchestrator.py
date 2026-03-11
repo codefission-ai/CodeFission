@@ -224,7 +224,7 @@ class TestPrepareChat:
         assert ctx.sdk_message == "Write a hello world program"
         assert ctx.workspace.exists()
         assert ctx.model  # resolved from defaults
-        assert ctx.max_turns > 0
+        assert ctx.max_turns >= 0  # 0 = unlimited
 
     @pytest.mark.asyncio
     async def test_creates_child_node(self, orch):

@@ -180,7 +180,7 @@ export const useStore = create<Store>(() => ({
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
+  globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", max_turns: 0, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
   providers: [],
 }));
 
