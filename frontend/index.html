@@ -246,6 +246,36 @@
     .tree-item:hover .delete-btn { opacity: 1; }
     .delete-btn:hover { color: var(--red); background: var(--red-dim); }
 
+    /* ── Tree activity indicators ────────────────────────────────── */
+    .tree-item-name {
+      display: flex; align-items: center; gap: 6px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      min-width: 0;
+    }
+    .tree-activity-dot {
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .tree-activity-dot.streaming {
+      background: #16a34a;
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+    .tree-activity-dot.error {
+      background: #dc2626;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4); }
+      50% { opacity: 0.6; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0); }
+    }
+    .tree-activity-badge {
+      font-size: 9px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
     /* ── Canvas ─────────────────────────────────────────────────── */
     .canvas {
       flex: 1;
