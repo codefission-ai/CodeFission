@@ -17,7 +17,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
-import { useStore, actions, type CNode, type FileQuote, isDagLeaf } from "../store";
+import { useStore, actions, type CNode, type FileQuote, isDetachable } from "../store";
 import { send, WS } from "../ws";
 import { layoutTree } from "../layout";
 
@@ -112,7 +112,7 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const canQuote = selectedHasInput;
 
   // Note is a DAG leaf if no visible node quotes it
-  const isLeaf = useStore((s) => isDagLeaf(s.nodes, id, s.pendingDeleteNodes));
+  const isLeaf = useStore((s) => isDetachable(s.nodes, id, s.pendingDeleteNodes));
   const locked = isQuoted || !isLeaf;
 
   const onWheel = useCallback((e: React.WheelEvent) => {
