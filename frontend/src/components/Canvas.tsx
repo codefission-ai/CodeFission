@@ -115,8 +115,8 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const isLeaf = useStore((s) => isDetachable(s.nodes, id, s.pendingDeleteNodes));
   const locked = isQuoted || !isLeaf;
 
-  // Smart scroll: only capture wheel when textarea has overflow and isn't at boundary.
-  // Uses native listener so we can stop propagation before React Flow sees it.
+  // Capture wheel when textarea has scrollable content — stop canvas from panning.
+  // When no overflow, let wheel pass through to canvas for normal pan/zoom.
   useEffect(() => {
     const ta = taRef.current;
     if (!ta) return;
@@ -124,10 +124,7 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
       if (e.ctrlKey || e.metaKey) return; // allow zoom
       const hasOverflow = ta.scrollHeight > ta.clientHeight;
       if (!hasOverflow) return; // no scroll needed — let canvas pan
-      const atTop = ta.scrollTop <= 0 && e.deltaY < 0;
-      const atBottom = ta.scrollTop + ta.clientHeight >= ta.scrollHeight - 1 && e.deltaY > 0;
-      if (atTop || atBottom) return; // at boundary — let canvas pan
-      e.stopPropagation();
+      e.stopPropagation(); // scrollable note — always consume, even at boundaries
     };
     ta.addEventListener("wheel", handler, { passive: true });
     return () => ta.removeEventListener("wheel", handler);
