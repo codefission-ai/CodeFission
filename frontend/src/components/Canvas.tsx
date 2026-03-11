@@ -115,13 +115,26 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const isLeaf = useStore((s) => isDetachable(s.nodes, id, s.pendingDeleteNodes));
   const locked = isQuoted || !isLeaf;
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) return;
-    e.stopPropagation();
+  // Smart scroll: only capture wheel when textarea has overflow and isn't at boundary.
+  // Uses native listener so we can stop propagation before React Flow sees it.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return; // allow zoom
+      const hasOverflow = ta.scrollHeight > ta.clientHeight;
+      if (!hasOverflow) return; // no scroll needed — let canvas pan
+      const atTop = ta.scrollTop <= 0 && e.deltaY < 0;
+      const atBottom = ta.scrollTop + ta.clientHeight >= ta.scrollHeight - 1 && e.deltaY > 0;
+      if (atTop || atBottom) return; // at boundary — let canvas pan
+      e.stopPropagation();
+    };
+    ta.addEventListener("wheel", handler, { passive: true });
+    return () => ta.removeEventListener("wheel", handler);
   }, []);
 
   return (
-    <div className={`sticky-note nowheel ${locked ? "sticky-note-locked" : ""}`}>
+    <div className={`sticky-note ${locked ? "sticky-note-locked" : ""}`}>
       {!locked && (
         <div className="delete-circle-zone nopan nodrag">
           <button
@@ -171,7 +184,6 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
         className="sticky-note-input nopan nodrag"
         value={text}
         readOnly={locked}
-        onWheel={onWheel}
         onChange={(e) => {
           if (locked) return;
           setText(e.target.value);
