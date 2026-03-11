@@ -42,16 +42,19 @@ export default function NodeModal({ nodeId, userMessage, assistantResponse, onCl
     const hideBtn = () => { btn.style.display = "none"; };
 
     const onMouseUp = () => {
-      const sel = window.getSelection();
-      const text = sel?.toString().trim();
-      if (!text || !sel?.rangeCount) { hideBtn(); return; }
-      const range = sel.getRangeAt(0);
-      if (!responseEl.contains(range.commonAncestorContainer)) { hideBtn(); return; }
-      selectedTextRef.current = text;
-      const rect = range.getBoundingClientRect();
-      btn.style.left = `${rect.left + rect.width / 2}px`;
-      btn.style.top = `${rect.top - 4}px`;
-      btn.style.display = "";
+      // Defer so the browser can collapse the selection first (e.g. click-to-deselect)
+      requestAnimationFrame(() => {
+        const sel = window.getSelection();
+        const text = sel?.toString().trim();
+        if (!text || !sel?.rangeCount) { hideBtn(); return; }
+        const range = sel.getRangeAt(0);
+        if (!responseEl.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+        selectedTextRef.current = text;
+        const rect = range.getBoundingClientRect();
+        btn.style.left = `${rect.left + rect.width / 2}px`;
+        btn.style.top = `${rect.top - 4}px`;
+        btn.style.display = "";
+      });
     };
 
     const onMouseDown = (e: MouseEvent) => {

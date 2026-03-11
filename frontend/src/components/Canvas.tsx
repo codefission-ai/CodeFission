@@ -115,9 +115,19 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   const isLeaf = useStore((s) => isDetachable(s.nodes, id, s.pendingDeleteNodes));
   const locked = isQuoted || !isLeaf;
 
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) return;
-    e.stopPropagation();
+  // Capture wheel when textarea has scrollable content — stop canvas from panning.
+  // When no overflow, let wheel pass through to canvas for normal pan/zoom.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return; // allow zoom
+      const hasOverflow = ta.scrollHeight > ta.clientHeight;
+      if (!hasOverflow) return; // no scroll needed — let canvas pan
+      e.stopPropagation(); // scrollable note — always consume, even at boundaries
+    };
+    ta.addEventListener("wheel", handler, { passive: true });
+    return () => ta.removeEventListener("wheel", handler);
   }, []);
 
   return (
@@ -171,7 +181,6 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
         className="sticky-note-input nopan nodrag"
         value={text}
         readOnly={locked}
-        onWheel={onWheel}
         onChange={(e) => {
           if (locked) return;
           setText(e.target.value);
@@ -358,7 +367,20 @@ function CanvasInner() {
       }
     }
     if (noteChanges.length > 0) {
-      setNoteNodes((nds) => applyNodeChanges(noteChanges, nds));
+      setNoteNodes((nds) => {
+        const updated = applyNodeChanges(noteChanges, nds);
+        // Sync style.width/height from measured dimensions so save picks them up
+        for (const c of noteChanges) {
+          if (c.type === "dimensions" && (c as NodeDimensionChange).dimensions) {
+            const dim = (c as NodeDimensionChange).dimensions!;
+            const node = updated.find((n) => n.id === c.id);
+            if (node) {
+              node.style = { ...node.style, width: dim.width, height: dim.height };
+            }
+          }
+        }
+        return updated;
+      });
       // Save position/size changes for notes
       if (noteChanges.some((c) => c.type === "position" || c.type === "dimensions")) {
         saveNotesRef.current();
@@ -502,8 +524,8 @@ function CanvasInner() {
           text: noteTextRef.current[n.id] ?? "",
           x: n.position.x,
           y: n.position.y,
-          width: (n.style?.width as number) ?? 180,
-          height: (n.style?.height as number) ?? 140,
+          width: (n.style?.width as number) ?? n.measured?.width ?? 180,
+          height: (n.style?.height as number) ?? n.measured?.height ?? 140,
         }));
         send({ type: WS.UPDATE_TREE_SETTINGS, tree_id: currentTreeId, notes: JSON.stringify(data) });
         return cur;
