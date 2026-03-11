@@ -21,7 +21,7 @@ from services.workspace_service import (
     list_files_from_commit, read_file_from_commit, get_diff_from_commits,
     remove_worktree, remove_worktree_and_branch,
 )
-from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
+from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree, find_child_by_cwd
 from services.orchestrator import Orchestrator
 from services.sandbox import set_sandbox, clear_sandbox, default_writable_paths
 
@@ -403,29 +403,11 @@ class ConnectionHandler:
                     pass
 
     def _track_sdk_pid(self, node_id: str, workspace):
-        """Find the SDK subprocess PID by scanning /proc for direct children with matching cwd."""
-        import os
+        """Find the SDK subprocess PID — direct child of server with matching cwd."""
         from pathlib import Path
-        server_pid = os.getpid()
-        workspace_str = str(Path(workspace).resolve())
-        proc = Path("/proc")
-        if not proc.exists():
-            return
-        for entry in proc.iterdir():
-            if not entry.name.isdigit():
-                continue
-            try:
-                stat_text = (entry / "stat").read_text()
-                ppid = int(stat_text.split(")")[1].split()[1])
-                if ppid != server_pid:
-                    continue
-                cwd = str((entry / "cwd").resolve())
-                if cwd.startswith(workspace_str):
-                    self.sdk_pids[node_id] = int(entry.name)
-                    return
-            except (PermissionError, FileNotFoundError, ProcessLookupError,
-                    OSError, IndexError, ValueError):
-                continue
+        pid = find_child_by_cwd(Path(workspace))
+        if pid is not None:
+            self.sdk_pids[node_id] = pid
 
     async def _auto_name_tree(self, tree_id: str, first_message: str, tree):
         """Background task: generate a short name for a tree and push it to the client."""

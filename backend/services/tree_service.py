@@ -291,6 +291,8 @@ async def get_global_defaults() -> dict:
     api_key = await get_setting("api_key") or ""
     sandbox = (await get_setting("sandbox")) == "true"
     summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
+
+    from services.sandbox import check_available as sandbox_check
     return {
         "provider": provider,
         "model": model,
@@ -298,6 +300,7 @@ async def get_global_defaults() -> dict:
         "auth_mode": auth_mode,
         "api_key": api_key,
         "sandbox": sandbox,
+        "sandbox_available": sandbox_check(),
         "summary_model": summary_model,
         "data_dir": str(DATA_DIR),
     }

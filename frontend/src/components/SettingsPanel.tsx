@@ -108,10 +108,16 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
           type="checkbox"
           checked={sandbox}
           onChange={(e) => setSandbox(e.target.checked)}
+          disabled={!defaults.sandbox_available}
         />
         Sandbox (restrict file writes to workspace)
+        {!defaults.sandbox_available && <span className="settings-tag">Linux only</span>}
       </label>
-      <p className="settings-hint">When enabled, uses Landlock (Linux) to prevent the agent from writing files outside its workspace directory.</p>
+      <p className="settings-hint">
+        {defaults.sandbox_available
+          ? "When enabled, uses Landlock to prevent the agent from writing files outside its workspace directory."
+          : "Sandboxing uses Linux Landlock and is not available on this platform."}
+      </p>
 
       <label className="settings-label">Auto-name Model</label>
       <select className="settings-select" value={summaryModel} onChange={(e) => setSummaryModel(e.target.value)}>
