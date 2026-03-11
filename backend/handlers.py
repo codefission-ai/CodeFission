@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 
 from fastapi import WebSocket
@@ -175,15 +176,16 @@ class ConnectionHandler:
         content = data["content"]
         after_id = data.get("after_id")
         file_quotes = data.get("file_quotes") or []
+        draft_node_id = data.get("draft_node_id")
 
-        task = asyncio.create_task(self._run_chat(node_id, content, after_id, file_quotes))
+        task = asyncio.create_task(self._run_chat(node_id, content, after_id, file_quotes, draft_node_id))
         self.tasks[node_id] = task
 
-    async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, file_quotes: list[dict] | None = None):
+    async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, file_quotes: list[dict] | None = None, draft_node_id: str | None = None):
         nid = node_id
         try:
             # Prepare chat: create child node, resolve workspace/session/settings
-            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id, file_quotes=file_quotes)
+            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id, file_quotes=file_quotes, draft_node_id=draft_node_id)
             nid = ctx.node_id
 
             # Sandbox: optionally restrict subprocess writes to this tree's workspace
@@ -239,7 +241,7 @@ class ConnectionHandler:
                     await event_queue.put(exc)
                 finally:
                     try:
-                        await gen.aclose()
+                        await asyncio.wait_for(gen.aclose(), timeout=5.0)
                     except Exception:
                         pass
                     await event_queue.put(None)
@@ -254,14 +256,37 @@ class ConnectionHandler:
             self._track_sdk_pid(nid, ctx.workspace)
             state.sdk_pid = self.sdk_pids.get(nid)
 
-            # Consume events from the queue
+            # Consume events from the queue.
+            # Inactivity timeout: if no events arrive for STREAM_INACTIVITY_TIMEOUT
+            # seconds, the stream is considered dead (e.g. API connection drop,
+            # stuck SDK subprocess).  We also check subprocess liveness on each
+            # timeout cycle so we don't wait uselessly for a dead process.
+            STREAM_INACTIVITY_TIMEOUT = 180  # 3 minutes of silence → dead
+            last_event_time = asyncio.get_event_loop().time()
+            stream_timed_out = False
             while True:
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
                     if state.cancelled:
                         break
+                    now = asyncio.get_event_loop().time()
+                    idle = now - last_event_time
+                    # Check if the SDK subprocess is still alive
+                    sdk_pid = state.sdk_pid or self.sdk_pids.get(nid)
+                    if sdk_pid:
+                        try:
+                            os.kill(sdk_pid, 0)  # signal 0 = existence check
+                        except (ProcessLookupError, PermissionError):
+                            log.warning("SDK subprocess %d for node %s is dead after %.0fs idle — ending stream", sdk_pid, nid, idle)
+                            stream_timed_out = True
+                            break
+                    if idle >= STREAM_INACTIVITY_TIMEOUT:
+                        log.warning("Stream for node %s idle for %.0fs — treating as dead", nid, idle)
+                        stream_timed_out = True
+                        break
                     continue
+                last_event_time = asyncio.get_event_loop().time()
                 if event is None:
                     break
                 if isinstance(event, Exception):
@@ -295,10 +320,13 @@ class ConnectionHandler:
                         is_error=event.is_error,
                     )
 
-            # Wait for stream task cleanup
+            # Cancel stream task if still running (e.g. inactivity timeout or
+            # dead subprocess detected).  Give it a brief window to clean up.
+            if not stream_task.done():
+                stream_task.cancel()
             try:
-                await stream_task
-            except BaseException:
+                await asyncio.wait_for(stream_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError, BaseException):
                 pass
 
             # Check if this node was cancelled
@@ -327,6 +355,10 @@ class ConnectionHandler:
                 await self._send_tree_processes(ctx.workspace.parent)
             else:
                 full_response = self.streams[nid].text
+                if stream_timed_out:
+                    timeout_note = "\n\n---\n*Stream interrupted — the connection to the AI was lost. You can duplicate this node to retry.*"
+                    full_response += timeout_note
+                    await self.send(WS.CHUNK, node_id=nid, text=timeout_note)
                 self.streams[nid].status = "done"
                 result = await self.orch.complete_chat(nid, full_response, msg, ctx.workspace)
                 await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
@@ -396,7 +428,7 @@ class ConnectionHandler:
             # — not its process tree — so user-started servers survive as orphans.
             sdk_pid = self.sdk_pids.pop(nid, None)
             if sdk_pid:
-                import os, signal
+                import signal
                 try:
                     os.kill(sdk_pid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError, OSError):

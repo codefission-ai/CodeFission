@@ -121,6 +121,63 @@ class Orchestrator:
 
         return node
 
+    async def prepare_draft(self, parent_id: str) -> Node:
+        """Create a draft child node with workspace ready for file uploads.
+
+        The draft is invisible in the tree UI (filtered by status='draft').
+        When the user sends a message, prepare_chat reuses it instead of
+        creating a new child.
+        """
+        parent = await get_node(parent_id)
+        if not parent:
+            raise ValueError(f"Parent node {parent_id} not found")
+
+        tree = await get_tree(parent.tree_id)
+        if not tree or not tree.root_node_id:
+            raise ValueError("Tree not found")
+
+        # Check for existing draft under this parent and reuse it
+        from services.tree_service import get_drafts_for_parent
+        existing = await get_drafts_for_parent(parent_id)
+        if existing:
+            return existing[0]
+
+        # Create child node with status=draft
+        node = await create_child_node(parent_id, label="", created_by="human")
+        branch_name = f"ct-{node.id}"
+        await update_node(node.id, status="draft", git_branch=branch_name, git_commit=parent.git_commit)
+
+        # Ensure repo + worktree exist so files can be uploaded
+        await setup_repo(tree.id, tree.root_node_id, tree.repo_mode or "new", tree.repo_source)
+        await ensure_worktree(
+            tree.id, tree.root_node_id, node.id,
+            parent_id, parent.git_commit,
+        )
+
+        return await get_node(node.id)
+
+    async def discard_draft(self, tree_id: str, draft_node_id: str) -> None:
+        """Delete a draft node and its workspace."""
+        from services.workspace_service import remove_worktree_and_branch
+
+        node = await get_node(draft_node_id)
+        if not node or node.status != "draft" or node.tree_id != tree_id:
+            return
+
+        tree = await get_tree(tree_id)
+        if not tree or not tree.root_node_id:
+            return
+
+        # Remove worktree + branch
+        try:
+            await remove_worktree_and_branch(tree.id, tree.root_node_id, draft_node_id)
+        except Exception:
+            log.debug("Draft worktree removal failed for %s", draft_node_id, exc_info=True)
+
+        # Delete the node from DB
+        from services.tree_service import delete_single_node
+        await delete_single_node(draft_node_id)
+
     async def set_repo(
         self,
         tree_id: str,
@@ -310,8 +367,13 @@ class Orchestrator:
         after_id: str | None = None,
         created_by: str = "human",
         file_quotes: list[dict] | None = None,
+        draft_node_id: str | None = None,
     ) -> ChatContext:
         """Create a child node and resolve everything needed to stream a chat.
+
+        If draft_node_id is provided, reuses the existing draft node (created by
+        prepare_draft) instead of creating a new child.  The draft's workspace
+        is already set up and may contain uploaded files.
 
         Does NOT start the stream — the caller wires up streaming + transport.
         """
@@ -323,9 +385,18 @@ class Orchestrator:
         if not tree:
             raise ValueError(f"Tree for node {parent_node_id} not found")
 
-        # Create child node
-        child = await create_child_node(parent_node_id, label=message[:40], created_by=created_by)
-        nid = child.id
+        # Reuse draft or create new child
+        if draft_node_id:
+            draft = await get_node(draft_node_id)
+            if draft and draft.status == "draft" and draft.parent_id == parent_node_id:
+                nid = draft.id
+            else:
+                log.warning("Draft %s invalid, creating new child", draft_node_id)
+                child = await create_child_node(parent_node_id, label=message[:40], created_by=created_by)
+                nid = child.id
+        else:
+            child = await create_child_node(parent_node_id, label=message[:40], created_by=created_by)
+            nid = child.id
 
         # Save user message, set label and status
         label = message[:40]

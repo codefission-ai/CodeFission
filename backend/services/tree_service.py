@@ -81,14 +81,17 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
         )
         rows = await cursor.fetchall()
 
+    # Filter out draft nodes — they are invisible until a message is sent
+    visible_rows = [r for r in rows if r["status"] != "draft"]
+
     parent_to_children: dict[str, list[str]] = {}
-    for r in rows:
+    for r in visible_rows:
         pid = r["parent_id"]
         if pid:
             parent_to_children.setdefault(pid, []).append(r["id"])
 
     nodes = []
-    for r in rows:
+    for r in visible_rows:
         nodes.append(Node(
             id=r["id"],
             tree_id=r["tree_id"],
@@ -157,6 +160,29 @@ async def create_child_node(parent_id: str, label: str = "", created_by: str = "
         created_at=now,
         created_by=created_by,
     )
+
+
+async def get_drafts_for_parent(parent_id: str) -> list[Node]:
+    """Return all draft nodes under a given parent."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id FROM nodes WHERE parent_id = ? AND status = 'draft'",
+            (parent_id,),
+        )
+        rows = await cursor.fetchall()
+    nodes = []
+    for r in rows:
+        n = await get_node(r["id"])
+        if n:
+            nodes.append(n)
+    return nodes
+
+
+async def delete_single_node(node_id: str) -> None:
+    """Delete a single node from the database (no subtree, no cleanup)."""
+    async with get_db() as db:
+        await db.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
+        await db.commit()
 
 
 async def get_path_to_root(node_id: str) -> list[Node]:

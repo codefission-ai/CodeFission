@@ -198,6 +198,9 @@ async def stream_chat(
 
     system_prompt = _build_system_prompt(node, tree=tree, workspace=workspace)
 
+    # Open /dev/null once; closed in the finally block below.
+    devnull = open(os.devnull, "w")
+
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         model=model,
@@ -206,7 +209,7 @@ async def stream_chat(
         permission_mode="bypassPermissions",
         include_partial_messages=True,
         env=_sdk_env(auth_mode, api_key),
-        debug_stderr=open(os.devnull, "w"),
+        debug_stderr=devnull,
     )
 
     # Session forking: if parent has a session file, fork from it
@@ -307,3 +310,5 @@ async def stream_chat(
     except BaseException as exc:
         log.exception("Chat error for node %s", node_id)
         raise
+    finally:
+        devnull.close()

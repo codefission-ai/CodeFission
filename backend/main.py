@@ -134,6 +134,66 @@ async def upload_node_files(
     })
 
 
+# ── Delete a file from a node's workspace ─────────────────────────────
+
+@app.delete("/api/trees/{tree_id}/nodes/{node_id}/files/{file_path:path}")
+async def delete_node_file(tree_id: str, node_id: str, file_path: str):
+    """Remove a file from a node's workspace and commit the deletion."""
+    from services.tree_service import get_node, get_tree, update_node
+    from services.workspace_service import resolve_workspace, auto_commit
+
+    node = await get_node(node_id)
+    if not node:
+        raise HTTPException(404, "Node not found")
+    tree = await get_tree(tree_id)
+    if not tree or tree.id != node.tree_id:
+        raise HTTPException(404, "Tree not found")
+
+    ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+    rel = Path(file_path)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise HTTPException(400, "Invalid path")
+    target = (ws_path / rel).resolve()
+    if not str(target).startswith(str(ws_path.resolve())):
+        raise HTTPException(400, "Invalid path")
+    if not target.is_file():
+        raise HTTPException(404, "File not found")
+
+    target.unlink()
+    sha, _ = await auto_commit(ws_path, f"removed {file_path}")
+    await update_node(node_id, git_commit=sha)
+    return JSONResponse({"ok": True, "git_commit": sha})
+
+
+# ── Draft nodes for eager file upload ────────────────────────────────
+
+@app.post("/api/trees/{tree_id}/nodes/{parent_id}/prepare-draft")
+async def prepare_draft(tree_id: str, parent_id: str):
+    """Create a draft child node with workspace ready for file uploads."""
+    from services.tree_service import get_node, get_tree
+    from services.orchestrator import Orchestrator
+
+    node = await get_node(parent_id)
+    if not node:
+        raise HTTPException(404, "Parent node not found")
+    tree = await get_tree(tree_id)
+    if not tree or tree.id != node.tree_id:
+        raise HTTPException(404, "Tree not found")
+
+    orch = Orchestrator()
+    draft = await orch.prepare_draft(parent_id)
+    return JSONResponse({"draft_node_id": draft.id})
+
+
+@app.delete("/api/trees/{tree_id}/drafts/{draft_id}")
+async def discard_draft(tree_id: str, draft_id: str):
+    """Delete a draft node and its workspace."""
+    from services.orchestrator import Orchestrator
+    orch = Orchestrator()
+    await orch.discard_draft(tree_id, draft_id)
+    return JSONResponse({"ok": True})
+
+
 # ── Raw file serving for binary content (images, video, audio) ──────
 @app.get("/api/files/{node_id}/{file_path:path}")
 async def serve_node_file(node_id: str, file_path: str):

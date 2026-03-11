@@ -42,9 +42,11 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const attach = useFileAttach();
-
   const node = selectedId ? nodes[selectedId] : null;
+  const attach = useFileAttach({
+    treeId: node?.tree_id,
+    parentNodeId: selectedId ?? undefined,
+  });
   const isStreaming = selectedId ? streaming[selectedId] : false;
   const activeToolCalls = selectedId ? toolCalls[selectedId] || [] : [];
 
@@ -74,28 +76,36 @@ export default function ChatPanel() {
     if (!selectedId || !node || isStreaming || attach.uploading) return;
     if (!input.trim() && attach.pendingFiles.length === 0) return;
 
-    let fileQuotes: Array<{ node_id: string; type: string; path: string }> = [];
+    // Consume draft (files already uploaded to draft workspace)
+    const { draftNodeId, uploadedQuotes } = attach.consumeDraft();
+    let fileQuotes = uploadedQuotes;
 
-    // Upload pending files first
-    if (attach.pendingFiles.length > 0) {
+    // Fallback: if no draft was used, upload to parent (legacy path)
+    if (!draftNodeId && attach.pendingFiles.length > 0) {
       const result = await attach.uploadAndQuote(node.tree_id, selectedId);
       if (!result) return;
       fileQuotes = result.quotes;
       actions.updateNodeGit(selectedId, result.git_commit);
     }
 
-    const content = input.trim() || `Attached ${fileQuotes.length} file${fileQuotes.length !== 1 ? "s" : ""}`;
+    // Build message: append uploaded file paths so the LLM knows they exist in the workspace
+    let content = input.trim();
+    if (fileQuotes.length > 0) {
+      const paths = fileQuotes.map((q) => q.path);
+      const fileLine = `[Attached files in workspace: ${paths.join(", ")}]`;
+      content = content ? `${content}\n\n${fileLine}` : fileLine;
+    }
+    if (!content) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content };
+    if (draftNodeId) msg.draft_node_id = draftNodeId;
 
-    const allQuotes = [
-      ...pendingQuotes.map((q) => ({
-        node_id: q.nodeId,
-        type: q.type,
-        ...(q.path ? { path: q.path } : {}),
-        ...(q.content ? { content: q.content } : {}),
-      })),
-      ...fileQuotes,
-    ];
+    // Cross-branch quotes (node, file, folder references — NOT uploaded files)
+    const allQuotes = pendingQuotes.map((q) => ({
+      node_id: q.nodeId,
+      type: q.type,
+      ...(q.path ? { path: q.path } : {}),
+      ...(q.content ? { content: q.content } : {}),
+    }));
     if (allQuotes.length > 0) msg.file_quotes = allQuotes;
 
     send(msg);
@@ -197,9 +207,10 @@ export default function ChatPanel() {
           </button>
           <textarea
             ref={textareaRef}
-            placeholder={attach.uploading ? "Uploading files..." : "Type a message..."}
+            placeholder="Type a message..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={attach.addFromPaste}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -207,7 +218,6 @@ export default function ChatPanel() {
               }
             }}
             rows={1}
-            disabled={attach.uploading}
           />
           <button
             onClick={handleSend}

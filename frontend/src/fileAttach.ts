@@ -1,9 +1,14 @@
 /**
  * Shared file attachment utilities — drag-drop reading, upload, and the
  * useFileAttach hook used by every message input in the app.
+ *
+ * When treeId/parentNodeId are provided, files are uploaded eagerly to a
+ * draft child workspace (created on first attach) instead of being staged
+ * in memory.  This ensures files end up in the child workspace, never the
+ * parent's.
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -115,6 +120,24 @@ export async function uploadFiles(
   return resp.json();
 }
 
+// ── Draft helpers ─────────────────────────────────────────────────────
+
+async function prepareDraft(
+  treeId: string, parentNodeId: string,
+): Promise<string | null> {
+  const resp = await fetch(
+    `/api/trees/${treeId}/nodes/${parentNodeId}/prepare-draft`,
+    { method: "POST" },
+  );
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  return data.draft_node_id;
+}
+
+async function discardDraftApi(treeId: string, draftId: string): Promise<void> {
+  await fetch(`/api/trees/${treeId}/drafts/${draftId}`, { method: "DELETE" });
+}
+
 // ── Format helpers ─────────────────────────────────────────────────────
 
 export function formatFileSize(bytes: number): string {
@@ -125,24 +148,97 @@ export function formatFileSize(bytes: number): string {
 
 // ── Hook ───────────────────────────────────────────────────────────────
 
-export function useFileAttach() {
+export interface FileAttachOpts {
+  /** Tree ID — required for eager draft upload. */
+  treeId?: string;
+  /** Parent node ID — files are uploaded to a draft child of this node. */
+  parentNodeId?: string;
+}
+
+export function useFileAttach(opts?: FileAttachOpts) {
   const [pendingFiles, setPendingFiles] = useState<DroppedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Ref keeps uploadAndQuote stable (no stale closure on pendingFiles).
-  const pendingRef = useRef<DroppedFile[]>([]);
-  pendingRef.current = pendingFiles;
+
+  // Draft tracking
+  const [draftNodeId, setDraftNodeId] = useState<string | null>(null);
+  const [uploadedQuotes, setUploadedQuotes] = useState<
+    Array<{ node_id: string; type: string; path: string }>
+  >([]);
+  // Refs to avoid stale closures
+  const draftRef = useRef<string | null>(null);
+  draftRef.current = draftNodeId;
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+
+  // Whether we can do eager draft uploads
+  const canEagerUpload = !!(opts?.treeId && opts?.parentNodeId);
+
+  // Discard draft when parent changes or on unmount
+  useEffect(() => {
+    return () => {
+      if (draftRef.current && optsRef.current?.treeId) {
+        discardDraftApi(optsRef.current.treeId, draftRef.current).catch(() => {});
+      }
+    };
+  }, [opts?.parentNodeId]);
+
+  // Reset draft state when parent changes
+  useEffect(() => {
+    setDraftNodeId(null);
+    setUploadedQuotes([]);
+    setPendingFiles([]);
+  }, [opts?.parentNodeId]);
+
+  /** Ensure a draft child exists, create one if needed. */
+  const ensureDraft = useCallback(async (): Promise<string | null> => {
+    if (draftRef.current) return draftRef.current;
+    const o = optsRef.current;
+    if (!o?.treeId || !o?.parentNodeId) return null;
+    const id = await prepareDraft(o.treeId, o.parentNodeId);
+    if (id) {
+      draftRef.current = id;
+      setDraftNodeId(id);
+    }
+    return id;
+  }, []);
+
+  /** Upload files immediately to the draft workspace. */
+  const uploadToDraft = useCallback(async (files: DroppedFile[]) => {
+    const o = optsRef.current;
+    if (!o?.treeId) return;
+    const nodeId = await ensureDraft();
+    if (!nodeId) return;
+    setUploading(true);
+    try {
+      const result = await uploadFiles(o.treeId, nodeId, files);
+      if (result) {
+        const newQuotes = files.map((f) => ({
+          node_id: nodeId,
+          type: "file" as const,
+          path: f.path,
+        }));
+        setUploadedQuotes((prev) => [...prev, ...newQuotes]);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }, [ensureDraft]);
 
   const addFromDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOver(false);
     const { files } = await collectDroppedFiles(e);
-    if (files.length) setPendingFiles((prev) => [...prev, ...files]);
-  }, []);
+    if (!files.length) return;
+    setPendingFiles((prev) => [...prev, ...files]);
+    if (canEagerUpload) {
+      await uploadToDraft(files);
+    }
+  }, [canEagerUpload, uploadToDraft]);
 
-  const addFromInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const addFromInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList) return;
     const newFiles: DroppedFile[] = [];
@@ -150,15 +246,65 @@ export function useFileAttach() {
       const f = fileList[i];
       newFiles.push({ file: f, path: f.webkitRelativePath || f.name });
     }
-    if (newFiles.length) setPendingFiles((prev) => [...prev, ...newFiles]);
+    if (newFiles.length) {
+      setPendingFiles((prev) => [...prev, ...newFiles]);
+      if (canEagerUpload) {
+        await uploadToDraft(newFiles);
+      }
+    }
     e.target.value = "";
-  }, []);
+  }, [canEagerUpload, uploadToDraft]);
+
+  /** Handle paste events — extract images from the clipboard. */
+  const addFromPaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: DroppedFile[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const ext = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp" }[item.type] || ".png";
+      const name = `paste-${Date.now()}${ext}`;
+      imageFiles.push({ path: name, file });
+    }
+    if (imageFiles.length === 0) return; // no images — let normal text paste through
+    e.preventDefault();
+    setPendingFiles((prev) => [...prev, ...imageFiles]);
+    if (canEagerUpload) {
+      await uploadToDraft(imageFiles);
+    }
+  }, [canEagerUpload, uploadToDraft]);
 
   const removeFile = useCallback((index: number) => {
-    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    const file = pendingFiles[index];
+    const remaining = pendingFiles.filter((_, i) => i !== index);
+    setPendingFiles(remaining);
+    setUploadedQuotes((prev) => prev.filter((_, i) => i !== index));
 
-  const clearFiles = useCallback(() => setPendingFiles([]), []);
+    // Delete from draft workspace on disk
+    const o = optsRef.current;
+    const draft = draftRef.current;
+    if (draft && o?.treeId) {
+      if (remaining.length === 0) {
+        // No files left — discard the entire draft
+        draftRef.current = null;
+        setDraftNodeId(null);
+        discardDraftApi(o.treeId, draft).catch(() => {});
+      } else if (file) {
+        // Delete just this file from the workspace
+        fetch(`/api/trees/${o.treeId}/nodes/${draft}/files/${encodeURIComponent(file.path)}`, {
+          method: "DELETE",
+        }).catch(() => {});
+      }
+    }
+  }, [pendingFiles]);
+
+  const clearFiles = useCallback(() => {
+    setPendingFiles([]);
+    setUploadedQuotes([]);
+  }, []);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -172,7 +318,8 @@ export function useFileAttach() {
     setDragOver(false);
   }, []);
 
-  /** Upload pending files and return file_quotes for the chat message. */
+  /** Upload pending files and return file_quotes for the chat message.
+   *  Used as fallback when eager upload is not available (no treeId/parentNodeId). */
   const uploadAndQuote = useCallback(async (
     treeId: string, nodeId: string,
   ): Promise<{
@@ -180,7 +327,12 @@ export function useFileAttach() {
     git_commit: string;
     count: number;
   } | null> => {
-    const files = pendingRef.current;
+    // If eager upload already happened, return the accumulated quotes
+    if (draftRef.current && uploadedQuotes.length > 0) {
+      return { quotes: uploadedQuotes, git_commit: "", count: uploadedQuotes.length };
+    }
+    // Fallback: upload to the specified node (legacy path)
+    const files = pendingFiles;
     if (files.length === 0) return null;
     const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
     if (totalSize > MAX_UPLOAD_BYTES) {
@@ -201,6 +353,31 @@ export function useFileAttach() {
     } finally {
       setUploading(false);
     }
+  }, [pendingFiles, uploadedQuotes]);
+
+  /** Consume the draft — returns the draftNodeId and resets state.
+   *  Called by handleSend so the draft isn't discarded on cleanup. */
+  const consumeDraft = useCallback(() => {
+    const id = draftRef.current;
+    draftRef.current = null;
+    setDraftNodeId(null);
+    const quotes = [...uploadedQuotes];
+    setUploadedQuotes([]);
+    setPendingFiles([]);
+    return { draftNodeId: id, uploadedQuotes: quotes };
+  }, [uploadedQuotes]);
+
+  /** Discard the current draft and its workspace. */
+  const discardDraft = useCallback(async () => {
+    const id = draftRef.current;
+    const o = optsRef.current;
+    if (id && o?.treeId) {
+      draftRef.current = null;
+      setDraftNodeId(null);
+      setUploadedQuotes([]);
+      setPendingFiles([]);
+      await discardDraftApi(o.treeId, id).catch(() => {});
+    }
   }, []);
 
   return {
@@ -211,10 +388,16 @@ export function useFileAttach() {
     fileInputRef,
     addFromDrop,
     addFromInput,
+    addFromPaste,
     removeFile,
     clearFiles,
     onDragOver,
     onDragLeave,
     uploadAndQuote,
+    // Draft-related
+    draftNodeId,
+    uploadedQuotes,
+    consumeDraft,
+    discardDraft,
   };
 }

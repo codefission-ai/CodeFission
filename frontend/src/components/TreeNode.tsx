@@ -148,7 +148,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const responseRef = useRef<HTMLDivElement>(null);
-  const attach = useFileAttach();
+  const attach = useFileAttach({ treeId: node.tree_id, parentNodeId: node.id });
 
   // Block wheel events so ReactFlow doesn't pan when scrolling the response,
   // but only when this node is selected (focused).
@@ -196,36 +196,43 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     if (attach.uploading || isStreaming) return;
     if (!input.trim() && attach.pendingFiles.length === 0) return;
 
-    let fileQuotes: Array<{ node_id: string; type: string; path: string }> = [];
+    // Consume draft (files already uploaded to draft workspace)
+    const { draftNodeId, uploadedQuotes } = attach.consumeDraft();
+    let fileQuotes = uploadedQuotes;
 
-    // Upload pending files first
-    if (attach.pendingFiles.length > 0) {
+    // Fallback: if no draft was used, upload to parent (legacy path)
+    if (!draftNodeId && attach.pendingFiles.length > 0) {
       const result = await attach.uploadAndQuote(node.tree_id, node.id);
-      if (!result) return; // upload failed — keep files staged for retry
+      if (!result) return;
       fileQuotes = result.quotes;
       actions.updateNodeGit(node.id, result.git_commit);
     }
 
-    const content = input.trim() || `Attached ${fileQuotes.length} file${fileQuotes.length !== 1 ? "s" : ""}`;
+    // Build message: append uploaded file paths so the LLM knows they exist in the workspace
+    let content = input.trim();
+    if (fileQuotes.length > 0) {
+      const paths = fileQuotes.map((q) => q.path);
+      const fileLine = `[Attached files in workspace: ${paths.join(", ")}]`;
+      content = content ? `${content}\n\n${fileLine}` : fileLine;
+    }
+    if (!content) return;
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content };
+    if (draftNodeId) msg.draft_node_id = draftNodeId;
 
-    // Merge node/file quotes with uploaded-file quotes
+    // Cross-branch quotes (node, file, folder references — NOT uploaded files)
     const pendingQ = useStore.getState().pendingQuotes;
-    const allQuotes = [
-      ...pendingQ.map((q: FileQuote) => ({
-        node_id: q.nodeId,
-        type: q.type,
-        ...(q.path ? { path: q.path } : {}),
-        ...(q.content ? { content: q.content } : {}),
-      })),
-      ...fileQuotes,
-    ];
+    const allQuotes = pendingQ.map((q: FileQuote) => ({
+      node_id: q.nodeId,
+      type: q.type,
+      ...(q.path ? { path: q.path } : {}),
+      ...(q.content ? { content: q.content } : {}),
+    }));
     if (allQuotes.length > 0) msg.file_quotes = allQuotes;
 
     send(msg);
     setInput("");
     if (pendingQ.length > 0) useStore.setState({ pendingQuotes: [], pendingQuotesFor: null });
-  }, [input, isStreaming, node.id, node.tree_id, attach.uploading, attach.pendingFiles.length, attach.uploadAndQuote]);
+  }, [input, isStreaming, node.id, node.tree_id, attach]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -474,15 +481,16 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onFocus={() => actions.selectNode(node.id)}
+              onPaste={attach.addFromPaste}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }
               }}
-              placeholder={attach.uploading ? "Uploading files..." : "Type a message..."}
+              placeholder="Type a message..."
               rows={1}
-              disabled={loading || attach.uploading}
+              disabled={loading}
             />
             <button
               className="attach-btn nopan nodrag"
@@ -677,15 +685,15 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onFocus={() => actions.selectNode(node.id)}
+                  onPaste={attach.addFromPaste}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       handleSend();
                     }
                   }}
-                  placeholder={attach.uploading ? "Uploading files..." : "Follow up..."}
+                  placeholder="Follow up..."
                   rows={1}
-                  disabled={attach.uploading}
                 />
                 <button
                   className="attach-btn nopan nodrag"
