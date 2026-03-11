@@ -596,7 +596,7 @@ function ZoomControls({ onAddNote }: { onAddNote: () => void }) {
   return (
     <div className="zoom-controls">
       <button className="has-tooltip" onClick={onAddNote}>
-        🗒<span className="tooltip">Add note</span>
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 3a1 1 0 00-1 1v10a1 1 0 001 1h6l5-5V4a1 1 0 00-1-1H4z" /><path d="M10 15v-4a1 1 0 011-1h4" /></svg><span className="tooltip">Add note</span>
       </button>
       <button className="has-tooltip" onClick={() => zoomIn({ duration: 150 })}>
         +<span className="tooltip">Zoom in <kbd>{modKey}+Scroll</kbd></span>
