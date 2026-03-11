@@ -602,7 +602,13 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
             <div
               ref={responseRef}
               className={`tree-node-assistant ${selected && !isStreaming ? "clickable" : ""}`}
-              onClick={() => { if (selected && !isStreaming) setShowModal(true); }}
+              onClick={(e) => {
+                if (!selected || isStreaming) return;
+                // Don't open modal when clicking a link (e.g. cmd/ctrl+click to open in new tab)
+                const target = e.target as HTMLElement;
+                if (target.closest("a")) return;
+                setShowModal(true);
+              }}
             >
               <div
                 className="tree-node-response-md"
