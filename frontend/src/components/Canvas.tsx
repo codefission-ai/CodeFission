@@ -121,7 +121,7 @@ function NoteNode({ id, data }: { id: string; data: { text?: string; onTextChang
   }, []);
 
   return (
-    <div className={`sticky-note ${locked ? "sticky-note-locked" : ""}`}>
+    <div className={`sticky-note nowheel ${locked ? "sticky-note-locked" : ""}`}>
       {!locked && (
         <div className="delete-circle-zone nopan nodrag">
           <button
@@ -358,7 +358,20 @@ function CanvasInner() {
       }
     }
     if (noteChanges.length > 0) {
-      setNoteNodes((nds) => applyNodeChanges(noteChanges, nds));
+      setNoteNodes((nds) => {
+        const updated = applyNodeChanges(noteChanges, nds);
+        // Sync style.width/height from measured dimensions so save picks them up
+        for (const c of noteChanges) {
+          if (c.type === "dimensions" && (c as NodeDimensionChange).dimensions) {
+            const dim = (c as NodeDimensionChange).dimensions!;
+            const node = updated.find((n) => n.id === c.id);
+            if (node) {
+              node.style = { ...node.style, width: dim.width, height: dim.height };
+            }
+          }
+        }
+        return updated;
+      });
       // Save position/size changes for notes
       if (noteChanges.some((c) => c.type === "position" || c.type === "dimensions")) {
         saveNotesRef.current();
@@ -502,8 +515,8 @@ function CanvasInner() {
           text: noteTextRef.current[n.id] ?? "",
           x: n.position.x,
           y: n.position.y,
-          width: (n.style?.width as number) ?? 180,
-          height: (n.style?.height as number) ?? 140,
+          width: (n.style?.width as number) ?? n.measured?.width ?? 180,
+          height: (n.style?.height as number) ?? n.measured?.height ?? 140,
         }));
         send({ type: WS.UPDATE_TREE_SETTINGS, tree_id: currentTreeId, notes: JSON.stringify(data) });
         return cur;
