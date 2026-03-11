@@ -5,107 +5,7 @@ import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
 import NodeModal from "./NodeModal";
-
-// ── Drag & drop file upload helpers ──────────────────────────────────
-
-interface DroppedFile {
-  path: string;
-  file: File;
-}
-
-function readEntry(entry: FileSystemEntry, basePath: string): Promise<DroppedFile[]> {
-  return new Promise((resolve) => {
-    if (entry.isFile) {
-      (entry as FileSystemFileEntry).file((f) => {
-        resolve([{ path: basePath + f.name, file: f }]);
-      }, () => resolve([]));
-    } else if (entry.isDirectory) {
-      const reader = (entry as FileSystemDirectoryEntry).createReader();
-      const results: DroppedFile[] = [];
-      const readBatch = () => {
-        reader.readEntries(async (entries) => {
-          if (entries.length === 0) { resolve(results); return; }
-          for (const e of entries) {
-            const sub = await readEntry(e, basePath + entry.name + "/");
-            results.push(...sub);
-          }
-          readBatch();
-        }, () => resolve(results));
-      };
-      readBatch();
-    } else {
-      resolve([]);
-    }
-  });
-}
-
-interface DropResult {
-  files: DroppedFile[];
-  label: string;  // e.g. "my-project" for single folder, "3 files" for multiple
-}
-
-/** Collect all files from a drop event (supports folders via webkitGetAsEntry).
- *  Single folder drop: strip folder prefix so contents become workspace root. */
-async function collectDroppedFiles(e: React.DragEvent): Promise<DropResult> {
-  const items = e.dataTransfer?.items;
-  if (!items) return { files: [], label: "" };
-
-  const topEntries: FileSystemEntry[] = [];
-  const looseFallback: DroppedFile[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const entry = items[i].webkitGetAsEntry?.();
-    if (entry) {
-      topEntries.push(entry);
-    } else {
-      const f = items[i].getAsFile();
-      if (f) looseFallback.push({ path: f.name, file: f });
-    }
-  }
-
-  const nested = await Promise.all(topEntries.map((ent) => readEntry(ent, "")));
-  const all = looseFallback.concat(...nested);
-
-  // Single directory dropped → strip its name prefix so contents become workspace root
-  const isSingleDir = topEntries.length === 1 && topEntries[0].isDirectory && looseFallback.length === 0;
-  if (isSingleDir) {
-    const prefix = topEntries[0].name + "/";
-    for (const f of all) {
-      if (f.path.startsWith(prefix)) f.path = f.path.slice(prefix.length);
-    }
-    return { files: all, label: topEntries[0].name };
-  }
-
-  const dirs = topEntries.filter((ent) => ent.isDirectory).length;
-  const fileCount = topEntries.length - dirs + looseFallback.length;
-  const parts: string[] = [];
-  if (dirs > 0) parts.push(`${dirs} folder${dirs > 1 ? "s" : ""}`);
-  if (fileCount > 0) parts.push(`${fileCount} file${fileCount > 1 ? "s" : ""}`);
-  return { files: all, label: parts.join(", ") };
-}
-
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-
-async function uploadFiles(treeId: string, nodeId: string, files: DroppedFile[]): Promise<{ count: number; git_commit: string } | null> {
-  const totalSize = files.reduce((sum, f) => sum + f.file.size, 0);
-  if (totalSize > MAX_UPLOAD_BYTES) {
-    alert(`Upload too large (${(totalSize / 1024 / 1024).toFixed(1)}MB). Max is 50MB.`);
-    return null;
-  }
-  const form = new FormData();
-  for (const f of files) {
-    form.append("files", f.file);
-    form.append("paths", f.path);
-  }
-  const resp = await fetch(`/api/trees/${treeId}/nodes/${nodeId}/upload`, {
-    method: "POST",
-    body: form,
-  });
-  if (!resp.ok) {
-    console.error("Upload failed:", await resp.text());
-    return null;
-  }
-  return resp.json();
-}
+import { collectDroppedFiles, uploadFiles, useFileAttach, formatFileSize } from "../fileAttach";
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text || "";
@@ -248,6 +148,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const responseRef = useRef<HTMLDivElement>(null);
+  const attach = useFileAttach();
 
   // Block wheel events so ReactFlow doesn't pan when scrolling the response,
   // but only when this node is selected (focused).
@@ -291,22 +192,40 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     node.status === "done" ? "#8a8a96" :
     "#b0b0ba";
 
-  const handleSend = useCallback(() => {
-    if (!input.trim() || isStreaming) return;
-    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content: input.trim() };
-    const quotes = useStore.getState().pendingQuotes;
-    if (quotes.length > 0) {
-      msg.file_quotes = quotes.map((q: FileQuote) => ({
+  const handleSend = useCallback(async () => {
+    if (attach.uploading || isStreaming) return;
+    if (!input.trim() && attach.pendingFiles.length === 0) return;
+
+    let fileQuotes: Array<{ node_id: string; type: string; path: string }> = [];
+
+    // Upload pending files first
+    if (attach.pendingFiles.length > 0) {
+      const result = await attach.uploadAndQuote(node.tree_id, node.id);
+      if (!result) return; // upload failed — keep files staged for retry
+      fileQuotes = result.quotes;
+      actions.updateNodeGit(node.id, result.git_commit);
+    }
+
+    const content = input.trim() || `Attached ${fileQuotes.length} file${fileQuotes.length !== 1 ? "s" : ""}`;
+    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content };
+
+    // Merge node/file quotes with uploaded-file quotes
+    const pendingQ = useStore.getState().pendingQuotes;
+    const allQuotes = [
+      ...pendingQ.map((q: FileQuote) => ({
         node_id: q.nodeId,
         type: q.type,
         ...(q.path ? { path: q.path } : {}),
         ...(q.content ? { content: q.content } : {}),
-      }));
-    }
+      })),
+      ...fileQuotes,
+    ];
+    if (allQuotes.length > 0) msg.file_quotes = allQuotes;
+
     send(msg);
     setInput("");
-    if (quotes.length > 0) useStore.setState({ pendingQuotes: [], pendingQuotesFor: null });
-  }, [input, isStreaming, node.id]);
+    if (pendingQ.length > 0) useStore.setState({ pendingQuotes: [], pendingQuotesFor: null });
+  }, [input, isStreaming, node.id, node.tree_id, attach.uploading, attach.pendingFiles.length, attach.uploadAndQuote]);
 
   const handleOpenFiles = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -532,22 +451,55 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               ))}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            className="root-section-input nopan nodrag"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onFocus={() => actions.selectNode(node.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="Type a message..."
-            rows={1}
-            disabled={loading}
-          />
+          {attach.pendingFiles.length > 0 && (
+            <div className="file-chips nodrag nopan" onClick={(e) => e.stopPropagation()}>
+              {attach.pendingFiles.map((f, i) => (
+                <span key={i} className="file-chip">
+                  <span className="file-chip-name" title={f.path}>{f.path.split("/").pop()}</span>
+                  <button className="file-chip-remove" onClick={() => attach.removeFile(i)}>&times;</button>
+                </span>
+              ))}
+              <span className="file-chips-size">{formatFileSize(attach.totalSize)}</span>
+            </div>
+          )}
+          <div
+            className={`tree-node-input-wrap ${attach.dragOver ? "drag-over" : ""}`}
+            onDragOver={attach.onDragOver}
+            onDragLeave={attach.onDragLeave}
+            onDrop={attach.addFromDrop}
+          >
+            <textarea
+              ref={textareaRef}
+              className="root-section-input nopan nodrag"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onFocus={() => actions.selectNode(node.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={attach.uploading ? "Uploading files..." : "Type a message..."}
+              rows={1}
+              disabled={loading || attach.uploading}
+            />
+            <button
+              className="attach-btn nopan nodrag"
+              onClick={(e) => { e.stopPropagation(); attach.fileInputRef.current?.click(); }}
+              title="Attach files"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input
+              ref={attach.fileInputRef}
+              type="file"
+              multiple
+              style={{ display: "none" }}
+              onChange={attach.addFromInput}
+            />
+            {attach.dragOver && <div className="drop-overlay nopan nodrag">Drop files here</div>}
+          </div>
         </div>
 
         <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
@@ -702,7 +654,23 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                   ))}
                 </div>
               )}
-              <div className="tree-node-input">
+              {attach.pendingFiles.length > 0 && (
+                <div className="file-chips nodrag nopan" onClick={(e) => e.stopPropagation()}>
+                  {attach.pendingFiles.map((f, i) => (
+                    <span key={i} className="file-chip">
+                      <span className="file-chip-name" title={f.path}>{f.path.split("/").pop()}</span>
+                      <button className="file-chip-remove" onClick={() => attach.removeFile(i)}>&times;</button>
+                    </span>
+                  ))}
+                  <span className="file-chips-size">{formatFileSize(attach.totalSize)}</span>
+                </div>
+              )}
+              <div
+                className={`tree-node-input ${attach.dragOver ? "drag-over" : ""}`}
+                onDragOver={attach.onDragOver}
+                onDragLeave={attach.onDragLeave}
+                onDrop={attach.addFromDrop}
+              >
                 <textarea
                   ref={textareaRef}
                   className="tree-node-textarea nopan nodrag"
@@ -715,9 +683,25 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                       handleSend();
                     }
                   }}
-                  placeholder="Follow up..."
+                  placeholder={attach.uploading ? "Uploading files..." : "Follow up..."}
                   rows={1}
+                  disabled={attach.uploading}
                 />
+                <button
+                  className="attach-btn nopan nodrag"
+                  onClick={(e) => { e.stopPropagation(); attach.fileInputRef.current?.click(); }}
+                  title="Attach files"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <input
+                  ref={attach.fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={attach.addFromInput}
+                />
+                {attach.dragOver && <div className="drop-overlay nopan nodrag">Drop files here</div>}
               </div>
               <div className="tree-node-actions">
                 {node.user_message && (

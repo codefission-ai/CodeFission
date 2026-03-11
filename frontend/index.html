@@ -467,6 +467,8 @@
       gap: 4px;
       margin-top: 4px;
       width: 100%;
+      position: relative;
+      align-items: flex-end;
     }
     .tree-node-textarea {
       flex: 1;
@@ -715,6 +717,107 @@
       margin-bottom: 6px;
     }
 
+    /* ── File attachment chips ──────────────────────────────────── */
+    .file-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      margin-bottom: 4px;
+      width: 100%;
+      align-items: center;
+    }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 500;
+      background: rgba(34, 197, 94, 0.08);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+      border-radius: 4px;
+      max-width: 160px;
+    }
+    .file-chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-chip-remove {
+      background: none;
+      border: none;
+      color: #22c55e;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0 1px;
+      opacity: 0.6;
+      transition: opacity 0.1s;
+    }
+    .file-chip-remove:hover { opacity: 1; }
+    .file-chips-size {
+      font-size: 9px;
+      color: var(--text-muted);
+      margin-left: 2px;
+    }
+
+    /* ── Attach button ─────────────────────────────────────────── */
+    .attach-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: color 0.15s, background 0.15s;
+    }
+    .attach-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-tertiary);
+    }
+
+    /* ── Input wrap for attach button positioning ──────────────── */
+    .tree-node-input-wrap {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+      width: 100%;
+      position: relative;
+      align-items: flex-end;
+    }
+    /* ── Drag-over & drop overlay ──────────────────────────────── */
+    .drag-over {
+      outline: 2px dashed rgba(34, 197, 94, 0.5);
+      outline-offset: -2px;
+      border-radius: 6px;
+    }
+    .drop-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(34, 197, 94, 0.08);
+      color: #22c55e;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* ── Chat input row (attach + textarea + send) ─────────────── */
+    .chat-input-row {
+      display: flex;
+      gap: 6px;
+      width: 100%;
+      align-items: flex-end;
+    }
     /* ── Subtree collapse/expand ────────────────────────────────── */
     .tree-node.subtree-collapsed {
       border-bottom: 2px solid var(--amber);
@@ -1046,12 +1149,11 @@
 
     /* ── Chat input ─────────────────────────────────────────────── */
     .chat-input {
-      display: flex; gap: 6px; padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 6px; padding: 12px 16px;
       border-top: 1px solid var(--border-dim); flex-shrink: 0;
-      align-items: flex-end;
-      flex-wrap: wrap;
+      position: relative;
     }
-    .chat-input textarea {
+    .chat-input-row textarea {
       flex: 1; padding: 8px 12px;
       border: 1px solid var(--border-dim);
       border-radius: var(--radius-sm);
@@ -1064,19 +1166,19 @@
       field-sizing: content;
       transition: border-color 0.15s;
     }
-    .chat-input textarea::placeholder { color: var(--text-muted); }
-    .chat-input textarea:focus {
+    .chat-input-row textarea::placeholder { color: var(--text-muted); }
+    .chat-input-row textarea:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 3px var(--accent-glow);
     }
-    .chat-input button {
+    .chat-input-row > button:last-of-type {
       padding: 8px 16px; background: var(--accent); color: #fff; border: none;
       border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
       font-weight: 600; align-self: flex-end;
       transition: filter 0.15s;
     }
-    .chat-input button:hover { filter: brightness(1.15); }
-    .chat-input button:disabled { opacity: 0.3; cursor: default; filter: none; }
+    .chat-input-row > button:last-of-type:hover { filter: brightness(1.15); }
+    .chat-input-row > button:last-of-type:disabled { opacity: 0.3; cursor: default; filter: none; }
 
 
     /* ── Animations ─────────────────────────────────────────────── */

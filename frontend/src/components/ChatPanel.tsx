@@ -3,6 +3,7 @@ import { useStore, actions, type FileQuote } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
+import { useFileAttach, formatFileSize } from "../fileAttach";
 
 function quotePreview(q: FileQuote, nodes: Record<string, any>): string {
   const qnode = nodes[q.nodeId];
@@ -41,6 +42,7 @@ export default function ChatPanel() {
   const [input, setInput] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attach = useFileAttach();
 
   const node = selectedId ? nodes[selectedId] : null;
   const isStreaming = selectedId ? streaming[selectedId] : false;
@@ -68,17 +70,34 @@ export default function ChatPanel() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, node?.assistant_response, activeToolCalls.length]);
 
-  const handleSend = () => {
-    if (!input.trim() || !selectedId || isStreaming) return;
-    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content: input.trim() };
-    if (pendingQuotes.length > 0) {
-      msg.file_quotes = pendingQuotes.map((q) => ({
+  const handleSend = async () => {
+    if (!selectedId || !node || isStreaming || attach.uploading) return;
+    if (!input.trim() && attach.pendingFiles.length === 0) return;
+
+    let fileQuotes: Array<{ node_id: string; type: string; path: string }> = [];
+
+    // Upload pending files first
+    if (attach.pendingFiles.length > 0) {
+      const result = await attach.uploadAndQuote(node.tree_id, selectedId);
+      if (!result) return;
+      fileQuotes = result.quotes;
+      actions.updateNodeGit(selectedId, result.git_commit);
+    }
+
+    const content = input.trim() || `Attached ${fileQuotes.length} file${fileQuotes.length !== 1 ? "s" : ""}`;
+    const msg: Record<string, unknown> = { type: WS.CHAT, node_id: selectedId, content };
+
+    const allQuotes = [
+      ...pendingQuotes.map((q) => ({
         node_id: q.nodeId,
         type: q.type,
         ...(q.path ? { path: q.path } : {}),
         ...(q.content ? { content: q.content } : {}),
-      }));
-    }
+      })),
+      ...fileQuotes,
+    ];
+    if (allQuotes.length > 0) msg.file_quotes = allQuotes;
+
     send(msg);
     setInput("");
   };
@@ -137,7 +156,12 @@ export default function ChatPanel() {
         <div ref={endRef} />
       </div>
 
-      <div className="chat-input">
+      <div
+        className={`chat-input ${attach.dragOver ? "drag-over" : ""}`}
+        onDragOver={attach.onDragOver}
+        onDragLeave={attach.onDragLeave}
+        onDrop={attach.addFromDrop}
+      >
         {pendingQuotes.length > 0 && (
           <div className="quote-chips chat-quote-chips">
             {pendingQuotes.map((q) => (
@@ -152,22 +176,54 @@ export default function ChatPanel() {
             ))}
           </div>
         )}
-        <textarea
-          ref={textareaRef}
-          placeholder="Type a message..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          rows={1}
+        {attach.pendingFiles.length > 0 && (
+          <div className="file-chips">
+            {attach.pendingFiles.map((f, i) => (
+              <span key={i} className="file-chip">
+                <span className="file-chip-name" title={f.path}>{f.path.split("/").pop()}</span>
+                <button className="file-chip-remove" onClick={() => attach.removeFile(i)}>&times;</button>
+              </span>
+            ))}
+            <span className="file-chips-size">{formatFileSize(attach.totalSize)}</span>
+          </div>
+        )}
+        <div className="chat-input-row">
+          <button
+            className="attach-btn"
+            onClick={() => attach.fileInputRef.current?.click()}
+            title="Attach files"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea
+            ref={textareaRef}
+            placeholder={attach.uploading ? "Uploading files..." : "Type a message..."}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            rows={1}
+            disabled={attach.uploading}
+          />
+          <button
+            onClick={handleSend}
+            disabled={(!input.trim() && attach.pendingFiles.length === 0) || isStreaming || attach.uploading}
+          >
+            {attach.uploading ? "..." : "Send"}
+          </button>
+        </div>
+        <input
+          ref={attach.fileInputRef}
+          type="file"
+          multiple
+          style={{ display: "none" }}
+          onChange={attach.addFromInput}
         />
-        <button onClick={handleSend} disabled={!input.trim() || isStreaming}>
-          Send
-        </button>
+        {attach.dragOver && <div className="drop-overlay">Drop files here</div>}
       </div>
     </div>
   );
