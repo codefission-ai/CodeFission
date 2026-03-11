@@ -130,19 +130,37 @@ function isDescendantOf(nodes: Record<string, CNode>, candidateId: string, ances
 }
 
 /**
- * A node/note is a DAG leaf if nothing visible depends on it:
- * - No visible node has it as parent (tree edge)
- * - No visible node quotes it (quote edge via quoted_node_ids)
+ * A node/note is "detachable" if removing it (and its entire subtree)
+ * would not break any external dependencies:
+ * - No surviving node outside the subtree quotes any node inside the subtree.
+ *
+ * This generalises the old leaf-only check: a leaf is just a detachable
+ * node whose subtree has size 1.
  */
-export function isDagLeaf(
+export function isDetachable(
   nodes: Record<string, CNode>,
   id: string,
   pendingDeleteNodes: Set<string>,
 ): boolean {
+  // 1. Collect every node in the subtree rooted at `id`
+  const subtreeIds = new Set<string>();
+  const stack = [id];
+  while (stack.length) {
+    const nid = stack.pop()!;
+    if (subtreeIds.has(nid)) continue;
+    subtreeIds.add(nid);
+    const node = nodes[nid];
+    if (node) {
+      for (const cid of node.children_ids) stack.push(cid);
+    }
+  }
+
+  // 2. Any surviving node *outside* the subtree that quotes something
+  //    *inside* the subtree makes this node non-detachable.
   for (const n of Object.values(nodes)) {
-    if (pendingDeleteNodes.has(n.id)) continue;
-    if (n.parent_id === id) return false;         // tree child
-    if (n.quoted_node_ids?.includes(id)) return false; // quote ref
+    if (pendingDeleteNodes.has(n.id)) continue;   // will be deleted anyway
+    if (subtreeIds.has(n.id)) continue;            // inside the subtree
+    if (n.quoted_node_ids?.some((qid) => subtreeIds.has(qid))) return false;
   }
   return true;
 }
@@ -180,7 +198,7 @@ export const useStore = create<Store>(() => ({
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-sonnet-4-6", max_turns: 25, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
+  globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", max_turns: 0, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
   providers: [],
 }));
 

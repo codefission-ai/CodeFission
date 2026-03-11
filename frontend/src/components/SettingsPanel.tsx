@@ -43,7 +43,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       type: WS.UPDATE_GLOBAL_SETTINGS,
       default_provider: provider,
       default_model: model,
-      default_max_turns: parseInt(maxTurns) || 25,
+      default_max_turns: maxTurns === "" ? 0 : parseInt(maxTurns) || 0,
       auth_mode: authMode,
       api_key: apiKey,
       sandbox,
@@ -77,11 +77,12 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       <input
         className="settings-input"
         type="number"
-        min={1}
+        min={0}
         max={200}
         value={maxTurns}
         onChange={(e) => setMaxTurns(e.target.value)}
       />
+      <p className="settings-hint">Set to 0 for unlimited turns.</p>
 
       <label className="settings-label">Auth Mode</label>
       <select className="settings-select" value={authMode} onChange={(e) => setAuthMode(e.target.value)}>
@@ -124,6 +125,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
         <option value="">Disabled</option>
         <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6</option>
       </select>
       <p className="settings-hint">Small model used to auto-name new trees. "Disabled" turns off auto-naming.</p>
 
@@ -206,12 +208,13 @@ function TreeSettings({ tree, defaults, providers }: { tree: CTree; defaults: Gl
       <input
         className="settings-input"
         type="number"
-        min={1}
+        min={0}
         max={200}
-        placeholder={`Default (${defaults.max_turns})`}
+        placeholder={`Default (${defaults.max_turns === 0 ? "∞" : defaults.max_turns})`}
         value={maxTurns}
         onChange={(e) => setMaxTurns(e.target.value)}
       />
+      <p className="settings-hint">Set to 0 for unlimited turns.</p>
 
       <button className="settings-save-btn" onClick={handleSave}>
         {saved ? "Saved" : "Save Tree Settings"}

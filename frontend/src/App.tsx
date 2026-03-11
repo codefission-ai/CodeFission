@@ -66,7 +66,8 @@ export default function App() {
 
   // Dark mode
   const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem("theme") === "dark";
+    const stored = localStorage.getItem("theme");
+    return stored === null ? true : stored === "dark";
   });
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", darkMode ? "dark" : "light");

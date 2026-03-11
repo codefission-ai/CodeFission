@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, isDagLeaf } from "../store";
+import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, isDetachable, getSubtreeIds } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -123,7 +123,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
   const isSubtreeCollapsed = useStore((s) => s.collapsedSubtrees[node.id]);
-  const isLeaf = useStore((s) => isDagLeaf(s.nodes, node.id, s.pendingDeleteNodes));
+  const isLeaf = useStore((s) => isDetachable(s.nodes, node.id, s.pendingDeleteNodes));
   const hasVisibleChildren = useStore((s) => node.children_ids.some((cid) => !s.pendingDeleteNodes.has(cid)));
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
@@ -248,16 +248,19 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const s = useStore.getState();
-    if (s.streaming[node.id]) return;
-    const ids = [node.id];
+    // Collect the full subtree rooted at this node
+    const ids = getSubtreeIds(s.nodes, node.id);
+    // Block if any node in the subtree is streaming
+    if (ids.some((id) => s.streaming[id])) return;
     actions.softDeleteNodes(ids);
     const prev = s.deleteToast;
     if (prev?.timer) clearTimeout(prev.timer);
+    const label = ids.length > 1 ? `Deleted subtree (${ids.length} nodes)` : "Deleted node";
     const timer = setTimeout(() => {
       actions.commitDeleteNodes(ids);
       send({ type: WS.DELETE_NODE, node_id: node.id });
     }, 10000);
-    actions.setDeleteToast({ ids, label: "Deleted node", timer });
+    actions.setDeleteToast({ ids, label, timer });
   }, [node.id]);
 
   const [dragOver, setDragOver] = useState(false);

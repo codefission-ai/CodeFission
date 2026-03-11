@@ -178,8 +178,8 @@ async def stream_chat(
     workspace: Path,
     parent_session_id: str | None = None,
     *,
-    model: str = "claude-sonnet-4-6",
-    max_turns: int = 25,
+    model: str = "claude-opus-4-6",
+    max_turns: int = 0,  # 0 = unlimited
     auth_mode: str = "cli",
     api_key: str = "",
 ) -> AsyncGenerator[ChatEvent, None]:
@@ -201,11 +201,14 @@ async def stream_chat(
     # Open /dev/null once; closed in the finally block below.
     devnull = open(os.devnull, "w")
 
+    # 0 means unlimited — use a very large number for the SDK
+    effective_max_turns = max_turns if max_turns > 0 else 999_999
+
     options = ClaudeAgentOptions(
         system_prompt=system_prompt,
         model=model,
         cwd=str(workspace),
-        max_turns=max_turns,
+        max_turns=effective_max_turns,
         permission_mode="bypassPermissions",
         include_partial_messages=True,
         env=_sdk_env(auth_mode, api_key),
