@@ -198,7 +198,7 @@ async def discard_draft(tree_id: str, draft_id: str):
 @app.get("/api/files/{node_id}/{file_path:path}")
 async def serve_node_file(node_id: str, file_path: str):
     from services.tree_service import get_node, get_tree
-    from services.workspace_service import resolve_workspace, read_file_from_commit
+    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit
 
     node = await get_node(node_id)
     if not node:
@@ -218,13 +218,13 @@ async def serve_node_file(node_id: str, file_path: str):
     if str(resolved).startswith(ws_resolved) and resolved.is_file():
         return FileResponse(resolved)
 
-    # Fall back to git
+    # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
         try:
-            content = await read_file_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+            raw = await read_file_bytes_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
             import mimetypes
             mime, _ = mimetypes.guess_type(file_path)
-            return Response(content=content.encode(), media_type=mime or "application/octet-stream")
+            return Response(content=raw, media_type=mime or "application/octet-stream")
         except Exception:
             pass
 
@@ -235,7 +235,7 @@ async def serve_node_file(node_id: str, file_path: str):
 @app.get("/api/download/{node_id}/{file_path:path}")
 async def download_node_file(node_id: str, file_path: str):
     from services.tree_service import get_node, get_tree
-    from services.workspace_service import resolve_workspace, read_file_from_commit
+    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit
 
     node = await get_node(node_id)
     if not node:
@@ -249,13 +249,13 @@ async def download_node_file(node_id: str, file_path: str):
         return FileResponse(resolved, filename=resolved.name,
                             media_type="application/octet-stream")
 
-    # Fall back to git
+    # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
         try:
-            content = await read_file_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+            raw = await read_file_bytes_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
             filename = Path(file_path).name
             return Response(
-                content=content.encode(),
+                content=raw,
                 media_type="application/octet-stream",
                 headers={"Content-Disposition": f'attachment; filename="{filename}"'},
             )

@@ -7,7 +7,8 @@ from services.workspace_service import (
     setup_repo, create_worktree, ensure_worktree,
     auto_commit, resolve_workspace, copy_session, cleanup_tree_workspace,
     list_files, get_diff, read_file,
-    remove_worktree, list_files_from_commit, read_file_from_commit, get_diff_from_commits,
+    remove_worktree, list_files_from_commit, read_file_from_commit,
+    read_file_bytes_from_commit, get_diff_from_commits,
     _claude_project_dir, _run_git, WORKSPACES_DIR,
 )
 
@@ -341,7 +342,7 @@ async def test_list_files_tracked(tree_ids, tmp_path):
 
     files = await list_files(root_dir)
     assert "main.py" in files
-    assert ".gitignore" in files
+    assert ".gitignore" not in files
 
 
 @pytest.mark.asyncio
@@ -615,7 +616,7 @@ async def test_list_files_from_commit(tree_ids, tmp_path):
     files = await list_files_from_commit(tree_ids["tree"], tree_ids["root"], commit)
     assert "main.py" in files
     assert "lib.py" in files
-    assert ".gitignore" in files
+    assert ".gitignore" not in files
 
 
 @pytest.mark.asyncio
@@ -655,3 +656,62 @@ async def test_get_diff_from_commits_no_parent(tree_ids, tmp_path):
 
     diff = await get_diff_from_commits(tree_ids["tree"], tree_ids["root"], None, commit)
     assert isinstance(diff, str)
+
+
+# ── Binary file handling ─────────────────────────────────────────────
+
+# Minimal valid 1x1 red PNG (68 bytes) — contains bytes that are invalid UTF-8
+TINY_PNG = (
+    b"\x89PNG\r\n\x1a\n"  # PNG signature
+    b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02"
+    b"\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx"
+    b"\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+@pytest.mark.asyncio
+async def test_read_file_from_commit_corrupts_binary(tree_ids, tmp_path):
+    """read_file_from_commit (text mode) corrupts binary files like PNG."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "image.png").write_bytes(TINY_PNG)
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add png")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    # Text-mode read → encode round-trip corrupts binary data
+    text_content = await read_file_from_commit(
+        tree_ids["tree"], tree_ids["root"], commit, "image.png"
+    )
+    round_tripped = text_content.encode()
+    assert round_tripped != TINY_PNG, "Expected corruption but data survived"
+
+
+@pytest.mark.asyncio
+async def test_read_file_bytes_from_commit_preserves_binary(tree_ids, tmp_path):
+    """read_file_bytes_from_commit preserves binary files exactly."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "image.png").write_bytes(TINY_PNG)
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add png")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    raw = await read_file_bytes_from_commit(
+        tree_ids["tree"], tree_ids["root"], commit, "image.png"
+    )
+    assert raw == TINY_PNG
+
+
+@pytest.mark.asyncio
+async def test_read_file_bytes_from_commit_works_for_text(tree_ids, tmp_path):
+    """read_file_bytes_from_commit also works for text files."""
+    root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
+    (root_dir / "hello.txt").write_text("world\n")
+    await _run_git(root_dir, "add", "-A")
+    await _run_git(root_dir, "commit", "-m", "add hello")
+    _, commit, _ = await _run_git(root_dir, "rev-parse", "HEAD")
+
+    raw = await read_file_bytes_from_commit(
+        tree_ids["tree"], tree_ids["root"], commit, "hello.txt"
+    )
+    assert raw == b"world\n"

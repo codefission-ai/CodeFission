@@ -37,6 +37,21 @@ async def _run_git(cwd: Path, *args: str, check: bool = True) -> tuple[int, str,
     return proc.returncode, stdout, stderr
 
 
+async def _run_git_raw(cwd: Path, *args: str, check: bool = True) -> tuple[int, bytes, str]:
+    """Run a git command, return raw stdout bytes (for binary content)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_bytes, stderr_bytes = await proc.communicate()
+    stderr = stderr_bytes.decode(errors="replace").strip()
+    if check and proc.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed (rc={proc.returncode}): {stderr}")
+    return proc.returncode, stdout_bytes, stderr
+
+
 # ── Repo setup ────────────────────────────────────────────────────────
 
 async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: str | None) -> Path:
@@ -229,18 +244,28 @@ async def remove_worktree(tree_id: str, root_id: str, node_id: str) -> bool:
 
 # ── Git-based reading (no worktree needed) ───────────────────────────
 
+_HIDDEN_FILES = {".gitignore"}
+
+
 async def list_files_from_commit(tree_id: str, root_id: str, commit: str) -> list[str]:
     """List files at a commit using git ls-tree (no worktree needed)."""
     main_repo = WORKSPACES_DIR / tree_id / root_id
     _, out, _ = await _run_git(main_repo, "ls-tree", "-r", "--name-only", commit)
-    return [f for f in out.splitlines() if f] if out else []
+    return [f for f in out.splitlines() if f and f not in _HIDDEN_FILES] if out else []
 
 
 async def read_file_from_commit(tree_id: str, root_id: str, commit: str, file_path: str) -> str:
-    """Read a file at a commit using git show (no worktree needed)."""
+    """Read a text file at a commit using git show (no worktree needed)."""
     main_repo = WORKSPACES_DIR / tree_id / root_id
     _, content, _ = await _run_git(main_repo, "show", f"{commit}:{file_path}")
     return content
+
+
+async def read_file_bytes_from_commit(tree_id: str, root_id: str, commit: str, file_path: str) -> bytes:
+    """Read a file at a commit as raw bytes (safe for binary files)."""
+    main_repo = WORKSPACES_DIR / tree_id / root_id
+    _, raw, _ = await _run_git_raw(main_repo, "show", f"{commit}:{file_path}")
+    return raw
 
 
 async def get_diff_from_commits(tree_id: str, root_id: str, parent_commit: str | None, commit: str) -> str:
@@ -329,7 +354,7 @@ def copy_session(parent_workspace: Path, child_workspace: Path, session_id: str)
 async def list_files(worktree_path: Path) -> list[str]:
     """List tracked + untracked files (excluding .git internals)."""
     _, out, _ = await _run_git(worktree_path, "ls-files", "-co", "--exclude-standard")
-    return [f for f in out.splitlines() if f] if out else []
+    return [f for f in out.splitlines() if f and f not in _HIDDEN_FILES] if out else []
 
 
 async def get_diff(worktree_path: Path, parent_commit: str | None) -> str:
