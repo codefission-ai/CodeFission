@@ -375,7 +375,7 @@ function CanvasInner() {
             const dim = (c as NodeDimensionChange).dimensions!;
             const node = updated.find((n) => n.id === c.id);
             if (node) {
-              node.style = { ...node.style, width: dim.width, height: dim.height };
+              (node as Node).style = { ...(node as Node).style, width: dim.width, height: dim.height };
             }
           }
         }
