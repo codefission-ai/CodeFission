@@ -14,3 +14,5 @@ backend/data/
 test_repo/
 ref_repos/
 .claude/
+.cursor/
+codefission-ai/
