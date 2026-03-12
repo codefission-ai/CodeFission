@@ -59,7 +59,7 @@ A **tree-structured AI coding assistant** where each conversation node is backed
 
 6. **No CSS files.** All styles appear to be inline or in `index.html`. For a UI-heavy app with a canvas, resize handles, panels, and tree nodes, this makes visual iteration harder than it needs to be.
 
-7. **`__pycache__` in the repo.** The `.gitignore` lists `__pycache__/` but the `backend/` directory still has compiled `.pyc` files tracked (visible in the glob). These should be purged from git history.
+7. **`__pycache__` in the repo.** The `.gitignore` lists `__pycache__/` but the `codefission/` directory still has compiled `.pyc` files tracked (visible in the glob). These should be purged from git history.
 
 8. **Limited error recovery.** Cancelled streams leave partial responses with a text marker (`*[Cancelled by user]*`). If the SDK subprocess doesn't clean up properly (the `_silence_asyncgen_gc` handler is a hint this has been an issue), there's no retry mechanism.
 

@@ -185,10 +185,24 @@ deploying. Tools: LaunchDarkly, Unleash.
 
 ---
 
-## How this relates to RepoEvolve
+## How this relates to CodeFission
 
-RepoEvolve doesn't have a CI pipeline yet. If you wanted to add one, a minimal
-version would be:
+CodeFission uses a simple manual pipeline today:
+
+```
+make test       # run pytest locally
+make publish    # build frontend + wheel, upload to PyPI
+```
+
+`make publish` is the release pipeline in one command:
+1. Builds the React frontend (npm run build)
+2. Copies static assets into the Python package
+3. Builds a wheel via hatch
+4. Uploads to PyPI
+
+Users install with `pip install codefission` and run with `fission`.
+
+A CI pipeline (GitHub Actions) would automate the test step on every push:
 
 ```yaml
 # .github/workflows/ci.yml
@@ -202,12 +216,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --group dev
-      - run: uv run ruff check backend/
-      - run: uv run pytest backend/tests/
+      - run: uv run pytest codefission/tests/
 ```
-
-This would automatically run the linter and tests on every push — catching
-bugs before they reach `main`.
 
 ---
 
