@@ -17,6 +17,7 @@ from config import DATA_DIR
 log = logging.getLogger(__name__)
 
 WORKSPACES_DIR = DATA_DIR / "workspaces"
+ARTIFACTS_DIR = DATA_DIR / "artifacts"
 
 
 # ── Low-level git helper ─────────────────────────────────────────────
@@ -74,7 +75,7 @@ async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: st
     if repo_mode == "new":
         await _run_git(root_dir, "init")
         gitignore = root_dir / ".gitignore"
-        gitignore.write_text(".claude/\n")
+        gitignore.write_text(".claude/\n_artifacts/\n")
         await _run_git(root_dir, "add", "-A")
         await _run_git(root_dir, "commit", "-m", "ct: initial commit")
 
@@ -109,12 +110,17 @@ async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: st
             else:
                 raise ValueError(f"Source path not found: {repo_source}")
 
-        # Ensure .claude/ is gitignored
+        # Ensure .claude/ and _artifacts/ are gitignored
         gitignore = root_dir / ".gitignore"
         existing = gitignore.read_text() if gitignore.exists() else ""
+        additions = ""
         if ".claude/" not in existing:
+            additions += "\n.claude/\n"
+        if "_artifacts/" not in existing:
+            additions += "_artifacts/\n"
+        if additions:
             with open(gitignore, "a") as f:
-                f.write("\n.claude/\n")
+                f.write(additions)
 
         # Initial commit for non-git sources (cloned repos already have commits)
         if not is_git_repo and not is_url:
@@ -130,8 +136,8 @@ async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: st
         raise ValueError(f"Unknown repo_mode: {repo_mode}")
 
     # Configure committer identity (inherited by worktrees)
-    await _run_git(root_dir, "config", "user.email", "repoevolve@local")
-    await _run_git(root_dir, "config", "user.name", "RepoEvolve")
+    await _run_git(root_dir, "config", "user.email", "codefission@local")
+    await _run_git(root_dir, "config", "user.name", "CodeFission")
 
     return root_dir
 
@@ -284,6 +290,14 @@ async def get_diff_from_commits(tree_id: str, root_id: str, parent_commit: str |
 
 async def auto_commit(worktree_path: Path, message: str) -> tuple[str, int]:
     """Stage all changes and commit. Returns (HEAD sha, files_changed)."""
+    # Ensure _artifacts/ is gitignored (migration for existing repos)
+    gitignore = worktree_path / ".gitignore"
+    if gitignore.exists():
+        existing = gitignore.read_text()
+        if "_artifacts/" not in existing:
+            with open(gitignore, "a") as f:
+                f.write("\n_artifacts/\n")
+
     await _run_git(worktree_path, "add", "-A")
 
     # Check if there are staged changes
@@ -382,6 +396,63 @@ def read_file(worktree_path: Path, file_path: str) -> str:
     return resolved.read_text(errors="replace")
 
 
+# ── Artifact persistence ──────────────────────────────────────────────
+
+def persist_artifacts(worktree_path: Path, tree_id: str, node_id: str) -> int:
+    """Copy _artifacts/ from worktree to ARTIFACTS_DIR/{tree_id}/{node_id}/.
+
+    Returns the number of files copied.
+    """
+    src = worktree_path / "_artifacts"
+    if not src.is_dir():
+        return 0
+    dst = ARTIFACTS_DIR / tree_id / node_id
+    count = 0
+    for f in src.rglob("*"):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(src)
+        target = dst / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(f), str(target))
+        count += 1
+    if count:
+        log.info("Persisted %d artifact(s) for node %s", count, node_id)
+    return count
+
+
+def read_artifact_bytes(tree_id: str, node_id: str, file_path: str) -> bytes | None:
+    """Read a persisted artifact file. Returns None if not found.
+
+    file_path may include or omit the _artifacts/ prefix.
+    Includes path traversal protection.
+    """
+    # Strip _artifacts/ prefix if present
+    clean = file_path
+    if clean.startswith("_artifacts/"):
+        clean = clean[len("_artifacts/"):]
+
+    target = (ARTIFACTS_DIR / tree_id / node_id / clean).resolve()
+    expected_prefix = str((ARTIFACTS_DIR / tree_id / node_id).resolve())
+    if not str(target).startswith(expected_prefix):
+        return None  # path traversal
+    if not target.is_file():
+        return None
+    return target.read_bytes()
+
+
+def list_artifact_files(tree_id: str, node_id: str) -> list[str]:
+    """List persisted artifact files, prefixed with _artifacts/."""
+    base = ARTIFACTS_DIR / tree_id / node_id
+    if not base.is_dir():
+        return []
+    return [
+        f"_artifacts/{f.relative_to(base)}"
+        for f in sorted(base.rglob("*"))
+        if f.is_file()
+    ]
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────
 
 def cleanup_tree_workspace(tree_id: str):
@@ -391,3 +462,8 @@ def cleanup_tree_workspace(tree_id: str):
         from services.process_service import kill_all_in_workspace
         kill_all_in_workspace(tree_dir)
         shutil.rmtree(tree_dir, ignore_errors=True)
+
+    # Also clean up persisted artifacts
+    artifacts_dir = ARTIFACTS_DIR / tree_id
+    if artifacts_dir.exists():
+        shutil.rmtree(artifacts_dir, ignore_errors=True)

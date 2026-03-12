@@ -94,7 +94,7 @@ def _sdk_env(auth_mode: str = "cli", api_key: str = "") -> dict[str, str]:
 
 def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
     parts = [
-        "You are a helpful AI coding assistant in RepoEvolve, a tree-structured "
+        "You are a helpful AI coding assistant in CodeFission, a tree-structured "
         "development tool where each node is an isolated git worktree. "
         "Be concise and helpful."
     ]
@@ -140,12 +140,15 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
             "\n\nAll your file changes are automatically committed after each response. "
             "Focus on writing code and making changes — git operations are handled for you."
             "\n\nFILE PERSISTENCE: Your worktree is ephemeral — it is deleted after your "
-            "response completes. Only git-tracked files survive (via the auto-commit). "
-            "NEVER save generated files (images, plots, screenshots, data, etc.) to `tmp/`, "
-            "`/tmp/`, or any gitignored directory. Save them directly in your working "
-            "directory (e.g., `./output.png`, `./results.csv`) so they are committed and "
-            "persist. If you reference a file in your response with `![](path)`, that file "
-            "MUST be git-tracked or it will be lost."
+            "response completes. Code and project files in your working directory are "
+            "auto-committed to git and survive. Generated output files (plots, images, "
+            "screenshots, data exports, CSVs, etc.) should be saved to the `_artifacts/` "
+            "directory (e.g., `_artifacts/plot.png`, `_artifacts/results.csv`). The "
+            "`_artifacts/` directory is gitignored but its contents are persisted separately "
+            "and remain viewable after the worktree is removed. "
+            "NEVER save files to `tmp/`, `/tmp/`, or any other temporary directory."
+            "\n\nWhen referencing generated files in your response, use the `_artifacts/` path: "
+            "`![Plot](_artifacts/plot.png)` or `[Download results](_artifacts/results.csv)`."
             "\n\nIMPORTANT: Other branches in this repo belong to sibling conversation nodes "
             "and are completely independent. Do NOT use `git log --all`, `git branch`, "
             "`git show` on other branches, or reference any branch other than your own. "

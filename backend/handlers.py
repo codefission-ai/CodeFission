@@ -21,6 +21,7 @@ from services.workspace_service import (
     list_files, get_diff, read_file,
     list_files_from_commit, read_file_from_commit, get_diff_from_commits,
     remove_worktree, remove_worktree_and_branch,
+    list_artifact_files,
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree, find_child_by_cwd
 from services.orchestrator import Orchestrator
@@ -601,6 +602,11 @@ class ConnectionHandler:
             files = await list_files_from_commit(tree.id, tree.root_node_id, node.git_commit)
         else:
             files = []
+        # Append persisted artifact files (deduplicated)
+        artifact_files = list_artifact_files(tree.id, node_id)
+        if artifact_files:
+            existing = set(files)
+            files.extend(f for f in artifact_files if f not in existing)
         await self.send(WS.NODE_FILES, node_id=node_id, files=files)
 
     async def handle_get_node_diff(self, data: dict):

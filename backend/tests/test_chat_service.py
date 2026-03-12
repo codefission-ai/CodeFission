@@ -82,7 +82,7 @@ def test_system_prompt_basic():
     """System prompt is non-empty without tree/workspace context."""
     node = _make_node()
     prompt = _build_system_prompt(node)
-    assert "RepoEvolve" in prompt
+    assert "CodeFission" in prompt
     assert len(prompt) > 50
 
 
@@ -143,4 +143,15 @@ def test_system_prompt_write_restriction():
     tree = _make_tree()
     ws = Path("/fake/workspace")
     prompt = _build_system_prompt(node, tree=tree, workspace=ws)
-    assert "MUST NOT write files outside" in prompt
+    assert "NEVER write to" in prompt
+    assert "outside your workspace" in prompt
+
+
+def test_system_prompt_artifacts():
+    """Prompt instructs agents to use _artifacts/ for generated output files."""
+    node = _make_node()
+    tree = _make_tree()
+    ws = Path("/fake/workspace")
+    prompt = _build_system_prompt(node, tree=tree, workspace=ws)
+    assert "_artifacts/" in prompt
+    assert "_artifacts/plot.png" in prompt

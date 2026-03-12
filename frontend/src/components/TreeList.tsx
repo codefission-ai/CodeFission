@@ -83,7 +83,7 @@ export default function TreeList() {
   return (
     <div className="tree-list">
       <div className="tree-list-header">
-        <span>Clawtree</span>
+        <span>CodeFission</span>
       </div>
       <div className="tree-list-create">
         <input

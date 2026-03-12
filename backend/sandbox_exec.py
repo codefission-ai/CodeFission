@@ -3,8 +3,8 @@
 Called as: python3 sandbox_exec.py <real_command> [args...]
 
 Environment variables (consumed and removed before exec):
-  _CLAWTREE_SANDBOX_PATHS   — JSON list of writable directory paths
-  _CLAWTREE_SANDBOX_BACKEND — path to backend dir (for importing services.sandbox)
+  _CODEFISSION_SANDBOX_PATHS   — JSON list of writable directory paths
+  _CODEFISSION_SANDBOX_BACKEND — path to backend dir (for importing services.sandbox)
 """
 
 import json
@@ -13,8 +13,8 @@ import sys
 
 
 def main():
-    paths_json = os.environ.pop("_CLAWTREE_SANDBOX_PATHS", "")
-    backend_dir = os.environ.pop("_CLAWTREE_SANDBOX_BACKEND", "")
+    paths_json = os.environ.pop("_CODEFISSION_SANDBOX_PATHS", "")
+    backend_dir = os.environ.pop("_CODEFISSION_SANDBOX_BACKEND", "")
 
     if paths_json:
         if backend_dir:

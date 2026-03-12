@@ -1,6 +1,6 @@
 """Async event bus for decoupled communication between services and WebSocket layer.
 
-Adapted from WhatTheBot's core/events.py — same pub/sub pattern, RepoEvolve-specific events.
+Adapted from WhatTheBot's core/events.py — same pub/sub pattern, CodeFission-specific events.
 """
 
 from __future__ import annotations

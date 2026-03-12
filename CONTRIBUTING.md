@@ -1,4 +1,4 @@
-# Contributing to RepoEvolve
+# Contributing to CodeFission
 
 Thanks for your interest in contributing! Here's how to get started.
 
@@ -6,8 +6,8 @@ Thanks for your interest in contributing! Here's how to get started.
 
 ```bash
 # Clone and set up the backend
-git clone https://github.com/your-username/repoevolve.git
-cd repoevolve
+git clone https://github.com/your-username/codefission.git
+cd codefission
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt

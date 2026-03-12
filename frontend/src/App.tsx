@@ -202,7 +202,7 @@ export default function App() {
                   <line x1="28" y1="25" x2="34" y2="34" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
               </div>
-              <div className="logo">Clawtree</div>
+              <div className="logo">CodeFission</div>
               <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
             </div>
           )}

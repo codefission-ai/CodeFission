@@ -77,8 +77,8 @@ async def test_setup_repo_sets_git_config(tree_ids, tmp_path):
     root_dir = await setup_repo(tree_ids["tree"], tree_ids["root"], "new", None)
     _, email, _ = await _run_git(root_dir, "config", "user.email")
     _, name, _ = await _run_git(root_dir, "config", "user.name")
-    assert email == "repoevolve@local"
-    assert name == "RepoEvolve"
+    assert email == "codefission@local"
+    assert name == "CodeFission"
 
 
 @pytest.mark.asyncio

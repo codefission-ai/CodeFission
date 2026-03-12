@@ -1,5 +1,5 @@
 [project]
-name = "clawtree"
+name = "codefission"
 version = "0.1.0"
 description = "Tree-structured AI coding assistant with git worktree isolation"
 requires-python = ">=3.12"

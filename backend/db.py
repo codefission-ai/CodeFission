@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from models import DEFAULT_PROVIDER, DEFAULT_MODEL
 from config import DATA_DIR
 
-DB_PATH = DATA_DIR / "repoevolve.db"
+DB_PATH = DATA_DIR / "codefission.db"
 
 _conn: aiosqlite.Connection | None = None
 

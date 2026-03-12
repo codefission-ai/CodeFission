@@ -114,8 +114,8 @@ async def _patched_create_subprocess_exec(program, *args, **kwargs):
     paths = _sandbox_paths.get()
     if paths is not None:
         env = dict(kwargs.get("env") or os.environ)
-        env["_CLAWTREE_SANDBOX_PATHS"] = json.dumps(paths)
-        env["_CLAWTREE_SANDBOX_BACKEND"] = _BACKEND_DIR
+        env["_CODEFISSION_SANDBOX_PATHS"] = json.dumps(paths)
+        env["_CODEFISSION_SANDBOX_BACKEND"] = _BACKEND_DIR
         kwargs["env"] = env
         return await _original_create_subprocess_exec(
             sys.executable, str(_SANDBOX_EXEC), str(program), *args, **kwargs

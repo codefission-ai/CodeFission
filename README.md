@@ -1,4 +1,4 @@
-# Clawtree
+# CodeFission
 
 Tree-structured AI coding assistant. Each conversation node is an isolated git worktree — branch conversations to explore alternative approaches, and each branch gets its own filesystem sandbox.
 
@@ -22,14 +22,14 @@ claude login
 If you already have Claude Code installed:
 
 ```
-claude -p "git clone <repo-url> clawtree && cd clawtree && ./run.sh"
+claude -p "git clone <repo-url> codefission && cd codefission && ./run.sh"
 ```
 
 ### Option B: Manual
 
 ```
-git clone <repo-url> clawtree
-cd clawtree
+git clone <repo-url> codefission
+cd codefission
 ./run.sh
 ```
 
@@ -44,7 +44,7 @@ To use a different port: `./run.sh 3000`
 
 ## How it works
 
-Create a tree in the sidebar, type a message, and Clawtree spawns a Claude Code session in an isolated git worktree. Branch any node to explore alternatives — each branch forks the conversation context and the filesystem state.
+Create a tree in the sidebar, type a message, and CodeFission spawns a Claude Code session in an isolated git worktree. Branch any node to explore alternatives — each branch forks the conversation context and the filesystem state.
 
 ```
          [root]
@@ -89,4 +89,4 @@ cd frontend
 npm run dev
 ```
 
-Data is stored in `~/.repoevolve/` (SQLite database, git worktrees). Override with `REPOEVOLVE_DATA_DIR` env var.
+Data is stored in `~/.codefission/` (SQLite database, git worktrees). Override with `CODEFISSION_DATA_DIR` env var.

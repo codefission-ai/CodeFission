@@ -26,6 +26,7 @@ from services.workspace_service import (
     create_worktree,
     ensure_worktree,
     auto_commit,
+    persist_artifacts,
     resolve_workspace,
     copy_session,
     _run_git,
@@ -505,6 +506,11 @@ class Orchestrator:
         except Exception as e:
             log.warning("Auto-commit failed: %s", e)
 
+        # Persist _artifacts/ to durable storage (survives worktree removal)
+        node = await get_node(node_id)
+        if node:
+            persist_artifacts(workspace, node.tree_id, node_id)
+
         # Worktree cleanup is deferred to the caller, which checks for
         # running processes before removing the worktree directory.
         return ChatResult(
@@ -536,6 +542,11 @@ class Orchestrator:
                 update_kwargs["git_commit"] = commit_sha
             except Exception as e:
                 log.warning("Auto-commit on cancel failed: %s", e)
+
+            # Persist _artifacts/ to durable storage (survives worktree removal)
+            node = await get_node(node_id)
+            if node:
+                persist_artifacts(workspace, node.tree_id, node_id)
 
         await update_node(node_id, **update_kwargs)
         return CancelResult(node_id=node_id, saved_text=cancel_note, active_tools=active_tools)

@@ -17,7 +17,7 @@ translate almost directly.
 ### Current behavior
 
 Every node gets a persistent git worktree directory at
-`~/.repoevolve/workspaces/<tree_id>/<node_id>/`. Worktrees are created when a
+`~/.codefission/workspaces/<tree_id>/<node_id>/`. Worktrees are created when a
 node is first used (`ensure_worktree`) and never removed until the entire tree
 is deleted (`cleanup_tree_workspace`).
 
@@ -116,7 +116,7 @@ You're working on branch B and you see that branch A made a great fix to one
 file. You want that specific change, not everything else A did.
 
 `git cherry-pick <commit>` applies a single commit's diff to the current
-branch. In clawtree, this means: select a node, pick specific commits (or the
+branch. In CodeFission, this means: select a node, pick specific commits (or the
 node's single auto-commit), and apply them to another node's workspace.
 
 ### How it differs from quoting
@@ -171,7 +171,7 @@ diff already provide this signal.
 
 ### Current state
 
-Clawtree shows diffs per node — each node's changes relative to its parent.
+CodeFission shows diffs per node — each node's changes relative to its parent.
 This answers "what did this turn change?" but not "how do these two approaches
 differ?"
 
@@ -253,7 +253,7 @@ You branched from node A and did 5 turns of good work. Meanwhile, someone
 (another agent, or you manually) improved node A. Your 5 turns are based on
 the old version.
 
-Git rebase replays your commits on top of the updated base. For clawtree:
+Git rebase replays your commits on top of the updated base. For CodeFission:
 take a chain of nodes and re-apply their prompts starting from a different
 parent node, producing new agent responses against the updated codebase.
 
@@ -276,7 +276,7 @@ all downstream branches.
 
 ## Summary
 
-| Git concept      | Clawtree analog                  | Status       |
+| Git concept      | CodeFission analog                  | Status       |
 |------------------|----------------------------------|--------------|
 | Commit as truth  | Ephemeral worktrees              | Proposed     |
 | Branch           | Conversation node                | Implemented  |
@@ -289,7 +289,7 @@ all downstream branches.
 | Rebase           | Replay prompts on updated base   | Missing      |
 
 The theme across all of these: git treats code history as a first-class data
-structure with rich operations. Clawtree has the data structure (the
+structure with rich operations. CodeFission has the data structure (the
 conversation tree backed by real git commits) but only the most basic
 operation (branch). Adding the rest of git's vocabulary — merge, cherry-pick,
 diff, squash, tag — turns a branching chat tool into a proper exploration and

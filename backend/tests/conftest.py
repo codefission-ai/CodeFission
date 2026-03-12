@@ -1,4 +1,4 @@
-"""Shared fixtures for RepoEvolve tests."""
+"""Shared fixtures for CodeFission tests."""
 
 import pytest
 import pytest_asyncio

@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from db import init_db, close_db
 from handlers import ConnectionHandler
 
-app = FastAPI(title="RepoEvolve")
+app = FastAPI(title="CodeFission")
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
@@ -198,7 +198,7 @@ async def discard_draft(tree_id: str, draft_id: str):
 @app.get("/api/files/{node_id}/{file_path:path}")
 async def serve_node_file(node_id: str, file_path: str):
     from services.tree_service import get_node, get_tree
-    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit
+    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
 
     node = await get_node(node_id)
     if not node:
@@ -213,10 +213,17 @@ async def serve_node_file(node_id: str, file_path: str):
     if abs_candidate.startswith(ws_resolved + "/"):
         file_path = abs_candidate[len(ws_resolved) + 1:]
 
-    # Try filesystem first
+    # Try filesystem first (worktree alive)
     resolved = (ws_path / file_path).resolve()
     if str(resolved).startswith(ws_resolved) and resolved.is_file():
         return FileResponse(resolved)
+
+    # Try persisted artifacts (survives worktree removal)
+    artifact_data = read_artifact_bytes(tree.id, node_id, file_path)
+    if artifact_data is not None:
+        import mimetypes
+        mime, _ = mimetypes.guess_type(file_path)
+        return Response(content=artifact_data, media_type=mime or "application/octet-stream")
 
     # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
@@ -235,7 +242,7 @@ async def serve_node_file(node_id: str, file_path: str):
 @app.get("/api/download/{node_id}/{file_path:path}")
 async def download_node_file(node_id: str, file_path: str):
     from services.tree_service import get_node, get_tree
-    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit
+    from services.workspace_service import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
 
     node = await get_node(node_id)
     if not node:
@@ -248,6 +255,16 @@ async def download_node_file(node_id: str, file_path: str):
     if str(resolved).startswith(str(ws_path.resolve())) and resolved.is_file():
         return FileResponse(resolved, filename=resolved.name,
                             media_type="application/octet-stream")
+
+    # Try persisted artifacts
+    artifact_data = read_artifact_bytes(tree.id, node_id, file_path)
+    if artifact_data is not None:
+        filename = Path(file_path).name
+        return Response(
+            content=artifact_data,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
