@@ -4,10 +4,9 @@ Tree-structured AI coding assistant. Each conversation node is an isolated git w
 
 ## Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — AI backend (spawned as subprocess). Install: `npm install -g @anthropic-ai/claude-code`
-- [uv](https://docs.astral.sh/uv/installation/) — Python package manager. Install: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- [Node.js](https://nodejs.org/en/download) 18+ — frontend build. Install via system package manager or [nvm](https://github.com/nvm-sh/nvm)
-- [git](https://git-scm.com/downloads) — worktree isolation. Usually pre-installed.
+- **Python 3.12+** — [install](https://www.python.org/downloads/) or via your package manager
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI backend (spawned as subprocess). Install: `npm install -g @anthropic-ai/claude-code`
+- **[git](https://git-scm.com/downloads)** — worktree isolation. Usually pre-installed.
 
 Authenticate Claude Code before first use:
 
@@ -15,32 +14,36 @@ Authenticate Claude Code before first use:
 claude login
 ```
 
-## Quick start
-
-### Option A: Let Claude do it
-
-If you already have Claude Code installed:
+## Install
 
 ```
-claude -p "git clone <repo-url> codefission && cd codefission && ./run.sh"
+pip install codefission
 ```
 
-### Option B: Manual
+Then run:
 
 ```
-git clone <repo-url> codefission
-cd codefission
-./run.sh
+fission
 ```
 
-On first run, `run.sh` will:
-1. Install Python dependencies via `uv` (creates `.venv/` automatically)
-2. Install npm packages and build the frontend
-3. Start the server on `http://localhost:8080`
+Opens on `http://localhost:8080`. Use a different port: `fission 3000`.
 
-Subsequent runs skip steps 1-2 (unless dependencies or source changed).
+## Install from source
 
-To use a different port: `./run.sh 3000`
+Requires [uv](https://docs.astral.sh/uv/installation/) and [Node.js](https://nodejs.org/en/download) 20.19+ or 22.12+.
+
+```
+git clone https://github.com/codefission-ai/CodeFission.git
+cd CodeFission
+make install
+fission
+```
+
+For development with auto frontend rebuild:
+
+```
+make dev
+```
 
 ## How it works
 
@@ -76,10 +79,12 @@ Settings persist in the backend database across sessions and devices.
 
 ## Development
 
-Run tests:
-
 ```
-uv run --group dev pytest
+make dev          # install + build frontend + run server
+make test         # run tests
+make build        # build wheel for PyPI
+make publish      # build + upload to PyPI
+make clean        # remove build artifacts
 ```
 
 Frontend dev server (hot reload):
