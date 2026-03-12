@@ -16,3 +16,5 @@ ref_repos/
 .claude/
 .cursor/
 codefission-ai/
+codefission/static/
+dist/

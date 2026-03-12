@@ -1,7 +1,13 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "codefission"
 version = "0.1.0"
 description = "Tree-structured AI coding assistant with git worktree isolation"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
@@ -13,13 +19,29 @@ dependencies = [
     "pydantic",
 ]
 
+[project.urls]
+Homepage = "https://github.com/codefission-ai/CodeFission"
+Repository = "https://github.com/codefission-ai/CodeFission"
+
+[project.scripts]
+codefission = "codefission.cli:main"
+
 [dependency-groups]
 dev = [
+    "hatch",
     "pytest",
     "pytest-asyncio",
 ]
 
+[tool.hatch.build]
+# codefission/static/ is gitignored but must be in the wheel
+artifacts = ["codefission/static/**"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["codefission"]
+exclude = ["codefission/tests/"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = ["backend"]
-testpaths = ["backend/tests"]
+pythonpath = ["codefission"]
+testpaths = ["codefission/tests"]

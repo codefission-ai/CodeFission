@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
 from pathlib import Path
 
-# Add backend to path for imports
+# Add package dir to path so bare imports (db, handlers, etc.) resolve
 sys.path.insert(0, str(Path(__file__).parent))
 
 from db import init_db, close_db
@@ -18,7 +18,11 @@ from handlers import ConnectionHandler
 
 app = FastAPI(title="CodeFission")
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+# Installed mode: pre-built static files bundled in package
+FRONTEND_DIR = Path(__file__).parent / "static"
+if not FRONTEND_DIR.exists():
+    # Development mode: frontend dist built from repo root
+    FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
 
 def _silence_asyncgen_gc(loop, context):
