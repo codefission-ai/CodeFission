@@ -16,7 +16,7 @@ from agentbridge.events import (
     ToolStart,
     TurnComplete,
 )
-from agentbridge.types import ProviderType, SessionConfig
+from agentbridge.types import PermissionLevel, ProviderType, SessionConfig
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -134,6 +134,34 @@ class TestClaudeAdapterBuildCommand:
         cmd = adapter.build_command(config)
         idx = cmd.index("--permission-mode")
         assert cmd[idx + 1] == "bypassPermissions"
+
+    @patch("shutil.which", return_value="/usr/bin/claude")
+    def test_permission_level_autonomous(self, _):
+        adapter = ClaudeAdapter()
+        config = _make_config(ProviderType.CLAUDE, permission_level=PermissionLevel.AUTONOMOUS)
+        cmd = adapter.build_command(config)
+        idx = cmd.index("--permission-mode")
+        assert cmd[idx + 1] == "bypassPermissions"
+
+    @patch("shutil.which", return_value="/usr/bin/claude")
+    def test_permission_level_interactive(self, _):
+        adapter = ClaudeAdapter()
+        config = _make_config(ProviderType.CLAUDE, permission_level=PermissionLevel.INTERACTIVE)
+        cmd = adapter.build_command(config)
+        idx = cmd.index("--permission-mode")
+        assert cmd[idx + 1] == "default"
+
+    @patch("shutil.which", return_value="/usr/bin/claude")
+    def test_permission_level_custom(self, _):
+        adapter = ClaudeAdapter()
+        config = _make_config(
+            ProviderType.CLAUDE,
+            permission_level=PermissionLevel.CUSTOM,
+            permission_mode="dontAsk",
+        )
+        cmd = adapter.build_command(config)
+        idx = cmd.index("--permission-mode")
+        assert cmd[idx + 1] == "dontAsk"
 
     @patch("shutil.which", return_value="/usr/bin/claude")
     def test_extra_args(self, _):
@@ -347,10 +375,30 @@ class TestCodexAdapterBuildCommand:
     @patch("shutil.which", return_value="/usr/bin/codex")
     def test_sandbox_mode(self, _):
         adapter = CodexAdapter()
-        config = _make_config(ProviderType.CODEX, sandbox_mode="workspace-write")
+        config = _make_config(
+            ProviderType.CODEX,
+            permission_level=PermissionLevel.CUSTOM,
+            sandbox_mode="workspace-write",
+        )
         cmd = adapter.build_command(config)
         idx = cmd.index("--sandbox")
         assert cmd[idx + 1] == "workspace-write"
+
+    @patch("shutil.which", return_value="/usr/bin/codex")
+    def test_permission_level_autonomous(self, _):
+        adapter = CodexAdapter()
+        config = _make_config(ProviderType.CODEX, permission_level=PermissionLevel.AUTONOMOUS)
+        cmd = adapter.build_command(config)
+        idx = cmd.index("--sandbox")
+        assert cmd[idx + 1] == "full-auto"
+
+    @patch("shutil.which", return_value="/usr/bin/codex")
+    def test_permission_level_interactive(self, _):
+        adapter = CodexAdapter()
+        config = _make_config(ProviderType.CODEX, permission_level=PermissionLevel.INTERACTIVE)
+        cmd = adapter.build_command(config)
+        idx = cmd.index("--sandbox")
+        assert cmd[idx + 1] == "suggest"
 
     @patch("shutil.which", return_value="/usr/bin/codex")
     def test_prior_context_prepended(self, _):

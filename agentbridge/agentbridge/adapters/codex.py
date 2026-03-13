@@ -24,7 +24,7 @@ from ..events import (
     TurnComplete,
 )
 from ..subprocess_runner import SubprocessRunner
-from ..types import ProviderType, SessionConfig
+from ..types import ProviderType, SessionConfig, resolve_permission
 
 PROVIDER = ProviderType.CODEX
 
@@ -53,8 +53,9 @@ class CodexAdapter(BaseAdapter):
                 cmd.extend(["-m", config.model])
             cmd.extend(["-C", str(config.cwd)])
 
-            if config.sandbox_mode:
-                cmd.extend(["--sandbox", config.sandbox_mode])
+            sandbox = resolve_permission(config)
+            if sandbox:
+                cmd.extend(["--sandbox", sandbox])
 
             cmd.extend(config.extra_args)
 

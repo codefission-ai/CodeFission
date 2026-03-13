@@ -24,7 +24,7 @@ from ..events import (
     TurnComplete,
 )
 from ..subprocess_runner import SubprocessRunner
-from ..types import ProviderType, SessionConfig
+from ..types import ProviderType, SessionConfig, resolve_permission
 
 PROVIDER = ProviderType.CLAUDE
 
@@ -61,8 +61,7 @@ class ClaudeAdapter(BaseAdapter):
         if config.max_turns:
             cmd.extend(["--max-turns", str(config.max_turns)])
 
-        # Permission mode
-        pm = config.permission_mode or "bypassPermissions"
+        pm = resolve_permission(config) or "bypassPermissions"
         cmd.extend(["--permission-mode", pm])
 
         # Session resume / fork

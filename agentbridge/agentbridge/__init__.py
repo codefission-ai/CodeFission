@@ -31,7 +31,7 @@ from .pricing import (
 )
 from .session_manager import SessionManager, SwitchResult
 from .subprocess_runner import SubprocessRunner
-from .types import ProviderType, SessionConfig
+from .types import PermissionLevel, ProviderType, SessionConfig, resolve_permission
 
 __all__ = [
     "create_session",
@@ -43,8 +43,10 @@ __all__ = [
     "ToolEnd",
     "SessionInit",
     "TurnComplete",
+    "PermissionLevel",
     "ProviderType",
     "SessionConfig",
+    "resolve_permission",
     "ProviderInfo",
     "AuthInfo",
     "discover",

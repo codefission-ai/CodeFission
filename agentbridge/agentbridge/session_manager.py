@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .discovery import ProviderInfo, discover
-from .types import ProviderType, SessionConfig
+from .types import PermissionLevel, ProviderType, SessionConfig
 
 _PROVIDER_TYPE_MAP = {
     "claude": ProviderType.CLAUDE,
@@ -246,6 +246,7 @@ class SessionManager:
         prior_context: str | None = None,
         resume_session_id: str | None = None,
         fork_session: bool = False,
+        permission_level: PermissionLevel | None = None,
         permission_mode: str | None = None,
         sandbox_mode: str | None = None,
         env: dict[str, str] | None = None,
@@ -266,6 +267,7 @@ class SessionManager:
             prior_context=prior_context,
             resume_session_id=resume_session_id,
             fork_session=fork_session,
+            permission_level=permission_level,
             permission_mode=permission_mode,
             sandbox_mode=sandbox_mode,
             env=env or {},

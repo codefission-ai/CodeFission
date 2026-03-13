@@ -6,7 +6,7 @@ import pytest
 
 from agentbridge.discovery import AuthInfo, ProviderInfo
 from agentbridge.session_manager import SessionManager, SwitchResult
-from agentbridge.types import ProviderType
+from agentbridge.types import PermissionLevel, ProviderType
 
 
 def _make_providers() -> list[ProviderInfo]:
@@ -254,9 +254,7 @@ class TestBuildConfig:
             system_prompt="Be brief",
             max_turns=5,
             prior_context="previous work",
-            resume_session_id="sess-1",
-            fork_session=True,
-            permission_mode="bypassPermissions",
+            permission_level=PermissionLevel.AUTONOMOUS,
             env={"KEY": "val"},
             extra_args=["--flag"],
         )
@@ -264,11 +262,22 @@ class TestBuildConfig:
         assert config.system_prompt == "Be brief"
         assert config.max_turns == 5
         assert config.prior_context == "previous work"
-        assert config.resume_session_id == "sess-1"
-        assert config.fork_session is True
-        assert config.permission_mode == "bypassPermissions"
+        assert config.resume_session_id is None
+        assert config.fork_session is False
+        assert config.permission_level == PermissionLevel.AUTONOMOUS
         assert config.env == {"KEY": "val"}
         assert config.extra_args == ["--flag"]
+
+    def test_build_config_with_custom_permission(self):
+        mgr = SessionManager(_make_providers())
+        mgr.switch_provider("claude")
+        config = mgr.build_config(
+            prompt="test",
+            permission_level=PermissionLevel.CUSTOM,
+            permission_mode="dontAsk",
+        )
+        assert config.permission_level == PermissionLevel.CUSTOM
+        assert config.permission_mode == "dontAsk"
 
     def test_no_provider_raises(self):
         mgr = SessionManager(_make_providers())
