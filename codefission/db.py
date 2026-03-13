@@ -129,6 +129,10 @@ async def init_db():
             await db.execute("ALTER TABLE nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
         if "quoted_node_ids" not in node_columns:
             await db.execute("ALTER TABLE nodes ADD COLUMN quoted_node_ids TEXT NOT NULL DEFAULT '[]'")
+        if "provider" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN provider TEXT")
+        if "model" not in node_columns:
+            await db.execute("ALTER TABLE nodes ADD COLUMN model TEXT")
 
         # Index for repo_id + base_commit lookups
         await db.execute("CREATE INDEX IF NOT EXISTS idx_trees_repo ON trees(repo_id, base_commit)")

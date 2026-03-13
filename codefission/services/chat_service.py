@@ -23,9 +23,63 @@ from agentbridge import (
     TurnComplete,
 )
 
-from services.tree_service import get_tree, get_node
+from services.tree_service import get_tree, get_node, get_ancestor_chain
 
 log = logging.getLogger(__name__)
+
+
+# ── Session continuity ───────────────────────────────────────────────
+
+async def resolve_session_continuity(
+    parent_node,
+    new_provider: str,
+    ancestors: list | None = None,
+) -> tuple:
+    """Decide: fork parent's session, or build context transfer text.
+
+    Returns (resume_session_id, fork_session, prior_context).
+
+    - Same provider: session fork via resume_session_id + fork_session=True
+    - Different provider or no session: context transfer via prior_context text
+    - Root/empty parent: fresh start (no fork, no context)
+    """
+    if not parent_node or not parent_node.user_message:
+        # Root node or empty parent — fresh start
+        return None, False, None
+
+    parent_provider = parent_node.provider or "claude"  # default to claude for old nodes
+
+    if parent_node.session_id and parent_provider == new_provider:
+        # Same provider — fork the session (works across models within same provider)
+        return parent_node.session_id, True, None
+    else:
+        # Different provider or no session — context transfer
+        if ancestors is None:
+            ancestors = await get_ancestor_chain(parent_node.id)
+            # Include parent itself in the chain
+            ancestors = ancestors + [parent_node]
+        prior_context = _build_context_from_ancestors(ancestors)
+        return None, False, prior_context
+
+
+def _build_context_from_ancestors(ancestors: list) -> str:
+    """Walk ancestor chain, collect conversations, format as text preamble.
+
+    This is used when switching providers mid-tree — the new provider gets
+    a text summary of prior conversation rather than a native session fork.
+    """
+    parts = ["[System: Previous conversation history from a different AI provider:\n"]
+    for node in ancestors:
+        if node.user_message:
+            parts.append(f"\nUser: {node.user_message}\n")
+        if node.assistant_response:
+            # Truncate very long responses
+            response = node.assistant_response
+            if len(response) > 10_000:
+                response = response[:10_000] + "\n... [truncated]"
+            parts.append(f"\nAssistant: {response}\n")
+    parts.append("\nUse this context to inform your response. The user's new message follows.]\n\n")
+    return "".join(parts)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

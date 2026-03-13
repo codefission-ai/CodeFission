@@ -1,11 +1,14 @@
-"""WebSocket message handlers — thin transport layer delegating to Orchestrator."""
+"""WebSocket message handlers — thin transport layer delegating to Orchestrator.
+
+This is the WS Presenter in the Model-View-Presenter pattern.
+It contains zero business logic — only WS message parsing, Orchestrator
+calls, and WS response formatting.
+"""
 
 import asyncio
 import json
 import logging
 import os
-from dataclasses import dataclass
-
 from pathlib import Path
 from fastapi import WebSocket
 
@@ -14,40 +17,23 @@ from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
 from services.tree_service import (
     list_trees, get_tree, get_all_nodes, get_node, find_tree,
-    delete_tree, delete_subtree, update_tree, update_node,
+    delete_tree, update_tree, update_node,
     get_setting, set_setting, get_global_defaults,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
     resolve_workspace,
-    list_files, get_diff, read_file,
-    list_files_from_commit, read_file_from_commit, get_diff_from_commits,
     remove_worktree, remove_worktree_and_branch,
-    list_artifact_files,
     list_branches as ws_list_branches,
     get_repo_info as ws_get_repo_info,
     check_staleness,
     _worktrees_dir,
-    compute_repo_id,
     detect_repo_name,
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree, find_child_by_cwd
-from services.orchestrator import Orchestrator
-from services.sandbox import set_sandbox, clear_sandbox, default_writable_paths
+from services.orchestrator import Orchestrator, StreamState
 
 log = logging.getLogger(__name__)
-
-
-@dataclass
-class StreamState:
-    node_id: str
-    tree_id: str = ""
-    text: str = ""
-    status: str = "active"   # active | done | error
-    send_fn: object = None   # async send callable (tracks current handler)
-    sdk_pid: int | None = None
-    stream_task: asyncio.Task | None = None
-    cancelled: bool = False
 
 
 # Global registry of active streams — survives WebSocket reconnects.
@@ -249,7 +235,6 @@ class ConnectionHandler:
         )
 
         # Reconnect any active streams for this tree to the new connection.
-        # This lets a browser refresh resume seeing streaming output.
         for nid, info in _active_streams.items():
             if info.tree_id == tree_id and info.status == "active":
                 info.send_fn = self.send
@@ -303,10 +288,6 @@ class ConnectionHandler:
             # Prepare chat: create child node, resolve workspace/session/settings
             ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id, file_quotes=file_quotes, draft_node_id=draft_node_id)
             nid = ctx.node_id
-
-            # Sandbox: optionally restrict subprocess writes to this tree's workspace
-            if ctx.sandbox:
-                set_sandbox(default_writable_paths(str(ctx.workspace.parent)))
 
             # Notify client of new node
             created_payload = {"node": ctx.node.model_dump()}
@@ -372,6 +353,9 @@ class ConnectionHandler:
             self._track_sdk_pid(nid, ctx.workspace)
             state.sdk_pid = self.sdk_pids.get(nid)
 
+            # Track session_id for provider/model recording
+            session_id = None
+
             # Consume events from the queue.
             STREAM_INACTIVITY_TIMEOUT = 180  # 3 minutes of silence → dead
             last_event_time = asyncio.get_event_loop().time()
@@ -405,6 +389,7 @@ class ConnectionHandler:
                     raise event
 
                 if isinstance(event, SessionInit):
+                    session_id = event.session_id
                     await update_node(nid, session_id=event.session_id)
 
                 elif isinstance(event, TextDelta):
@@ -471,7 +456,11 @@ class ConnectionHandler:
                     full_response += timeout_note
                     await self.send(WS.CHUNK, node_id=nid, text=timeout_note)
                 self.streams[nid].status = "done"
-                result = await self.orch.complete_chat(nid, full_response, msg, ctx.workspace)
+                result = await self.orch.complete_chat(
+                    nid, full_response, msg, ctx.workspace,
+                    provider="claude",  # Record which provider was used
+                    model=ctx.model,    # Record which model was used
+                )
                 await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
                 done_payload = {"node_id": nid, "full_response": full_response}
                 if result.git_commit:
@@ -530,7 +519,6 @@ class ConnectionHandler:
                 log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
 
         finally:
-            clear_sandbox()
             self.streams.pop(nid, None)
             _active_streams.pop(nid, None)
             self.tasks.pop(nid, None)
@@ -647,36 +635,14 @@ class ConnectionHandler:
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
     async def handle_update_global_settings(self, data: dict):
-        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key", "sandbox", "summary_model"):
-            if key in data:
-                val = data[key]
-                if key == "sandbox":
-                    await set_setting(key, "true" if val else None)
-                else:
-                    await set_setting(key, str(val) if val is not None and val != "" else None)
-        # data_dir is saved to config file (requires restart)
-        if "data_dir" in data and data["data_dir"]:
-            from config import save_config
-            save_config({"data_dir": data["data_dir"]})
-        defaults = await get_global_defaults()
+        """Delegate to Orchestrator, format WS response."""
+        defaults = await self.orch.update_global_settings(data)
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
     async def handle_update_tree_settings(self, data: dict):
+        """Delegate to Orchestrator, format WS response."""
         tree_id = data["tree_id"]
-        updates = {}
-        if "provider" in data:
-            updates["provider"] = data["provider"] or ""
-        if "model" in data:
-            updates["model"] = data["model"] or ""
-        if "max_turns" in data:
-            updates["max_turns"] = data["max_turns"]
-        if "skill" in data:
-            updates["skill"] = data["skill"] or ""
-        if "notes" in data:
-            updates["notes"] = data["notes"]
-        if updates:
-            await update_tree(tree_id, **updates)
-        tree = await get_tree(tree_id)
+        tree = await self.orch.update_tree_settings(tree_id, data)
         if tree:
             await self.send(WS.TREE_UPDATED, tree=tree.model_dump())
 
@@ -700,7 +666,7 @@ class ConnectionHandler:
         result = await self.orch.merge_to_branch(node_id, target_branch)
         await self.send(WS.MERGE_RESULT, node_id=node_id, **result)
 
-    # ── File operations ──────────────────────────────────────────────
+    # ── File operations — delegate to Orchestrator ────────────────────
 
     async def handle_get_node_files(self, data: dict):
         node_id = data["node_id"]
@@ -708,24 +674,12 @@ class ConnectionHandler:
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return
-        tree = await get_tree(node.tree_id)
-        if not tree:
-            await self.send(WS.ERROR, error="Tree not found")
-            return
         await self._set_context_for_tree(node.tree_id)
-        ws_path = resolve_workspace(tree.root_node_id, node_id)
-        if ws_path.exists():
-            files = await list_files(ws_path)
-        elif node.git_commit:
-            files = await list_files_from_commit(node.git_commit)
-        else:
-            files = []
-        # Append persisted artifact files (deduplicated)
-        artifact_files = list_artifact_files(node_id)
-        if artifact_files:
-            existing = set(files)
-            files.extend(f for f in artifact_files if f not in existing)
-        await self.send(WS.NODE_FILES, node_id=node_id, files=files)
+        try:
+            result = await self.orch.list_node_files(node_id)
+            await self.send(WS.NODE_FILES, node_id=result.node_id, files=result.files)
+        except ValueError as e:
+            await self.send(WS.ERROR, error=str(e))
 
     async def handle_get_node_diff(self, data: dict):
         node_id = data["node_id"]
@@ -733,24 +687,12 @@ class ConnectionHandler:
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return
-        tree = await get_tree(node.tree_id)
-        if not tree:
-            await self.send(WS.ERROR, error="Tree not found")
-            return
         await self._set_context_for_tree(node.tree_id)
-        ws_path = resolve_workspace(tree.root_node_id, node_id)
-        parent_commit = None
-        if node.parent_id:
-            parent_node = await get_node(node.parent_id)
-            if parent_node:
-                parent_commit = parent_node.git_commit
-        if ws_path.exists():
-            diff = await get_diff(ws_path, parent_commit)
-        elif node.git_commit:
-            diff = await get_diff_from_commits(parent_commit, node.git_commit)
-        else:
-            diff = ""
-        await self.send(WS.NODE_DIFF, node_id=node_id, diff=diff)
+        try:
+            result = await self.orch.get_node_diff(node_id)
+            await self.send(WS.NODE_DIFF, node_id=result.node_id, diff=result.diff)
+        except ValueError as e:
+            await self.send(WS.ERROR, error=str(e))
 
     async def handle_get_file_content(self, data: dict):
         node_id = data["node_id"]
@@ -759,20 +701,10 @@ class ConnectionHandler:
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return
-        tree = await get_tree(node.tree_id)
-        if not tree:
-            await self.send(WS.ERROR, error="Tree not found")
-            return
         await self._set_context_for_tree(node.tree_id)
-        ws_path = resolve_workspace(tree.root_node_id, node_id)
         try:
-            if ws_path.exists():
-                content = read_file(ws_path, file_path)
-            elif node.git_commit:
-                content = await read_file_from_commit(node.git_commit, file_path)
-            else:
-                raise FileNotFoundError(f"No worktree or commit for node {node_id}")
-            await self.send(WS.FILE_CONTENT, node_id=node_id, file_path=file_path, content=content)
+            result = await self.orch.read_node_file(node_id, file_path)
+            await self.send(WS.FILE_CONTENT, node_id=result.node_id, file_path=result.file_path, content=result.content)
         except Exception as e:
             await self.send(WS.ERROR, error=f"Cannot read file: {e}")
 
@@ -863,168 +795,63 @@ class ConnectionHandler:
         if not procs and tree and node:
             await self._cleanup_node_worktree(node, tree)
 
-    # ── Node deletion ─────────────────────────────────────────────────
+    # ── Node deletion — delegate to Orchestrator ──────────────────────
 
     async def handle_delete_node(self, data: dict):
         node_id = data["node_id"]
         node = await get_node(node_id)
-        if not node:
-            await self.send(WS.ERROR, error="Node not found")
-            return
-        if not node.parent_id:
-            await self.send(WS.ERROR, error="Cannot delete root node")
-            return
+        if node:
+            await self._set_context_for_tree(node.tree_id)
 
-        # Set context for tree
-        await self._set_context_for_tree(node.tree_id)
+        # Pass active streams to orchestrator for checking
+        self.orch._active_streams = _active_streams
 
-        # Check no node in subtree is actively streaming
-        stack = [node_id]
-        while stack:
-            nid = stack.pop()
-            if nid in _active_streams and _active_streams[nid].status == "active":
-                await self.send(WS.ERROR, error="Cannot delete a node that is streaming. Cancel it first.")
-                return
-            n = await get_node(nid)
-            if n:
-                stack.extend(n.children_ids)
+        try:
+            result = await self.orch.delete_node(node_id)
+            await self.send(WS.NODES_DELETED,
+                            deleted_ids=result.deleted_ids,
+                            updated_nodes=[n.model_dump() for n in result.updated_nodes])
+        except ValueError as e:
+            await self.send(WS.ERROR, error=str(e))
 
-        tree = await get_tree(node.tree_id)
-        deleted_ids, updated_nodes = await delete_subtree(node_id)
-
-        # Kill processes and clean up git worktrees/branches for deleted nodes
-        if tree:
-            for did in deleted_ids:
-                try:
-                    ws_path = resolve_workspace(tree.root_node_id, did)
-                    if ws_path.exists():
-                        kill_all_in_workspace(ws_path)
-                    await remove_worktree_and_branch(tree.root_node_id, did)
-                except Exception:
-                    log.debug("Cleanup failed for deleted node %s", did, exc_info=True)
-
-        # Clean up expanded_nodes and collapsed_subtrees settings
-        deleted_set = set(deleted_ids)
-        raw_exp = await get_setting("expanded_nodes")
-        if raw_exp:
-            exp_map = json.loads(raw_exp)
-            cleaned = {k: v for k, v in exp_map.items() if k not in deleted_set}
-            if len(cleaned) != len(exp_map):
-                await set_setting("expanded_nodes", json.dumps(cleaned))
-        raw_cs = await get_setting("collapsed_subtrees")
-        if raw_cs:
-            cs_map = json.loads(raw_cs)
-            cleaned = {k: v for k, v in cs_map.items() if k not in deleted_set}
-            if len(cleaned) != len(cs_map):
-                await set_setting("collapsed_subtrees", json.dumps(cleaned))
-
-        await self.send(WS.NODES_DELETED,
-                        deleted_ids=deleted_ids,
-                        updated_nodes=[n.model_dump() for n in updated_nodes])
+    # ── Update base — delegate to Orchestrator ────────────────────────
 
     async def handle_update_base(self, data: dict):
-        """Update a tree's repo_path, base_branch, and/or base_commit.
-
-        All fields optional.  Only allowed when root has no children.
-        If `repo_path` changes, re-resolves repo_id/name/branches.
-        If a tree already exists for the resolved (repo_id, commit),
-        sends `existing_tree_id` so the frontend can switch to it.
-        """
         tree_id = data["tree_id"]
         new_path = data.get("repo_path")
         new_branch = data.get("base_branch")
         new_commit = data.get("base_commit")
-        tree = await get_tree(tree_id)
-        if not tree:
-            await self.send(WS.ERROR, error="Tree not found")
-            return
 
-        # Guard: changes only allowed when tree has no children
-        if tree.root_node_id:
-            root = await get_node(tree.root_node_id)
-            if root and root.children_ids:
-                await self.send(WS.ERROR, error="Cannot change base after conversations have started")
-                return
-
-        from services.workspace_service import _run_git, create_protective_ref
-
-        # If repo_path changed, validate and re-resolve repo context
-        extra_response: dict = {}
-        if new_path and new_path != tree.repo_path:
-            repo_path = Path(new_path)
-            if not repo_path.is_dir():
-                await self.send(WS.ERROR, error=f"Not a directory: {new_path}")
-                return
-            # Check it's a git repo
-            rc, _, _ = await _run_git(repo_path, "rev-parse", "--git-dir", check=False)
-            if rc != 0:
-                await self.send(WS.ERROR, error=f"Not a git repo: {new_path}")
-                return
-            set_project_path(repo_path)
-            self.repo_path = repo_path
-            new_repo_id = await compute_repo_id(repo_path)
-            new_repo_name = detect_repo_name(repo_path)
-            branches = await ws_list_branches()
-            extra_response["branches"] = branches
-
-            # Default branch/commit from the new repo if not explicitly given
-            if not new_branch:
-                _, detected_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
-                new_branch = detected_branch.strip()
-            if not new_commit:
-                _, head_sha, _ = await _run_git(repo_path, "rev-parse", "HEAD", check=False)
-                new_commit = head_sha.strip()
-        else:
-            new_repo_id = tree.repo_id
-            new_repo_name = tree.repo_name
-            # Set context from existing tree
+        # Set context from existing tree if no new path
+        if not new_path or new_path == (await get_tree(tree_id) or object).__dict__.get("repo_path"):
             await self._set_context_for_tree(tree_id)
 
-        project_path = get_project_path()
-        target_branch = new_branch or tree.base_branch
+        try:
+            result = await self.orch.update_base(
+                tree_id,
+                new_path=new_path,
+                new_branch=new_branch,
+                new_commit=new_commit,
+                repo_path_context=self.repo_path,
+            )
 
-        # Resolve commit
-        if new_commit:
-            rc, full_sha, _ = await _run_git(project_path, "rev-parse", "--verify", new_commit, check=False)
-            if rc != 0:
-                await self.send(WS.ERROR, error=f"Commit {new_commit} not found")
-                return
-            resolved_sha = full_sha.strip()
-        else:
-            rc, head_sha, _ = await _run_git(project_path, "rev-parse", target_branch, check=False)
-            if rc != 0:
-                await self.send(WS.ERROR, error=f"Branch {target_branch} not found")
-                return
-            resolved_sha = head_sha.strip()
+            # Update connection state if path changed
+            if new_path:
+                self.repo_path = Path(new_path)
 
-        # Check if a different tree already exists for this (repo_id, commit)
-        if new_repo_id:
-            existing = await find_tree(new_repo_id, resolved_sha, new_path)
-            if existing and existing.id != tree_id:
-                await self.send(WS.BASE_UPDATED, existing_tree_id=existing.id,
-                                tree=existing.model_dump(), **extra_response)
-                return
+            extra = {}
+            if result.branches:
+                extra["branches"] = result.branches
 
-        # Update current tree
-        update_kwargs: dict = {"base_commit": resolved_sha}
-        if new_branch:
-            update_kwargs["base_branch"] = new_branch
-        if new_path and new_path != tree.repo_path:
-            update_kwargs["repo_path"] = new_path
-            update_kwargs["repo_id"] = new_repo_id
-            update_kwargs["repo_name"] = new_repo_name
-        await update_tree(tree_id, **update_kwargs)
+            if result.existing_tree_id:
+                await self.send(WS.BASE_UPDATED, existing_tree_id=result.existing_tree_id,
+                                tree=result.tree.model_dump(), **extra)
+            else:
+                await self.send(WS.BASE_UPDATED, tree=result.tree.model_dump(),
+                                staleness=result.staleness, **extra)
 
-        if tree.root_node_id:
-            await update_node(tree.root_node_id, git_commit=resolved_sha)
-
-        await create_protective_ref(tree_id, resolved_sha)
-        staleness = await check_staleness(target_branch, resolved_sha)
-
-        updated = await get_tree(tree_id)
-        if updated:
-            await self.send(WS.BASE_UPDATED, tree=updated.model_dump(),
-                            staleness=staleness, **extra_response)
+        except ValueError as e:
+            await self.send(WS.ERROR, error=str(e))
 
     # ── Dispatch table (class-level) ──────────────────────────────────
 

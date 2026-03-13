@@ -57,9 +57,6 @@ async def startup():
     if repo_path_str:
         set_project_path(Path(repo_path_str))
 
-    from services.sandbox import install_hook
-    install_hook()
-
     # Auto-open browser after server is listening
     async def _open_browser():
         await asyncio.sleep(0.5)

@@ -158,6 +158,8 @@ async def get_all_nodes(tree_id: str) -> list[Node]:
             git_branch=r["git_branch"],
             git_commit=r["git_commit"],
             session_id=r["session_id"],
+            provider=r["provider"],
+            model=r["model"],
             created_by=r["created_by"],
             quoted_node_ids=json.loads(r["quoted_node_ids"]) if r["quoted_node_ids"] else [],
         ))
@@ -185,6 +187,8 @@ async def get_node(node_id: str) -> Node | None:
         git_branch=row["git_branch"],
         git_commit=row["git_commit"],
         session_id=row["session_id"],
+        provider=row["provider"],
+        model=row["model"],
         created_by=row["created_by"],
         quoted_node_ids=json.loads(row["quoted_node_ids"]) if row["quoted_node_ids"] else [],
     )
@@ -252,6 +256,18 @@ async def get_path_to_root(node_id: str) -> list[Node]:
     return path
 
 
+async def get_ancestor_chain(node_id: str) -> list[Node]:
+    """Walk parent_id up to root, return list of ancestor nodes (root first).
+
+    Unlike get_path_to_root, this excludes the node itself — only ancestors.
+    Used for building conversation history for context transfer.
+    """
+    node = await get_node(node_id)
+    if not node or not node.parent_id:
+        return []
+    return await get_path_to_root(node.parent_id)
+
+
 async def update_node(node_id: str, **kwargs):
     sets = []
     vals = []
@@ -259,7 +275,7 @@ async def update_node(node_id: str, **kwargs):
         if k == "quoted_node_ids":
             sets.append(f"{k} = ?")
             vals.append(json.dumps(v))
-        elif k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id", "created_by"):
+        elif k in ("user_message", "assistant_response", "label", "status", "git_branch", "git_commit", "session_id", "provider", "model", "created_by"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
@@ -387,19 +403,15 @@ async def get_global_defaults() -> dict:
     max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
     auth_mode = await get_setting("auth_mode") or (p.default_auth_mode if p else "cli")
     api_key = await get_setting("api_key") or ""
-    sandbox = (await get_setting("sandbox")) == "true"
     summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
 
     from config import get_global_db_path
-    from services.sandbox import check_available as sandbox_check
     return {
         "provider": provider,
         "model": model,
         "max_turns": max_turns,
         "auth_mode": auth_mode,
         "api_key": api_key,
-        "sandbox": sandbox,
-        "sandbox_available": sandbox_check(),
         "summary_model": summary_model,
         "data_dir": str(get_global_db_path().parent),
     }

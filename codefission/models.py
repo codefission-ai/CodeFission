@@ -18,6 +18,8 @@ class Node(BaseModel):
     git_branch: str | None = None
     git_commit: str | None = None
     session_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
     created_by: str = "human"
     quoted_node_ids: list[str] = []
 
