@@ -1,34 +1,50 @@
 """Workspace service — git worktree management for per-node isolation.
 
-Every tree gets a git repo at the root node's workspace directory.
-Child nodes get git worktrees branched from their parent's commit.
+Works directly with the user's project repo.
+Root nodes resolve to the project path; child nodes get git worktrees
+in {project}/.codefission/worktrees/{node_id}.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
-import tempfile
 from pathlib import Path
 
-from config import DATA_DIR
+from config import get_project_path, get_project_dir
 
 log = logging.getLogger(__name__)
 
-WORKSPACES_DIR = DATA_DIR / "workspaces"
-ARTIFACTS_DIR = DATA_DIR / "artifacts"
+# Git environment for CodeFission commits (avoids modifying user's repo config)
+_GIT_ENV = {
+    "GIT_COMMITTER_NAME": "CodeFission",
+    "GIT_COMMITTER_EMAIL": "codefission@local",
+    "GIT_AUTHOR_NAME": "CodeFission",
+    "GIT_AUTHOR_EMAIL": "codefission@local",
+}
+
+
+def _worktrees_dir() -> Path:
+    return get_project_dir() / "worktrees"
+
+
+def _artifacts_dir() -> Path:
+    return get_project_dir() / "artifacts"
 
 
 # ── Low-level git helper ─────────────────────────────────────────────
 
-async def _run_git(cwd: Path, *args: str, check: bool = True) -> tuple[int, str, str]:
+async def _run_git(cwd: Path, *args: str, check: bool = True, env: dict | None = None) -> tuple[int, str, str]:
     """Run a git command asynchronously, return (returncode, stdout, stderr)."""
+    full_env = {**os.environ, **(env or {})}
     proc = await asyncio.create_subprocess_exec(
         "git", *args,
         cwd=str(cwd),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=full_env,
     )
     stdout_bytes, stderr_bytes = await proc.communicate()
     stdout = stdout_bytes.decode(errors="replace").strip()
@@ -53,104 +69,30 @@ async def _run_git_raw(cwd: Path, *args: str, check: bool = True) -> tuple[int, 
     return proc.returncode, stdout_bytes, stderr
 
 
-# ── Repo setup ────────────────────────────────────────────────────────
+# ── Workspace resolution ─────────────────────────────────────────────
 
-async def setup_repo(tree_id: str, root_id: str, repo_mode: str, repo_source: str | None) -> Path:
-    """Initialise the main git repo for a tree. Returns the root workspace path.
+def resolve_workspace(root_id: str, node_id: str) -> Path:
+    """Return the workspace path for a node.
 
-    Idempotent — returns immediately if a git repo already exists in root_dir.
-
-    Modes:
-      "new"   — git init + initial commit
-      "local" — git clone from local path
-      "url"   — git clone from URL
+    Root node → project path (user's actual repo).
+    Child nodes → .codefission/worktrees/{node_id}.
     """
-    root_dir = WORKSPACES_DIR / tree_id / root_id
-    root_dir.mkdir(parents=True, exist_ok=True)
-
-    # Idempotent: if .git already exists, skip initialisation
-    if (root_dir / ".git").exists():
-        return root_dir
-
-    if repo_mode == "new":
-        await _run_git(root_dir, "init")
-        gitignore = root_dir / ".gitignore"
-        gitignore.write_text(".claude/\n_artifacts/\n")
-        await _run_git(root_dir, "add", "-A")
-        await _run_git(root_dir, "commit", "-m", "ct: initial commit")
-
-    elif repo_mode in ("local", "url"):
-        if not repo_source:
-            raise ValueError(f"repo_source required for mode '{repo_mode}'")
-        source_path = Path(repo_source) if repo_mode == "local" else None
-        is_git_repo = source_path and (source_path / ".git").exists() if source_path else False
-        is_url = repo_mode == "url"
-
-        if is_git_repo or is_url:
-            # Clone (preserves original git history, our ct-* branches won't collide)
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_clone = Path(tmp) / "clone"
-                await _run_git(Path(tmp), "clone", repo_source, str(tmp_clone))
-                for item in tmp_clone.iterdir():
-                    dest = root_dir / item.name
-                    shutil.move(str(item), str(dest))
-        else:
-            # Copy files into a fresh git repo (local path without .git, or individual files)
-            await _run_git(root_dir, "init")
-            src = Path(repo_source)
-            if src.is_dir():
-                for item in src.iterdir():
-                    dest = root_dir / item.name
-                    if item.is_dir():
-                        shutil.copytree(str(item), str(dest), dirs_exist_ok=True)
-                    else:
-                        shutil.copy2(str(item), str(dest))
-            elif src.is_file():
-                shutil.copy2(str(src), root_dir / src.name)
-            else:
-                raise ValueError(f"Source path not found: {repo_source}")
-
-        # Ensure .claude/ and _artifacts/ are gitignored
-        gitignore = root_dir / ".gitignore"
-        existing = gitignore.read_text() if gitignore.exists() else ""
-        additions = ""
-        if ".claude/" not in existing:
-            additions += "\n.claude/\n"
-        if "_artifacts/" not in existing:
-            additions += "_artifacts/\n"
-        if additions:
-            with open(gitignore, "a") as f:
-                f.write(additions)
-
-        # Initial commit for non-git sources (cloned repos already have commits)
-        if not is_git_repo and not is_url:
-            await _run_git(root_dir, "add", "-A")
-            await _run_git(root_dir, "commit", "-m", "ct: initial commit")
-        else:
-            await _run_git(root_dir, "add", ".gitignore")
-            rc, _, _ = await _run_git(root_dir, "diff", "--cached", "--quiet", check=False)
-            if rc != 0:
-                await _run_git(root_dir, "commit", "-m", "ct: add .claude/ to .gitignore")
-
-    else:
-        raise ValueError(f"Unknown repo_mode: {repo_mode}")
-
-    # Configure committer identity (inherited by worktrees)
-    await _run_git(root_dir, "config", "user.email", "codefission@local")
-    await _run_git(root_dir, "config", "user.name", "CodeFission")
-
-    return root_dir
+    if node_id == root_id:
+        return get_project_path()
+    return _worktrees_dir() / node_id
 
 
 # ── Worktree management ──────────────────────────────────────────────
 
-async def create_worktree(tree_id: str, root_id: str, node_id: str, from_commit: str) -> Path:
+async def create_worktree(node_id: str, from_commit: str) -> Path:
     """Create a git worktree for a node, branching from the given commit."""
-    main_repo = WORKSPACES_DIR / tree_id / root_id
-    worktree_path = WORKSPACES_DIR / tree_id / node_id
+    project_path = get_project_path()
+    wt_dir = _worktrees_dir()
+    worktree_path = wt_dir / node_id
     branch_name = f"ct-{node_id}"
+    wt_dir.mkdir(parents=True, exist_ok=True)
     await _run_git(
-        main_repo,
+        project_path,
         "worktree", "add",
         str(worktree_path),
         "-b", branch_name,
@@ -160,86 +102,87 @@ async def create_worktree(tree_id: str, root_id: str, node_id: str, from_commit:
 
 
 async def ensure_worktree(
-    tree_id: str, root_id: str, node_id: str,
+    root_id: str, node_id: str,
     parent_id: str | None, parent_commit: str | None,
 ) -> Path:
     """Ensure a worktree exists for the node, creating it if needed."""
-    worktree_path = WORKSPACES_DIR / tree_id / node_id
+    project_path = get_project_path()
+    wt_dir = _worktrees_dir()
+
+    # Root node — use project path directly
+    if node_id == root_id:
+        return project_path
+
+    worktree_path = wt_dir / node_id
 
     # Already exists
     if worktree_path.exists():
         return worktree_path
 
-    # Root node — should already exist from setup_repo
-    if node_id == root_id:
-        if not worktree_path.exists():
-            raise RuntimeError(f"Root workspace missing: {worktree_path}")
-        return worktree_path
-
     # Check if branch already exists (e.g. worktree was removed but branch remains)
-    main_repo = WORKSPACES_DIR / tree_id / root_id
     branch_name = f"ct-{node_id}"
-    rc, _, _ = await _run_git(main_repo, "rev-parse", "--verify", branch_name, check=False)
+    rc, _, _ = await _run_git(project_path, "rev-parse", "--verify", branch_name, check=False)
     if rc == 0:
         # Branch exists — attach worktree to existing branch (no -b)
-        await _run_git(main_repo, "worktree", "add", str(worktree_path), branch_name)
+        wt_dir.mkdir(parents=True, exist_ok=True)
+        await _run_git(project_path, "worktree", "add", str(worktree_path), branch_name)
         return worktree_path
 
     # Determine parent's commit
     if not parent_commit:
         # Try reading HEAD from parent's worktree first
-        parent_dir = WORKSPACES_DIR / tree_id / (parent_id or root_id)
-        if parent_dir.exists():
-            _, parent_commit, _ = await _run_git(parent_dir, "rev-parse", "HEAD")
+        parent_ws = resolve_workspace(root_id, parent_id or root_id)
+        if parent_ws.exists():
+            _, parent_commit, _ = await _run_git(parent_ws, "rev-parse", "HEAD")
         else:
             # Parent worktree removed — resolve from branch ref in main repo
             parent_branch = f"ct-{parent_id}" if parent_id and parent_id != root_id else "HEAD"
-            _, parent_commit, _ = await _run_git(main_repo, "rev-parse", parent_branch)
+            _, parent_commit, _ = await _run_git(project_path, "rev-parse", parent_branch)
 
-    return await create_worktree(tree_id, root_id, node_id, parent_commit)
+    return await create_worktree(node_id, parent_commit)
 
 
-async def remove_worktree_and_branch(tree_id: str, root_id: str, node_id: str) -> bool:
-    """Remove a node's worktree AND its branch ref (no files changed, branch is noise).
+async def remove_worktree_and_branch(root_id: str, node_id: str) -> bool:
+    """Remove a node's worktree AND its branch ref.
 
     Skips root nodes. Returns True if removal happened.
     """
     if node_id == root_id:
         return False
 
-    removed = await remove_worktree(tree_id, root_id, node_id)
+    removed = await remove_worktree(root_id, node_id)
 
     # Delete the branch ref from the main repo
-    main_repo = WORKSPACES_DIR / tree_id / root_id
+    project_path = get_project_path()
     branch_name = f"ct-{node_id}"
     try:
-        await _run_git(main_repo, "branch", "-D", branch_name, check=False)
+        await _run_git(project_path, "branch", "-D", branch_name, check=False)
     except Exception as e:
         log.debug("Branch deletion failed for %s: %s", branch_name, e)
 
     return removed
 
 
-async def remove_worktree(tree_id: str, root_id: str, node_id: str) -> bool:
+async def remove_worktree(root_id: str, node_id: str) -> bool:
     """Remove a node's worktree directory, keeping the branch ref.
 
-    Skips root nodes (the main repo). Returns True if removal happened.
+    Skips root nodes. Returns True if removal happened.
     """
     if node_id == root_id:
         return False
 
-    worktree_path = WORKSPACES_DIR / tree_id / node_id
+    project_path = get_project_path()
+    worktree_path = _worktrees_dir() / node_id
     if not worktree_path.exists():
         return False
 
-    main_repo = WORKSPACES_DIR / tree_id / root_id
     try:
-        await _run_git(main_repo, "worktree", "remove", "--force", str(worktree_path))
+        await _run_git(project_path, "worktree", "remove", "--force", str(worktree_path))
     except Exception:
         # Fallback: manual removal + prune
         try:
             shutil.rmtree(worktree_path, ignore_errors=True)
-            await _run_git(main_repo, "worktree", "prune", check=False)
+            await _run_git(project_path, "worktree", "prune", check=False)
         except Exception as e2:
             log.warning("Worktree removal fallback failed: %s", e2)
             return False
@@ -253,35 +196,35 @@ async def remove_worktree(tree_id: str, root_id: str, node_id: str) -> bool:
 _HIDDEN_FILES = {".gitignore"}
 
 
-async def list_files_from_commit(tree_id: str, root_id: str, commit: str) -> list[str]:
+async def list_files_from_commit(commit: str) -> list[str]:
     """List files at a commit using git ls-tree (no worktree needed)."""
-    main_repo = WORKSPACES_DIR / tree_id / root_id
-    _, out, _ = await _run_git(main_repo, "ls-tree", "-r", "--name-only", commit)
+    project_path = get_project_path()
+    _, out, _ = await _run_git(project_path, "ls-tree", "-r", "--name-only", commit)
     return [f for f in out.splitlines() if f and f not in _HIDDEN_FILES] if out else []
 
 
-async def read_file_from_commit(tree_id: str, root_id: str, commit: str, file_path: str) -> str:
+async def read_file_from_commit(commit: str, file_path: str) -> str:
     """Read a text file at a commit using git show (no worktree needed)."""
-    main_repo = WORKSPACES_DIR / tree_id / root_id
-    _, content, _ = await _run_git(main_repo, "show", f"{commit}:{file_path}")
+    project_path = get_project_path()
+    _, content, _ = await _run_git(project_path, "show", f"{commit}:{file_path}")
     return content
 
 
-async def read_file_bytes_from_commit(tree_id: str, root_id: str, commit: str, file_path: str) -> bytes:
+async def read_file_bytes_from_commit(commit: str, file_path: str) -> bytes:
     """Read a file at a commit as raw bytes (safe for binary files)."""
-    main_repo = WORKSPACES_DIR / tree_id / root_id
-    _, raw, _ = await _run_git_raw(main_repo, "show", f"{commit}:{file_path}")
+    project_path = get_project_path()
+    _, raw, _ = await _run_git_raw(project_path, "show", f"{commit}:{file_path}")
     return raw
 
 
-async def get_diff_from_commits(tree_id: str, root_id: str, parent_commit: str | None, commit: str) -> str:
+async def get_diff_from_commits(parent_commit: str | None, commit: str) -> str:
     """Get diff between two commits (no worktree needed)."""
-    main_repo = WORKSPACES_DIR / tree_id / root_id
+    project_path = get_project_path()
     if parent_commit:
-        _, diff, _ = await _run_git(main_repo, "diff", parent_commit, commit, check=False)
+        _, diff, _ = await _run_git(project_path, "diff", parent_commit, commit, check=False)
     else:
         _, diff, _ = await _run_git(
-            main_repo, "diff", "4b825dc642cb6eb9a060e54bf899d15006578e83", commit, check=False
+            project_path, "diff", "4b825dc642cb6eb9a060e54bf899d15006578e83", commit, check=False
         )
     return diff
 
@@ -289,7 +232,17 @@ async def get_diff_from_commits(tree_id: str, root_id: str, parent_commit: str |
 # ── Auto-commit ───────────────────────────────────────────────────────
 
 async def auto_commit(worktree_path: Path, message: str) -> tuple[str, int]:
-    """Stage all changes and commit. Returns (HEAD sha, files_changed)."""
+    """Stage all changes and commit. Returns (HEAD sha, files_changed).
+
+    Uses environment variables for committer identity (never modifies repo config).
+    Skips auto-commit on the project path (the user's working tree is read-only).
+    """
+    # Never auto-commit to the user's actual working tree
+    project_path = get_project_path()
+    if worktree_path.resolve() == project_path.resolve():
+        _, sha, _ = await _run_git(worktree_path, "rev-parse", "HEAD")
+        return sha, 0
+
     # Ensure _artifacts/ is gitignored (migration for existing repos)
     gitignore = worktree_path / ".gitignore"
     if gitignore.exists():
@@ -309,20 +262,13 @@ async def auto_commit(worktree_path: Path, message: str) -> tuple[str, int]:
         _, diff_names, _ = await _run_git(worktree_path, "diff", "--cached", "--name-only")
         files_changed = len(diff_names.splitlines()) if diff_names else 0
 
-        # Commit
+        # Commit with CodeFission identity via env vars
         commit_msg = f"ct: {message[:72]}"
-        await _run_git(worktree_path, "commit", "-m", commit_msg)
+        await _run_git(worktree_path, "commit", "-m", commit_msg, env=_GIT_ENV)
 
     # Return current HEAD regardless
     _, sha, _ = await _run_git(worktree_path, "rev-parse", "HEAD")
     return sha, files_changed
-
-
-# ── Workspace resolution ─────────────────────────────────────────────
-
-def resolve_workspace(tree_id: str, root_id: str, node_id: str) -> Path:
-    """Return the workspace path for a node (per-node directory)."""
-    return WORKSPACES_DIR / tree_id / node_id
 
 
 # ── Session portability ───────────────────────────────────────────
@@ -398,15 +344,15 @@ def read_file(worktree_path: Path, file_path: str) -> str:
 
 # ── Artifact persistence ──────────────────────────────────────────────
 
-def persist_artifacts(worktree_path: Path, tree_id: str, node_id: str) -> int:
-    """Copy _artifacts/ from worktree to ARTIFACTS_DIR/{tree_id}/{node_id}/.
+def persist_artifacts(worktree_path: Path, node_id: str) -> int:
+    """Copy _artifacts/ from worktree to artifacts dir.
 
     Returns the number of files copied.
     """
     src = worktree_path / "_artifacts"
     if not src.is_dir():
         return 0
-    dst = ARTIFACTS_DIR / tree_id / node_id
+    dst = _artifacts_dir() / node_id
     count = 0
     for f in src.rglob("*"):
         if not f.is_file():
@@ -421,7 +367,7 @@ def persist_artifacts(worktree_path: Path, tree_id: str, node_id: str) -> int:
     return count
 
 
-def read_artifact_bytes(tree_id: str, node_id: str, file_path: str) -> bytes | None:
+def read_artifact_bytes(node_id: str, file_path: str) -> bytes | None:
     """Read a persisted artifact file. Returns None if not found.
 
     file_path may include or omit the _artifacts/ prefix.
@@ -432,8 +378,9 @@ def read_artifact_bytes(tree_id: str, node_id: str, file_path: str) -> bytes | N
     if clean.startswith("_artifacts/"):
         clean = clean[len("_artifacts/"):]
 
-    target = (ARTIFACTS_DIR / tree_id / node_id / clean).resolve()
-    expected_prefix = str((ARTIFACTS_DIR / tree_id / node_id).resolve())
+    artifacts_dir = _artifacts_dir()
+    target = (artifacts_dir / node_id / clean).resolve()
+    expected_prefix = str((artifacts_dir / node_id).resolve())
     if not str(target).startswith(expected_prefix):
         return None  # path traversal
     if not target.is_file():
@@ -441,9 +388,9 @@ def read_artifact_bytes(tree_id: str, node_id: str, file_path: str) -> bytes | N
     return target.read_bytes()
 
 
-def list_artifact_files(tree_id: str, node_id: str) -> list[str]:
+def list_artifact_files(node_id: str) -> list[str]:
     """List persisted artifact files, prefixed with _artifacts/."""
-    base = ARTIFACTS_DIR / tree_id / node_id
+    base = _artifacts_dir() / node_id
     if not base.is_dir():
         return []
     return [
@@ -453,17 +400,205 @@ def list_artifact_files(tree_id: str, node_id: str) -> list[str]:
     ]
 
 
+# ── Branch operations ─────────────────────────────────────────────────
+
+async def list_branches() -> list[dict]:
+    """Return local branches from project path with current branch marked."""
+    project_path = get_project_path()
+    _, current, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+    _, out, _ = await _run_git(project_path, "branch", "--format=%(refname:short)", check=False)
+    branches = []
+    for name in out.splitlines():
+        name = name.strip()
+        if not name or name.startswith("ct-"):
+            continue  # Skip CodeFission internal branches
+        branches.append({"name": name, "current": name == current})
+    return branches
+
+
+async def merge_to_branch(source_branch: str, target_branch: str) -> dict:
+    """Squash merge source_branch into target_branch.
+
+    Returns {"ok": True, "commit": sha} on success,
+    or {"ok": False, "conflicts": [...]} on conflict.
+    """
+    project_path = get_project_path()
+
+    # Ensure we're on the target branch
+    _, current, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+    if current != target_branch:
+        await _run_git(project_path, "checkout", target_branch)
+
+    # Check for uncommitted changes
+    rc, _, _ = await _run_git(project_path, "diff", "--quiet", check=False)
+    rc2, _, _ = await _run_git(project_path, "diff", "--cached", "--quiet", check=False)
+    if rc != 0 or rc2 != 0:
+        return {"ok": False, "error": "Target branch has uncommitted changes. Commit or stash them first."}
+
+    # Squash merge
+    rc, _, stderr = await _run_git(project_path, "merge", "--squash", source_branch, check=False)
+    if rc != 0:
+        # Check for conflicts
+        _, status, _ = await _run_git(project_path, "diff", "--name-only", "--diff-filter=U", check=False)
+        conflicts = [f for f in status.splitlines() if f]
+        if conflicts:
+            # Abort the merge
+            await _run_git(project_path, "merge", "--abort", check=False)
+            # Reset any staged changes
+            await _run_git(project_path, "reset", "HEAD", check=False)
+            await _run_git(project_path, "checkout", ".", check=False)
+            return {"ok": False, "conflicts": conflicts}
+        return {"ok": False, "error": f"Merge failed: {stderr}"}
+
+    # Commit the squash merge
+    commit_msg = f"Merge {source_branch} (squash)"
+    await _run_git(project_path, "commit", "-m", commit_msg, env=_GIT_ENV, check=False)
+    _, sha, _ = await _run_git(project_path, "rev-parse", "HEAD")
+    return {"ok": True, "commit": sha}
+
+
+# ── Repo identity ─────────────────────────────────────────────────────
+
+async def compute_repo_id(repo_path: Path) -> str:
+    """Compute a stable repo identity: SHA of the initial commit."""
+    _, out, _ = await _run_git(repo_path, "rev-list", "--max-parents=0", "HEAD")
+    # May return multiple roots (rare); use first
+    return out.splitlines()[0].strip()
+
+
+def detect_repo_name(repo_path: Path) -> str:
+    """Auto-detect repo name: GitHub remote path or directory basename."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(repo_path),
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            url = result.stdout.strip()
+            for prefix in ("https://github.com/", "https://gitlab.com/",
+                           "git@github.com:", "git@gitlab.com:"):
+                if url.startswith(prefix):
+                    path = url[len(prefix):]
+                    if path.endswith(".git"):
+                        path = path[:-4]
+                    return path
+    except Exception:
+        pass
+    return repo_path.name
+
+
+# ── Project/repo info ─────────────────────────────────────────────────
+
+async def get_repo_info(repo_path: Path | None = None) -> dict:
+    """Return repo path, name, current branch, and dirty status."""
+    if repo_path is None:
+        repo_path = get_project_path()
+    _, branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+    _, status_output, _ = await _run_git(repo_path, "status", "--porcelain", check=False)
+    is_dirty = bool(status_output.strip())
+
+    return {
+        "path": str(repo_path),
+        "name": repo_path.name,
+        "current_branch": branch,
+        "is_dirty": is_dirty,
+    }
+
+
+# Keep old name as alias for backward compatibility within this module
+async def get_project_info() -> dict:
+    return await get_repo_info()
+
+
+# ── Staleness detection ──────────────────────────────────────────────
+
+async def check_staleness(base_branch: str, base_commit: str | None) -> dict:
+    """Compare base_branch HEAD with stored base_commit.
+
+    Returns {"stale": False} or {"stale": True, "commits_behind": N, "branch_head": sha}.
+    """
+    if not base_commit:
+        return {"stale": False, "commits_behind": 0}
+
+    project_path = get_project_path()
+    rc, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch, check=False)
+    if rc != 0:
+        return {"stale": False, "commits_behind": 0, "branch_missing": True}
+
+    if head_sha == base_commit:
+        return {"stale": False, "commits_behind": 0}
+
+    _, count_str, _ = await _run_git(
+        project_path, "rev-list", "--count", f"{base_commit}..{head_sha}", check=False
+    )
+    commits_behind = int(count_str) if count_str.strip().isdigit() else 0
+    return {"stale": True, "commits_behind": commits_behind, "branch_head": head_sha}
+
+
+# ── Protective git ref ───────────────────────────────────────────────
+
+async def create_protective_ref(tree_id: str, commit: str):
+    """Create a git ref to prevent GC of the base commit."""
+    project_path = get_project_path()
+    await _run_git(project_path, "update-ref", f"refs/codefission/{tree_id}", commit, check=False)
+
+
+async def delete_protective_ref(tree_id: str):
+    """Remove the protective git ref."""
+    project_path = get_project_path()
+    await _run_git(project_path, "update-ref", "-d", f"refs/codefission/{tree_id}", check=False)
+
+
 # ── Cleanup ───────────────────────────────────────────────────────────
 
-def cleanup_tree_workspace(tree_id: str):
-    """Kill any running processes and remove the workspace directory for a tree."""
-    tree_dir = WORKSPACES_DIR / tree_id
-    if tree_dir.exists():
-        from services.process_service import kill_all_in_workspace
-        kill_all_in_workspace(tree_dir)
-        shutil.rmtree(tree_dir, ignore_errors=True)
+def cleanup_tree_workspaces(project_path: Path, root_id: str, node_ids: list[str]):
+    """Remove worktrees and branches for a tree's nodes.
 
-    # Also clean up persisted artifacts
-    artifacts_dir = ARTIFACTS_DIR / tree_id
-    if artifacts_dir.exists():
-        shutil.rmtree(artifacts_dir, ignore_errors=True)
+    Takes project_path explicitly since this may be called from sync context.
+    Never touches the project path itself.
+    """
+    from services.process_service import kill_all_in_workspace
+
+    worktrees_dir = project_path / ".codefission" / "worktrees"
+    artifacts_dir = project_path / ".codefission" / "artifacts"
+
+    for nid in node_ids:
+        if nid == root_id:
+            continue
+        worktree_path = worktrees_dir / nid
+        if worktree_path.exists():
+            kill_all_in_workspace(worktree_path)
+            shutil.rmtree(worktree_path, ignore_errors=True)
+
+    # Prune dangling worktree references
+    import subprocess
+    try:
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=str(project_path),
+            capture_output=True,
+        )
+    except Exception:
+        pass
+
+    # Clean up ct-* branches
+    for nid in node_ids:
+        if nid == root_id:
+            continue
+        branch_name = f"ct-{nid}"
+        try:
+            subprocess.run(
+                ["git", "branch", "-D", branch_name],
+                cwd=str(project_path),
+                capture_output=True,
+            )
+        except Exception:
+            pass
+
+    # Clean up persisted artifacts
+    for nid in node_ids:
+        artifact_dir = artifacts_dir / nid
+        if artifact_dir.exists():
+            shutil.rmtree(artifact_dir, ignore_errors=True)

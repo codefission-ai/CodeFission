@@ -21,8 +21,8 @@ from services.tree_service import (
     get_global_defaults,
     resolve_tree_settings,
 )
+from config import get_project_path
 from services.workspace_service import (
-    setup_repo,
     create_worktree,
     ensure_worktree,
     auto_commit,
@@ -30,9 +30,9 @@ from services.workspace_service import (
     resolve_workspace,
     copy_session,
     _run_git,
-    WORKSPACES_DIR,
-    read_file_from_commit,
     list_files_from_commit,
+    read_file_from_commit,
+    merge_to_branch as ws_merge_to_branch,
 )
 
 log = logging.getLogger(__name__)
@@ -89,17 +89,29 @@ class Orchestrator:
     async def create_tree(
         self,
         name: str,
-        repo_mode: str = "new",
-        repo_source: str | None = None,
+        base_branch: str = "main",
+        repo_id: str | None = None,
+        repo_path: str | None = None,
+        repo_name: str | None = None,
     ) -> tuple[Tree, Node]:
-        """Create a tree + root node + git repo. Returns (tree, root_node)."""
-        tree, root = await _create_tree(name, repo_mode=repo_mode)
-        await setup_repo(tree.id, root.id, repo_mode, repo_source)
+        """Create a tree + root node from the user's repo. Returns (tree, root_node).
 
-        root_dir = WORKSPACES_DIR / tree.id / root.id
-        _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
-        _, branch, _ = await _run_git(root_dir, "rev-parse", "--abbrev-ref", "HEAD")
-        await update_node(root.id, git_branch=branch, git_commit=head_sha)
+        No cloning or setup_repo — the repo is the project path itself.
+        """
+        project_path = get_project_path()
+        # Resolve HEAD of the base_branch in the user's repo
+        _, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch)
+        _, actual_branch, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", base_branch, check=False)
+
+        tree, root = await _create_tree(
+            name, base_branch=actual_branch, base_commit=head_sha,
+            repo_id=repo_id, repo_path=repo_path, repo_name=repo_name,
+        )
+        await update_node(root.id, git_branch=actual_branch, git_commit=head_sha)
+
+        # Protective ref prevents GC of the base commit
+        from services.workspace_service import create_protective_ref
+        await create_protective_ref(tree.id, head_sha)
 
         root = await get_node(root.id)
         return tree, root
@@ -148,10 +160,9 @@ class Orchestrator:
         branch_name = f"ct-{node.id}"
         await update_node(node.id, status="draft", git_branch=branch_name, git_commit=parent.git_commit)
 
-        # Ensure repo + worktree exist so files can be uploaded
-        await setup_repo(tree.id, tree.root_node_id, tree.repo_mode or "new", tree.repo_source)
+        # Ensure worktree exists so files can be uploaded
         await ensure_worktree(
-            tree.id, tree.root_node_id, node.id,
+            tree.root_node_id, node.id,
             parent_id, parent.git_commit,
         )
 
@@ -171,40 +182,13 @@ class Orchestrator:
 
         # Remove worktree + branch
         try:
-            await remove_worktree_and_branch(tree.id, tree.root_node_id, draft_node_id)
+            await remove_worktree_and_branch(tree.root_node_id, draft_node_id)
         except Exception:
             log.debug("Draft worktree removal failed for %s", draft_node_id, exc_info=True)
 
         # Delete the node from DB
         from services.tree_service import delete_single_node
         await delete_single_node(draft_node_id)
-
-    async def set_repo(
-        self,
-        tree_id: str,
-        repo_mode: str,
-        repo_source: str | None = None,
-    ) -> tuple[Tree, Node]:
-        """Configure (or reconfigure) the repo for a tree. Returns updated (tree, root_node)."""
-        tree = await get_tree(tree_id)
-        if not tree or not tree.root_node_id:
-            raise ValueError("Tree not found")
-
-        root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
-        if root_dir.exists() and repo_mode != tree.repo_mode:
-            import shutil
-            shutil.rmtree(root_dir, ignore_errors=True)
-
-        await setup_repo(tree.id, tree.root_node_id, repo_mode, repo_source)
-        root_dir = WORKSPACES_DIR / tree.id / tree.root_node_id
-        _, head_sha, _ = await _run_git(root_dir, "rev-parse", "HEAD")
-        _, branch, _ = await _run_git(root_dir, "rev-parse", "--abbrev-ref", "HEAD")
-        await update_node(tree.root_node_id, git_branch=branch, git_commit=head_sha)
-        await update_tree(tree.id, repo_mode=repo_mode, repo_source=repo_source)
-
-        updated_tree = await get_tree(tree.id)
-        root_node = await get_node(tree.root_node_id)
-        return updated_tree, root_node
 
     async def _build_file_quote_context(
         self,
@@ -223,7 +207,7 @@ class Orchestrator:
             nid = fq["node_id"]
             qtype = fq["type"]
             qnode = await get_node(nid)
-            ws_path = resolve_workspace(tree.id, root_node_id, nid)
+            ws_path = resolve_workspace(root_node_id, nid)
             node_label = qnode.label if qnode else nid[:8]
 
             # Build git ref metadata for the quoted node
@@ -281,7 +265,7 @@ class Orchestrator:
                             pass
                     elif qnode and qnode.git_commit:
                         try:
-                            content = await read_file_from_commit(tree.id, root_node_id, qnode.git_commit, fpath)
+                            content = await read_file_from_commit(qnode.git_commit, fpath)
                         except Exception:
                             pass
                     if content is not None:
@@ -322,7 +306,7 @@ class Orchestrator:
                 elif qnode and qnode.git_commit:
                     # Worktree removed — read from git
                     try:
-                        all_files = await list_files_from_commit(tree.id, root_node_id, qnode.git_commit)
+                        all_files = await list_files_from_commit(qnode.git_commit)
                         folder_prefix = folder.rstrip("/") + "/" if folder else ""
                         skip_dirs = {"node_modules/", "__pycache__/", ".venv/", "venv/"}
                         parts.append(f'\n--- Folder: {folder}/ (from "{node_label}"{git_ref}) ---\n')
@@ -332,7 +316,7 @@ class Orchestrator:
                             if any(sd in rel for sd in skip_dirs):
                                 continue
                             try:
-                                content = await read_file_from_commit(tree.id, root_node_id, qnode.git_commit, rel)
+                                content = await read_file_from_commit(qnode.git_commit, rel)
                                 if len(content) > MAX_FILE_SIZE:
                                     content = content[:MAX_FILE_SIZE] + "\n... [truncated]"
                                 if total + len(content) > MAX_TOTAL:
@@ -410,10 +394,10 @@ class Orchestrator:
         await update_node(nid, **update_kwargs)
 
         # Resolve workspace and ensure worktree
-        workspace = resolve_workspace(tree.id, tree.root_node_id, nid)
+        workspace = resolve_workspace(tree.root_node_id, nid)
         parent_node = await get_node(parent_node_id)
         await ensure_worktree(
-            tree.id, tree.root_node_id, nid,
+            tree.root_node_id, nid,
             parent_node_id,
             parent_node.git_commit if parent_node else None,
         )
@@ -423,7 +407,7 @@ class Orchestrator:
         sdk_msg = message
         if parent_node and parent_node.session_id:
             parent_session_id = parent_node.session_id
-            parent_ws = resolve_workspace(tree.id, tree.root_node_id, parent_node.id)
+            parent_ws = resolve_workspace(tree.root_node_id, parent_node.id)
             copy_session(parent_ws, workspace, parent_session_id)
 
             # Tell the model its workspace has changed
@@ -509,7 +493,7 @@ class Orchestrator:
         # Persist _artifacts/ to durable storage (survives worktree removal)
         node = await get_node(node_id)
         if node:
-            persist_artifacts(workspace, node.tree_id, node_id)
+            persist_artifacts(workspace, node_id)
 
         # Worktree cleanup is deferred to the caller, which checks for
         # running processes before removing the worktree directory.
@@ -546,7 +530,7 @@ class Orchestrator:
             # Persist _artifacts/ to durable storage (survives worktree removal)
             node = await get_node(node_id)
             if node:
-                persist_artifacts(workspace, node.tree_id, node_id)
+                persist_artifacts(workspace, node_id)
 
         await update_node(node_id, **update_kwargs)
         return CancelResult(node_id=node_id, saved_text=cancel_note, active_tools=active_tools)
@@ -554,3 +538,25 @@ class Orchestrator:
     async def fail_chat(self, node_id: str) -> None:
         """Mark a chat node as failed."""
         await update_node(node_id, status="error")
+
+    async def merge_to_branch(self, node_id: str, target_branch: str) -> dict:
+        """Squash merge a node's branch into target_branch.
+
+        Returns merge result dict.
+        """
+        node = await get_node(node_id)
+        if not node or not node.git_branch:
+            return {"ok": False, "error": "Node has no branch"}
+
+        tree = await get_tree(node.tree_id)
+        if not tree or not tree.root_node_id:
+            return {"ok": False, "error": "Tree not found"}
+
+        # Ensure the worktree/branch exists
+        await ensure_worktree(
+            tree.root_node_id, node_id,
+            node.parent_id, node.git_commit,
+        )
+
+        result = await ws_merge_to_branch(node.git_branch, target_branch)
+        return result

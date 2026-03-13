@@ -23,10 +23,39 @@ export interface CTree {
   provider: string;
   model: string;
   max_turns: number | null;
-  repo_mode: string;
-  repo_source: string | null;
   skill: string;
   notes: string;  // JSON array of {id, text, x, y, width, height}
+  base_branch: string;
+  base_commit: string | null;
+  repo_id: string | null;
+  repo_path: string | null;
+  repo_name: string | null;
+}
+
+export interface RepoContext {
+  repo_path: string;
+  repo_name: string;
+  current_branch: string;
+  is_dirty: boolean;
+}
+
+export interface BranchInfo {
+  name: string;
+  current: boolean;
+}
+
+export interface MergeResult {
+  nodeId: string;
+  ok: boolean;
+  commit?: string;
+  error?: string;
+  conflicts?: string[];
+}
+
+export interface StalenessInfo {
+  stale: boolean;
+  commits_behind: number;
+  branch_head?: string;
 }
 
 export interface ProviderInfo {
@@ -107,6 +136,11 @@ interface Store {
   showSettings: boolean;
   globalDefaults: GlobalDefaults;
   providers: ProviderInfo[];
+  repoContext: RepoContext | null;
+  repoBranches: BranchInfo[];
+  mergeResult: MergeResult | null;
+  treeStaleness: Record<string, StalenessInfo>;
+  sidebarOpen: boolean;
 }
 
 // Callback set by ws.ts to avoid circular imports
@@ -200,6 +234,11 @@ export const useStore = create<Store>(() => ({
   showSettings: false,
   globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", max_turns: 0, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
   providers: [],
+  repoContext: null,
+  repoBranches: [],
+  mergeResult: null,
+  treeStaleness: {},
+  sidebarOpen: true,
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -477,4 +516,15 @@ export const actions = {
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),
   setGlobalDefaults: (d: GlobalDefaults) => useStore.setState({ globalDefaults: d }),
   setProviders: (p: ProviderInfo[]) => useStore.setState({ providers: p }),
+
+  // ── Repo context ──────────────────────────────────────────────
+  setRepoContext: (ctx: RepoContext | null) => useStore.setState({ repoContext: ctx }),
+  setRepoBranches: (branches: BranchInfo[]) => useStore.setState({ repoBranches: branches }),
+  setMergeResult: (result: MergeResult | null) => useStore.setState({ mergeResult: result }),
+  setTreeStaleness: (treeId: string, staleness: StalenessInfo) =>
+    useStore.setState((s) => ({
+      treeStaleness: { ...s.treeStaleness, [treeId]: staleness },
+    })),
+  setSidebarOpen: (open: boolean) => useStore.setState({ sidebarOpen: open }),
+  toggleSidebar: () => useStore.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
 };

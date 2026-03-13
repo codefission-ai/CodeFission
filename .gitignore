@@ -18,3 +18,4 @@ ref_repos/
 codefission-ai/
 codefission/static/
 dist/
+.codefission/

@@ -1,18 +1,20 @@
 import aiosqlite
+import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
 from models import DEFAULT_PROVIDER, DEFAULT_MODEL
-from config import DATA_DIR
+from config import get_global_db_path
 
-DB_PATH = DATA_DIR / "codefission.db"
+log = logging.getLogger(__name__)
 
-_conn: aiosqlite.Connection | None = None
+# Cache of open DB connections, keyed by absolute path string
+_connections: dict[str, aiosqlite.Connection] = {}
 
 
-async def _open_connection() -> aiosqlite.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = await aiosqlite.connect(str(DB_PATH))
+async def _open_connection(db_path: Path) -> aiosqlite.Connection:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = await aiosqlite.connect(str(db_path))
     db.row_factory = aiosqlite.Row
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
@@ -21,25 +23,32 @@ async def _open_connection() -> aiosqlite.Connection:
 
 @asynccontextmanager
 async def get_db():
-    global _conn
-    if _conn is None:
-        _conn = await _open_connection()
-    yield _conn
+    """Get the global DB connection."""
+    db_path = get_global_db_path()
+    key = str(db_path)
+    if key not in _connections:
+        _connections[key] = await _open_connection(db_path)
+    yield _connections[key]
 
 
 async def close_db():
-    global _conn
-    if _conn is not None:
-        await _conn.close()
-        _conn = None
+    """Close all cached DB connections."""
+    for key, conn in list(_connections.items()):
+        try:
+            await conn.close()
+        except Exception:
+            pass
+    _connections.clear()
 
 
 async def init_db():
-    global _conn
-    # Close existing connection (e.g. tests changing DB_PATH)
-    if _conn is not None:
-        await _conn.close()
-        _conn = None
+    """Create tables and run migrations for the global DB."""
+    # Close existing connection to force re-open (e.g. tests changing DB path)
+    db_path = get_global_db_path()
+    key = str(db_path)
+    conn = _connections.pop(key, None)
+    if conn:
+        await conn.close()
 
     async with get_db() as db:
         await db.executescript("""
@@ -78,12 +87,6 @@ async def init_db():
                 f"ALTER TABLE trees ADD COLUMN model TEXT NOT NULL DEFAULT '{DEFAULT_MODEL}'"
             )
 
-        # Migrate: add repo_mode, repo_source to trees
-        if "repo_mode" not in columns:
-            await db.execute("ALTER TABLE trees ADD COLUMN repo_mode TEXT NOT NULL DEFAULT 'none'")
-        if "repo_source" not in columns:
-            await db.execute("ALTER TABLE trees ADD COLUMN repo_source TEXT")
-
         # Migrate: add max_turns to trees
         if "max_turns" not in columns:
             await db.execute("ALTER TABLE trees ADD COLUMN max_turns INTEGER")
@@ -95,6 +98,20 @@ async def init_db():
         # Migrate: add notes to trees
         if "notes" not in columns:
             await db.execute("ALTER TABLE trees ADD COLUMN notes TEXT NOT NULL DEFAULT '[]'")
+
+        # Migrate: add base_branch, base_commit to trees
+        if "base_branch" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN base_branch TEXT NOT NULL DEFAULT 'main'")
+        if "base_commit" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN base_commit TEXT")
+
+        # Migrate: add repo_id, repo_path, repo_name to trees
+        if "repo_id" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN repo_id TEXT")
+        if "repo_path" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN repo_path TEXT")
+        if "repo_name" not in columns:
+            await db.execute("ALTER TABLE trees ADD COLUMN repo_name TEXT")
 
         # Migrate: rename provider "anthropic" → "claude-code"
         await db.execute("UPDATE trees SET provider = 'claude-code' WHERE provider = 'anthropic'")
@@ -112,5 +129,8 @@ async def init_db():
             await db.execute("ALTER TABLE nodes ADD COLUMN created_by TEXT NOT NULL DEFAULT 'human'")
         if "quoted_node_ids" not in node_columns:
             await db.execute("ALTER TABLE nodes ADD COLUMN quoted_node_ids TEXT NOT NULL DEFAULT '[]'")
+
+        # Index for repo_id + base_commit lookups
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_trees_repo ON trees(repo_id, base_commit)")
 
         await db.commit()

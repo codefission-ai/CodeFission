@@ -21,7 +21,6 @@ export const WS = {
   CANCEL: "cancel",
   DUPLICATE: "duplicate",
   GET_NODE: "get_node",
-  SET_REPO: "set_repo",
   GET_NODE_FILES: "get_node_files",
   GET_NODE_DIFF: "get_node_diff",
   GET_FILE_CONTENT: "get_file_content",
@@ -35,6 +34,11 @@ export const WS = {
   KILL_PROCESS: "kill_process",
   KILL_ALL_PROCESSES: "kill_all_processes",
   DELETE_NODE: "delete_node",
+  GET_REPO_INFO: "get_repo_info",
+  LIST_BRANCHES: "list_branches",
+  MERGE_TO_BRANCH: "merge_to_branch",
+  OPEN_REPO: "open_repo",
+  UPDATE_BASE: "update_base",
 
   // Outbound (server → client)
   TREES: "trees",
@@ -56,6 +60,11 @@ export const WS = {
   SETTINGS: "settings",
   NODE_PROCESSES: "node_processes",
   NODES_DELETED: "nodes_deleted",
+  REPO_INFO: "repo_info",
+  BRANCHES: "branches",
+  MERGE_RESULT: "merge_result",
+  REPO_OPENED: "repo_opened",
+  BASE_UPDATED: "base_updated",
 } as const;
 
 let ws: WebSocket | null = null;
@@ -131,7 +140,23 @@ export function connectWs() {
       ws!.send(JSON.stringify(msg));
     }
     sendQueue = [];
-    send({ type: WS.LIST_TREES });
+
+    // Check URL for ?repo_id= + ?head= + ?path= params
+    const params = new URLSearchParams(window.location.search);
+    const repoId = params.get("repo_id");
+    const headCommit = params.get("head");
+    const repoPath = params.get("path");
+
+    if (repoId && headCommit && repoPath) {
+      // Canvas-first: sidebar starts closed when opening from a repo
+      actions.setSidebarOpen(false);
+      send({ type: WS.OPEN_REPO, repo_id: repoId, head_commit: headCommit, repo_path: repoPath });
+    } else {
+      // No repo specified — sidebar open, list all trees
+      actions.setSidebarOpen(true);
+      send({ type: WS.LIST_TREES });
+      send({ type: WS.LIST_BRANCHES });
+    }
   };
   ws.onclose = () => {
     actions.setConnected(false);
@@ -155,8 +180,6 @@ export function send(msg: Record<string, unknown>) {
 }
 
 // ── Chunk batching ──────────────────────────────────────────────────────
-// Accumulate text chunks per node and flush once per animation frame,
-// so rapid streaming doesn't trigger a store update + React render per chunk.
 const pendingChunks = new Map<string, string>();
 let chunkRafId: number | null = null;
 
@@ -212,6 +235,9 @@ function handle(data: any) {
         for (const [nodeId, procs] of Object.entries(data.node_processes)) {
           actions.setNodeProcesses(nodeId, procs as any[]);
         }
+      }
+      if (data.tree && data.staleness) {
+        actions.setTreeStaleness(data.tree.id, data.staleness);
       }
       // Don't auto-select any node — let user click to focus
       break;
@@ -285,6 +311,71 @@ function handle(data: any) {
     case WS.SETTINGS:
       if (data.global_defaults) actions.setGlobalDefaults(data.global_defaults);
       if (data.providers) actions.setProviders(data.providers);
+      break;
+    case WS.REPO_INFO:
+      actions.setRepoContext({
+        repo_path: data.path,
+        repo_name: data.name,
+        current_branch: data.current_branch,
+        is_dirty: data.is_dirty,
+      });
+      break;
+    case WS.BRANCHES:
+      actions.setRepoBranches(data.branches || []);
+      break;
+    case WS.MERGE_RESULT:
+      actions.setMergeResult({
+        nodeId: data.node_id,
+        ok: data.ok,
+        commit: data.commit,
+        error: data.error,
+        conflicts: data.conflicts,
+      });
+      if (data.ok) {
+        // Refresh repo info and branches after successful merge
+        send({ type: WS.GET_REPO_INFO });
+        send({ type: WS.LIST_BRANCHES });
+      }
+      break;
+    case WS.REPO_OPENED:
+      actions.setRepoContext({
+        repo_path: data.path,
+        repo_name: data.repo_name || data.name,
+        current_branch: data.current_branch,
+        is_dirty: data.is_dirty,
+      });
+      // Load tree + nodes directly from the response
+      if (data.tree) {
+        actions.setTrees([data.tree]);
+        actions.selectTree(data.tree.id);
+        if (data.nodes) actions.setNodes(data.nodes);
+        if (data.staleness) actions.setTreeStaleness(data.tree.id, data.staleness);
+      }
+      if (data.branches) {
+        actions.setRepoBranches(data.branches);
+      } else {
+        send({ type: WS.LIST_BRANCHES });
+      }
+      // Also fetch full tree list for sidebar
+      send({ type: WS.LIST_TREES });
+      break;
+    case WS.BASE_UPDATED:
+      if (data.existing_tree_id) {
+        // A tree already exists for this (repo, commit) — switch to it
+        actions.selectTree(data.existing_tree_id);
+        send({ type: WS.LOAD_TREE, tree_id: data.existing_tree_id });
+        send({ type: WS.SELECT_TREE, tree_id: data.existing_tree_id });
+      }
+      if (data.tree) {
+        actions.updateTree(data.tree);
+        actions.setTreeStaleness(data.tree.id, data.staleness || { stale: false, commits_behind: 0 });
+        if (data.tree.root_node_id && data.tree.base_commit) {
+          actions.updateNodeGit(data.tree.root_node_id, data.tree.base_commit);
+        }
+      }
+      if (data.branches) {
+        actions.setRepoBranches(data.branches);
+      }
       break;
   }
 }

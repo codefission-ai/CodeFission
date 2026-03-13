@@ -54,7 +54,10 @@ class WS:
     Outbound = server → client responses/pushes
     """
 
-    # Inbound (client → server)
+    # Inbound (client → server) — Repo management
+    OPEN_REPO = "open_repo"
+
+    # Inbound (client → server) — Tree/Node operations
     LIST_TREES = "list_trees"
     CREATE_TREE = "create_tree"
     LOAD_TREE = "load_tree"
@@ -64,7 +67,6 @@ class WS:
     CANCEL = "cancel"
     DUPLICATE = "duplicate"
     GET_NODE = "get_node"
-    SET_REPO = "set_repo"
     GET_NODE_FILES = "get_node_files"
     GET_NODE_DIFF = "get_node_diff"
     GET_FILE_CONTENT = "get_file_content"
@@ -78,11 +80,18 @@ class WS:
     KILL_PROCESS = "kill_process"
     KILL_ALL_PROCESSES = "kill_all_processes"
     DELETE_NODE = "delete_node"
+    GET_REPO_INFO = "get_repo_info"
+    LIST_BRANCHES = "list_branches"
+    MERGE_TO_BRANCH = "merge_to_branch"
+    UPDATE_BASE = "update_base"
 
-    # Outbound
+    # Outbound — Settings
     SETTINGS = "settings"
 
-    # Outbound (server → client)
+    # Outbound (server → client) — Repo
+    REPO_OPENED = "repo_opened"
+
+    # Outbound (server → client) — Tree/Node
     TREES = "trees"
     TREE_CREATED = "tree_created"
     TREE_LOADED = "tree_loaded"
@@ -101,3 +110,7 @@ class WS:
     ERROR = "error"
     NODE_PROCESSES = "node_processes"
     NODES_DELETED = "nodes_deleted"
+    REPO_INFO = "repo_info"
+    BRANCHES = "branches"
+    MERGE_RESULT = "merge_result"
+    BASE_UPDATED = "base_updated"

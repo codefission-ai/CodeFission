@@ -44,17 +44,19 @@ def test_tree_defaults():
     t = Tree(id="t1", name="Test")
     assert t.provider == DEFAULT_PROVIDER
     assert t.model == DEFAULT_MODEL
-    assert t.repo_mode == "new"
-    assert t.repo_source is None
+    assert t.repo_id is None
+    assert t.repo_path is None
+    assert t.repo_name is None
     assert t.root_node_id is None
 
 
 def test_tree_serialization():
     """Tree.model_dump() includes all fields."""
-    t = Tree(id="t1", name="Test", repo_mode="local", repo_source="/path")
+    t = Tree(id="t1", name="Test", repo_id="abc", repo_path="/path", repo_name="my-repo")
     d = t.model_dump()
-    assert d["repo_mode"] == "local"
-    assert d["repo_source"] == "/path"
+    assert d["repo_id"] == "abc"
+    assert d["repo_path"] == "/path"
+    assert d["repo_name"] == "my-repo"
     assert "root_node_id" in d
 
 

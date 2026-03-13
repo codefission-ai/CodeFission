@@ -30,7 +30,10 @@ class Tree(BaseModel):
     provider: str = DEFAULT_PROVIDER
     model: str = DEFAULT_MODEL
     max_turns: int | None = None
-    repo_mode: str = "new"
-    repo_source: str | None = None
     skill: str = ""
     notes: str = "[]"  # JSON array of {id, text, x, y, width, height}
+    base_branch: str = "main"
+    base_commit: str | None = None
+    repo_id: str | None = None       # SHA of initial commit (repo identity)
+    repo_path: str | None = None     # last known abs path (display + workspace resolution)
+    repo_name: str | None = None     # display name (from git remote or dirname)

@@ -74,10 +74,17 @@ export default function App() {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
+  // Sidebar open state from store (set by ws.ts based on URL)
+  const sidebarOpen = useStore((s) => s.sidebarOpen);
+
   // Panel widths & collapsed state
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const [chatWidth, setChatWidth] = useState(380);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarCollapsed = !sidebarOpen;
+  const setSidebarCollapsed = (v: boolean | ((prev: boolean) => boolean)) => {
+    const collapsed = typeof v === "function" ? v(!sidebarOpen) : v;
+    actions.setSidebarOpen(!collapsed);
+  };
   const [chatCollapsed, setChatCollapsed] = useState(true);
 
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -161,7 +168,7 @@ export default function App() {
             </button>
           </div>
           <div className="toolbar-center">
-            {treeName && <span className="toolbar-tree-name">{treeName}</span>}
+            <span className="toolbar-tree-name">{treeName}</span>
           </div>
           <div className="toolbar-right">
             <button

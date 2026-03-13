@@ -4,10 +4,17 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from config import set_project_path
 from services.chat_service import (
     TextDelta, ToolStart, ToolEnd, SessionInit, _build_system_prompt,
 )
 from models import Node, Tree
+
+
+@pytest.fixture(autouse=True)
+def _set_fake_project():
+    """Set a fake project path so _build_system_prompt can call get_project_path()."""
+    set_project_path(Path("/fake/project"))
 
 
 # ── Event dataclass tests ────────────────────────────────────────────
@@ -71,8 +78,8 @@ def _make_node(**kwargs) -> Node:
 def _make_tree(**kwargs) -> Tree:
     defaults = dict(
         id="tree-1", name="Test", created_at="",
-        root_node_id="node-1", provider="anthropic",
-        model="claude-sonnet-4-6", repo_mode="new", repo_source=None,
+        root_node_id="node-1", provider="claude-code",
+        model="claude-sonnet-4-6",
     )
     defaults.update(kwargs)
     return Tree(**defaults)
@@ -89,7 +96,7 @@ def test_system_prompt_basic():
 def test_system_prompt_root_node_with_workspace():
     """Root node prompt mentions main branch and working directory."""
     node = _make_node()
-    tree = _make_tree(repo_mode="new")
+    tree = _make_tree()
     ws = Path("/fake/workspace")
     prompt = _build_system_prompt(node, tree=tree, workspace=ws)
     assert "/fake/workspace" in prompt
@@ -110,23 +117,24 @@ def test_system_prompt_child_node():
     assert "isolated" in prompt
 
 
-def test_system_prompt_cloned_repo():
-    """Prompt mentions clone source for local/url repos."""
+def test_system_prompt_project_native_context():
+    """Prompt mentions the user's project and base branch."""
     node = _make_node()
-    tree = _make_tree(repo_mode="local", repo_source="/home/user/project")
+    tree = _make_tree(base_branch="main")
     ws = Path("/fake/workspace")
     prompt = _build_system_prompt(node, tree=tree, workspace=ws)
-    assert "/home/user/project" in prompt
-    assert "cloned from" in prompt
+    assert "user's project" in prompt
+    assert "branched from" in prompt
+    assert "'main'" in prompt
 
 
-def test_system_prompt_new_repo():
-    """Prompt mentions fresh empty repository for new repos."""
+def test_system_prompt_custom_base_branch():
+    """Prompt uses the tree's base_branch value."""
     node = _make_node()
-    tree = _make_tree(repo_mode="new")
+    tree = _make_tree(base_branch="develop")
     ws = Path("/fake/workspace")
     prompt = _build_system_prompt(node, tree=tree, workspace=ws)
-    assert "fresh empty repository" in prompt
+    assert "'develop'" in prompt
 
 
 def test_system_prompt_no_workspace():

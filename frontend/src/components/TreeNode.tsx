@@ -1,55 +1,163 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type ToolCall, type ProcessInfo, type FileQuote, isDetachable, getSubtreeIds } from "../store";
+import { useStore, actions, type CNode, type CTree, type ToolCall, type ProcessInfo, type FileQuote, type MergeResult, isDetachable, getSubtreeIds } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
 import NodeModal from "./NodeModal";
-import { collectDroppedFiles, uploadFiles, useFileAttach, formatFileSize } from "../fileAttach";
+import { useFileAttach, formatFileSize } from "../fileAttach";
 
 function truncate(text: string, max: number): string {
   if (!text || text.length <= max) return text || "";
   return text.slice(0, max) + "...";
 }
 
-function RepoBadge({ tree, onBrowse }: {
-  tree: { repo_mode: string; repo_source: string | null };
-  onBrowse?: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const label = tree.repo_mode === "new"
-    ? "empty repo"
-    : tree.repo_source || tree.repo_mode;
+function BranchSection({ tree, hasChildren }: { tree: CTree; hasChildren: boolean }) {
+  const repoBranches = useStore((s) => s.repoBranches);
+  const branch = tree.base_branch || "main";
+  const shortSha = tree.base_commit ? tree.base_commit.slice(0, 7) : "";
+  const locked = hasChildren;
+  const [commitInput, setCommitInput] = useState("");
+  const [editingCommit, setEditingCommit] = useState(false);
+  const [pathInput, setPathInput] = useState("");
+  const [editingPath, setEditingPath] = useState(false);
 
-  const handleCopy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(label);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
-  };
+  const handleBranchChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    send({ type: WS.UPDATE_BASE, tree_id: tree.id, base_branch: e.target.value });
+  }, [tree.id]);
+
+  const handleCommitSubmit = useCallback(() => {
+    const val = commitInput.trim();
+    if (val && val !== tree.base_commit && val !== shortSha) {
+      send({ type: WS.UPDATE_BASE, tree_id: tree.id, base_commit: val });
+    }
+    setEditingCommit(false);
+    setCommitInput("");
+  }, [commitInput, tree.id, tree.base_commit, shortSha]);
+
+  const handlePathSubmit = useCallback(() => {
+    const val = pathInput.trim();
+    if (val && val !== tree.repo_path) {
+      send({ type: WS.UPDATE_BASE, tree_id: tree.id, repo_path: val });
+    }
+    setEditingPath(false);
+  }, [pathInput, tree.id, tree.repo_path]);
 
   return (
-    <div className="repo-badge" onClick={(e) => e.stopPropagation()}>
-      <span
-        className={`repo-badge-text ${onBrowse ? "repo-badge-browsable" : ""}`}
-        title={label}
-        onClick={onBrowse}
+    <div className={`root-section ${locked ? "root-section-locked" : ""}`} onClick={(e) => e.stopPropagation()}>
+      <label className="root-section-label">Base</label>
+      {locked ? (
+        tree.repo_path ? (
+          <div className="branch-info-path" title={tree.repo_path}>
+            {tree.repo_path}
+          </div>
+        ) : null
+      ) : editingPath ? (
+        <input
+          className="branch-path-input nopan nodrag"
+          value={pathInput}
+          onChange={(e) => setPathInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handlePathSubmit(); if (e.key === "Escape") { setEditingPath(false); } }}
+          onBlur={handlePathSubmit}
+          placeholder="/path/to/repo"
+          autoFocus
+        />
+      ) : (
+        <div
+          className="branch-info-path editable"
+          title={tree.repo_path ? `${tree.repo_path} (click to change)` : "Click to set repo path"}
+          onClick={() => { setEditingPath(true); setPathInput(tree.repo_path || ""); }}
+        >
+          {tree.repo_path || "no repo — click to set"}
+        </div>
+      )}
+      <div className="branch-info-row">
+        {locked ? (
+          <span className="branch-info-name">{branch}</span>
+        ) : (
+          <select
+            className="branch-select nopan nodrag"
+            value={branch}
+            onChange={handleBranchChange}
+          >
+            {!repoBranches.some((b) => b.name === branch) && (
+              <option value={branch}>{branch}</option>
+            )}
+            {repoBranches.map((b) => (
+              <option key={b.name} value={b.name}>{b.name}</option>
+            ))}
+          </select>
+        )}
+        {locked ? (
+          shortSha ? (
+            <span
+              className="branch-info-sha"
+              title={`Commit: ${tree.base_commit}`}
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(tree.base_commit || ""); }}
+            >
+              @{shortSha}
+            </span>
+          ) : null
+        ) : editingCommit ? (
+          <input
+            className="commit-input nopan nodrag"
+            value={commitInput}
+            onChange={(e) => setCommitInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleCommitSubmit(); if (e.key === "Escape") { setEditingCommit(false); setCommitInput(""); } }}
+            onBlur={handleCommitSubmit}
+            placeholder="sha or ref..."
+            autoFocus
+          />
+        ) : (
+          <span
+            className="branch-info-sha editable"
+            title={tree.base_commit ? `Commit: ${tree.base_commit} (click to change)` : "Click to set commit"}
+            onClick={(e) => { e.stopPropagation(); setEditingCommit(true); setCommitInput(tree.base_commit || ""); }}
+          >
+            @{shortSha || "HEAD"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StalenessBanner({ treeId }: { treeId: string }) {
+  const staleness = useStore((s) => s.treeStaleness[treeId]);
+  const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
+  if (!staleness?.stale) return null;
+  const branch = tree?.base_branch || "main";
+  return (
+    <div className="staleness-banner" onClick={(e) => e.stopPropagation()}>
+      <span>{branch} has {staleness.commits_behind} new commit{staleness.commits_behind !== 1 ? "s" : ""} since this tree was created</span>
+      <button
+        className="staleness-update-btn"
+        onClick={() => send({ type: WS.UPDATE_BASE, tree_id: treeId })}
       >
-        {label}
-      </span>
-      <button className="repo-badge-copy" onClick={handleCopy} title="Copy path">
-        {copied ? "ok" : "cp"}
+        Update base
       </button>
     </div>
   );
 }
 
-/** Detect input type: github/git URL, local absolute path, or plain message */
-function detectInputType(text: string): "url" | "local" | "message" {
-  const t = text.trim();
-  if (/^https?:\/\//i.test(t) || /^git@/i.test(t) || t.endsWith(".git")) return "url";
-  if (t.startsWith("/") || t.startsWith("~")) return "local";
-  return "message";
+function MergeResultBanner({ result, onDismiss }: { result: MergeResult; onDismiss: () => void }) {
+  return (
+    <div className={`merge-result-banner ${result.ok ? "success" : "error"}`} onClick={(e) => e.stopPropagation()}>
+      {result.ok ? (
+        <span>Merged successfully{result.commit ? ` (${result.commit.slice(0, 7)})` : ""}</span>
+      ) : (
+        <div className="merge-result-error">
+          <span>{result.error || "Merge failed"}</span>
+          {result.conflicts && result.conflicts.length > 0 && (
+            <ul className="merge-conflicts-list">
+              {result.conflicts.map((f) => <li key={f}>{f}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+      <button className="merge-result-dismiss" onClick={onDismiss}>&times;</button>
+    </div>
+  );
 }
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
@@ -144,19 +252,21 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   const isRoot = !node.parent_id;
   const parentCommit = useStore((s) => node.parent_id ? s.nodes[node.parent_id]?.git_commit : null);
   const hasCodeChange = !isRoot && !!node.git_commit && node.git_commit !== parentCommit;
+  // Get tree info for merge button (need base_branch for non-root nodes too)
+  const treeForMerge = useStore((s) => s.trees.find((t) => t.id === node.tree_id));
+  const mergeResult = useStore((s) => s.mergeResult?.nodeId === node.id ? s.mergeResult : null);
+  const [merging, setMerging] = useState(false);
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const responseRef = useRef<HTMLDivElement>(null);
   const attach = useFileAttach({ treeId: node.tree_id, parentNodeId: node.id });
 
-  // Block wheel events so ReactFlow doesn't pan when scrolling the response,
-  // but only when this node is selected (focused).
+  // Block wheel events so ReactFlow doesn't pan when scrolling the response
   useEffect(() => {
     const el = responseRef.current;
     if (!el || !selected) return;
     const stop = (e: WheelEvent) => {
-      // Let Cmd/Ctrl+Scroll through for canvas zoom
       if (e.metaKey || e.ctrlKey) return;
       if (el.scrollHeight > el.clientHeight) e.stopPropagation();
     };
@@ -164,7 +274,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     return () => el.removeEventListener("wheel", stop);
   }, [selected]);
 
-  // Consume pendingInputText from store (e.g. from FilesPanel text selection quotes)
+  // Consume pendingInputText from store
   const pendingInputText = useStore((s) => s.pendingInputText);
   useEffect(() => {
     if (pendingInputText && selected) {
@@ -172,6 +282,11 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       actions.clearPendingInput();
     }
   }, [pendingInputText, selected]);
+
+  // Reset merging spinner when result arrives
+  useEffect(() => {
+    if (mergeResult) setMerging(false);
+  }, [mergeResult]);
 
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response, node.id) : "",
@@ -208,7 +323,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       actions.updateNodeGit(node.id, result.git_commit);
     }
 
-    // Build message: append uploaded file paths so the LLM knows they exist in the workspace
+    // Build message
     let content = input.trim();
     if (fileQuotes.length > 0) {
       const paths = fileQuotes.map((q) => q.path);
@@ -219,7 +334,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     const msg: Record<string, unknown> = { type: WS.CHAT, node_id: node.id, content };
     if (draftNodeId) msg.draft_node_id = draftNodeId;
 
-    // Cross-branch quotes (node, file, folder references — NOT uploaded files)
+    // Cross-branch quotes
     const pendingQ = useStore.getState().pendingQuotes;
     const allQuotes = pendingQ.map((q: FileQuote) => ({
       node_id: q.nodeId,
@@ -240,17 +355,10 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     send({ type: WS.GET_NODE_FILES, node_id: node.id });
   }, [node.id]);
 
-  const handleBrowseRepo = useCallback(() => {
-    actions.openFilesPanel(node.id);
-    send({ type: WS.GET_NODE_FILES, node_id: node.id });
-  }, [node.id]);
-
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const s = useStore.getState();
-    // Collect the full subtree rooted at this node
     const ids = getSubtreeIds(s.nodes, node.id);
-    // Block if any node in the subtree is streaming
     if (ids.some((id) => s.streaming[id])) return;
     actions.softDeleteNodes(ids);
     const prev = s.deleteToast;
@@ -263,65 +371,33 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     actions.setDeleteToast({ ids, label, timer });
   }, [node.id]);
 
-  const [dragOver, setDragOver] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [uploadInfo, setUploadInfo] = useState<{ label: string; count: number } | null>(null);
-
-  const handleFileDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
+  const handleMerge = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setDragOver(false);
-    const { files, label } = await collectDroppedFiles(e);
-    if (!files.length) return;
-    setUploading(true);
-    const result = await uploadFiles(node.tree_id, node.id, files);
-    setUploading(false);
-    if (result) {
-      actions.updateNodeGit(node.id, result.git_commit);
-      send({ type: WS.GET_NODE_FILES, node_id: node.id });
-      setUploadInfo((prev) => ({
-        label: prev ? prev.label + ", " + label : label,
-        count: (prev?.count || 0) + result.count,
-      }));
-    }
-  }, [node.tree_id, node.id]);
+    if (!treeForMerge || merging) return;
+    setMerging(true);
+    actions.setMergeResult(null);
+    send({
+      type: WS.MERGE_TO_BRANCH,
+      node_id: node.id,
+      target_branch: treeForMerge.base_branch || "main",
+    });
+  }, [node.id, treeForMerge, merging]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-  }, []);
-
-  const [loading, setLoading] = useState(false);
-  const hasRepo = tree && tree.repo_mode !== "new";
   const hasChildren = node.children_ids.length > 0;
-  const [repoInput, setRepoInput] = useState("");
-  const repoInputType = detectInputType(repoInput);
   const [skillInput, setSkillInput] = useState(tree?.skill ?? "");
   const skillTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
   const skillTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const repoTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync skill input when tree data changes externally
   useEffect(() => {
     if (tree) setSkillInput(tree.skill);
   }, [tree?.skill]);
 
-  // Auto-resize skill and repo textareas
+  // Auto-resize skill textarea
   useLayoutEffect(() => {
     const ta = skillTextareaRef.current;
     if (ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
   }, [skillInput, selected]);
-  useLayoutEffect(() => {
-    const ta = repoTextareaRef.current;
-    if (ta) { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
-  }, [repoInput, selected]);
 
   // Debounced save for skill
   const handleSkillChange = useCallback((val: string) => {
@@ -332,30 +408,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
     }, 500);
   }, [node.tree_id]);
 
-  const handleRepoSubmit = useCallback(() => {
-    if (!repoInput.trim() || loading) return;
-    const t = repoInput.trim();
-    const type = detectInputType(t);
-    if (type === "url" || type === "local") {
-      setLoading(true);
-      send({
-        type: WS.SET_REPO,
-        tree_id: node.tree_id,
-        repo_mode: type === "url" ? "url" : "local",
-        repo_source: t,
-      });
-      setRepoInput("");
-      setTimeout(() => setLoading(false), 30000);
-    }
-  }, [repoInput, loading, node.tree_id]);
-
-  // Clear loading when tree updates (repo set succeeded)
-  const treeRepoMode = tree?.repo_mode;
-  useEffect(() => {
-    if (treeRepoMode && treeRepoMode !== "new") setLoading(false);
-  }, [treeRepoMode]);
-
-  // Root hub: three-section input
+  // Root hub: two-section input (Skill + Message), with branch badge
   if (isRoot && !node.user_message) {
     return (
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
@@ -379,72 +432,13 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
           />
         </div>
 
-        {/* Section 2: Repo */}
-        <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
-          <label className="root-section-label">
-            Repo
-            {hasChildren && hasRepo && tree?.repo_source && <CopyBtn text={tree.repo_source} />}
-          </label>
-          {hasRepo && tree ? (
-            <RepoBadge tree={tree} onBrowse={!hasChildren ? handleBrowseRepo : undefined} />
-          ) : uploadInfo ? (
-            <div
-              className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleFileDrop}
-            >
-              <div className="upload-badge" onClick={(e) => e.stopPropagation()}>
-                <span
-                  className="upload-badge-text"
-                  onClick={handleBrowseRepo}
-                  title="Browse files"
-                >
-                  {uploadInfo.label} ({uploadInfo.count} file{uploadInfo.count !== 1 ? "s" : ""})
-                </span>
-                {uploading && <span className="upload-badge-hint">uploading...</span>}
-              </div>
-              {dragOver && <div className="drop-zone-overlay">Drop more files</div>}
-            </div>
-          ) : (
-            <>
-              <div
-                className={`drop-zone ${dragOver ? "drop-zone-active" : ""}`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleFileDrop}
-              >
-                <textarea
-                  ref={repoTextareaRef}
-                  className="root-section-input nopan nodrag"
-                  value={repoInput}
-                  onChange={(e) => setRepoInput(e.target.value)}
-                  onFocus={() => actions.selectNode(node.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleRepoSubmit();
-                    }
-                  }}
-                  placeholder={uploading ? "Uploading..." : "Drop a folder, paste a path or GitHub URL..."}
-                  rows={2}
-                  disabled={hasChildren || loading || uploading}
-                />
-                {dragOver && <div className="drop-zone-overlay">Drop files here</div>}
-              </div>
-              {repoInput.trim() && (
-                <div className="root-input-hint">
-                  {repoInputType === "url" ? "⏎ clone repo" :
-                   repoInputType === "local" ? "⏎ copy from path" :
-                   "Enter a path or URL"}
-                </div>
-              )}
-              {loading && <div className="root-input-hint">Setting up repo...</div>}
-            </>
-          )}
-        </div>
+        {/* Branch info (editable when no children, locked once children exist) */}
+        {tree && <BranchSection tree={tree} hasChildren={hasChildren} />}
 
-        {/* Section 3: Message */}
+        {/* Staleness banner */}
+        <StalenessBanner treeId={node.tree_id} />
+
+        {/* Section 2: Message */}
         <div className="root-section">
           <label className="root-section-label">Message</label>
           {pendingQuotes.length > 0 && selected && (
@@ -493,7 +487,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               }}
               placeholder="Type a message..."
               rows={1}
-              disabled={loading}
             />
             <button
               className="attach-btn nopan nodrag"
@@ -555,7 +548,7 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       )}
       {isExpanded && (
         <div className="tree-node-preview" onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
-          {/* Quote button: hover to quote this node into your message */}
+          {/* Quote button */}
           {canShowQuote && (
             <button
               className={`quote-btn ${quotesFromThis > 0 ? "quoted" : ""}`}
@@ -564,7 +557,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                 e.stopPropagation();
                 e.nativeEvent.stopImmediatePropagation();
                 if (quotesFromThis > 0) {
-                  // Remove all quotes from this node
                   const toRemove = useStore.getState().pendingQuotes.filter((q) => q.nodeId === node.id);
                   toRemove.forEach((q) => actions.removeFileQuote(q.id));
                 } else {
@@ -580,9 +572,21 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               {quotesFromThis > 0 ? "Quoted \u2713" : "Quote"}
             </button>
           )}
-          {isRoot && tree && (
-            <RepoBadge tree={tree} onBrowse={handleBrowseRepo} />
+          {isRoot && treeForMerge && (
+            <div className="branch-info-row branch-info-compact" onClick={(e) => e.stopPropagation()}>
+              <span className="branch-info-name">{treeForMerge.base_branch || "main"}</span>
+              {treeForMerge.base_commit && (
+                <span
+                  className="branch-info-sha"
+                  title={`Commit: ${treeForMerge.base_commit}`}
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(treeForMerge.base_commit || ""); }}
+                >
+                  @{treeForMerge.base_commit.slice(0, 7)}
+                </span>
+              )}
+            </div>
           )}
+          {isRoot && <StalenessBanner treeId={node.tree_id} />}
           {node.user_message && (
             <div className="tree-node-user">
               {truncate(node.user_message, 150)}
@@ -604,7 +608,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
               className={`tree-node-assistant ${selected && !isStreaming ? "clickable" : ""}`}
               onClick={(e) => {
                 if (!selected || isStreaming) return;
-                // Don't open modal when clicking a link (e.g. cmd/ctrl+click to open in new tab)
                 const target = e.target as HTMLElement;
                 if (target.closest("a")) return;
                 setShowModal(true);
@@ -735,7 +738,20 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                     Files
                   </button>
                 )}
+                {hasCodeChange && treeForMerge && (
+                  <button
+                    className={`tree-node-action-btn merge-btn ${merging ? "merging" : ""}`}
+                    onClick={handleMerge}
+                    disabled={merging}
+                    title={`Squash merge into ${treeForMerge.base_branch || "main"}`}
+                  >
+                    {merging ? "Merging..." : `Merge to ${treeForMerge.base_branch || "main"}`}
+                  </button>
+                )}
               </div>
+              {mergeResult && (
+                <MergeResultBanner result={mergeResult} onDismiss={() => actions.setMergeResult(null)} />
+              )}
             </>
           )}
 

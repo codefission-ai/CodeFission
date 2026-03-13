@@ -5,7 +5,7 @@ import pytest
 from services.tree_service import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, update_tree, delete_tree,
-    get_path_to_root,
+    get_path_to_root, find_tree,
 )
 
 
@@ -16,7 +16,7 @@ async def test_create_tree_defaults(tmp_db):
     """create_tree returns a tree with default provider/model and a root node."""
     tree, root = await create_tree("Test Tree")
     assert tree.name == "Test Tree"
-    assert tree.repo_mode == "new"
+    assert tree.base_branch == "main"
     assert tree.provider == ""
     assert tree.model == ""
     assert root.tree_id == tree.id
@@ -26,15 +26,15 @@ async def test_create_tree_defaults(tmp_db):
 
 @pytest.mark.asyncio
 async def test_create_tree_custom_params(tmp_db):
-    """create_tree accepts custom provider, model, repo_mode."""
+    """create_tree accepts custom provider, model, base_branch."""
     tree, root = await create_tree(
-        "Custom", provider="openai", model="gpt-4", repo_mode="local",
-        repo_source="/some/path",
+        "Custom", provider="openai", model="gpt-4",
+        base_branch="develop", base_commit="abc123",
     )
     assert tree.provider == "openai"
     assert tree.model == "gpt-4"
-    assert tree.repo_mode == "local"
-    assert tree.repo_source == "/some/path"
+    assert tree.base_branch == "develop"
+    assert tree.base_commit == "abc123"
 
 
 @pytest.mark.asyncio
@@ -61,9 +61,9 @@ async def test_list_trees_empty(tmp_db):
 @pytest.mark.asyncio
 async def test_list_trees_ordering(tmp_db):
     """list_trees returns trees in reverse chronological order."""
-    t1, _ = await create_tree("First")
-    t2, _ = await create_tree("Second")
-    t3, _ = await create_tree("Third")
+    t1, _ = await create_tree("First", repo_id="r1", base_commit="a")
+    t2, _ = await create_tree("Second", repo_id="r1", base_commit="b")
+    t3, _ = await create_tree("Third", repo_id="r1", base_commit="c")
     trees = await list_trees()
     assert len(trees) == 3
     # Most recent first
@@ -201,21 +201,22 @@ async def test_update_node_partial(tmp_db):
 
 @pytest.mark.asyncio
 async def test_update_tree(tmp_db):
-    """update_tree persists repo_mode and repo_source."""
+    """update_tree persists repo_id, repo_path, repo_name."""
     tree, _ = await create_tree("T")
-    await update_tree(tree.id, repo_mode="local", repo_source="/path")
+    await update_tree(tree.id, repo_id="abc123", repo_path="/path/to/repo", repo_name="my-repo")
     updated = await get_tree(tree.id)
-    assert updated.repo_mode == "local"
-    assert updated.repo_source == "/path"
+    assert updated.repo_id == "abc123"
+    assert updated.repo_path == "/path/to/repo"
+    assert updated.repo_name == "my-repo"
 
 
 @pytest.mark.asyncio
 async def test_update_tree_ignores_unknown(tmp_db):
     """update_tree ignores fields not in the allowlist."""
     tree, _ = await create_tree("T")
-    await update_tree(tree.id, name="hacked")
+    await update_tree(tree.id, bogus_field="hacked")
     updated = await get_tree(tree.id)
-    assert updated.name == "T"  # unchanged
+    assert updated.name == "T"  # unchanged — bogus_field not applied
 
 
 # ── delete_tree ──────────────────────────────────────────────────────
@@ -286,3 +287,84 @@ async def test_get_path_to_root_single(tmp_db):
     path = await get_path_to_root(root.id)
     assert len(path) == 1
     assert path[0].id == root.id
+
+
+# ── find_tree ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_find_tree_by_repo_commit(tmp_db):
+    """find_tree locates a tree by repo_id + base_commit."""
+    tree, _ = await create_tree("T", repo_id="repo1", repo_path="/path", base_commit="abc123")
+    found = await find_tree("repo1", "abc123")
+    assert found is not None
+    assert found.id == tree.id
+
+
+@pytest.mark.asyncio
+async def test_find_tree_not_found(tmp_db):
+    """find_tree returns None when no match."""
+    await create_tree("T", repo_id="repo1", base_commit="abc123")
+    assert await find_tree("repo1", "different_commit") is None
+    assert await find_tree("different_repo", "abc123") is None
+
+
+@pytest.mark.asyncio
+async def test_find_tree_updates_repo_path(tmp_db):
+    """find_tree updates repo_path when it has changed."""
+    tree, _ = await create_tree("T", repo_id="repo1", repo_path="/old/path", base_commit="abc123")
+    found = await find_tree("repo1", "abc123", current_repo_path="/new/path")
+    assert found is not None
+    assert found.id == tree.id
+    # Verify the update persisted
+    refetched = await get_tree(tree.id)
+    assert refetched.repo_path == "/new/path"
+
+
+@pytest.mark.asyncio
+async def test_list_trees_cross_repo(tmp_db):
+    """list_trees returns trees from all repos; filtering by repo_id works."""
+    await create_tree("T1", repo_id="repo1", base_commit="aaa")
+    await create_tree("T2", repo_id="repo2", base_commit="bbb")
+    await create_tree("T3", repo_id="repo1", base_commit="ccc")
+
+    all_trees = await list_trees()
+    assert len(all_trees) == 3
+
+    repo1_trees = await list_trees(repo_id="repo1")
+    assert len(repo1_trees) == 2
+    assert all(t.repo_id == "repo1" for t in repo1_trees)
+
+
+# ── orphan trees (no repo_id) ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_list_trees_excludes_orphans(tmp_db):
+    """list_trees excludes trees that have no repo_id (pre-migration orphans)."""
+    # Simulate a pre-migration tree with no repo_id
+    await create_tree("Orphan", repo_id=None, repo_path=None)
+    await create_tree("Valid", repo_id="repo1", repo_path="/path", base_commit="abc")
+
+    all_trees = await list_trees()
+    assert len(all_trees) == 1
+    assert all_trees[0].name == "Valid"
+
+
+@pytest.mark.asyncio
+async def test_list_trees_repo_filter_ignores_orphans(tmp_db):
+    """list_trees with repo_id filter never returns orphan trees."""
+    await create_tree("Orphan", repo_id=None)
+    await create_tree("Match", repo_id="repo1", base_commit="abc")
+
+    trees = await list_trees(repo_id="repo1")
+    assert len(trees) == 1
+    assert trees[0].name == "Match"
+
+
+@pytest.mark.asyncio
+async def test_find_tree_ignores_orphans(tmp_db):
+    """find_tree does not match trees without repo_id."""
+    # Create a tree without repo_id but with a base_commit
+    await create_tree("Orphan", base_commit="abc123")
+
+    found = await find_tree("any_repo", "abc123")
+    assert found is None

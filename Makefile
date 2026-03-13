@@ -3,16 +3,17 @@ SHELL := /bin/bash
 # Ensure compatible Node.js (Vite 7 requires >=20.19 or >=22.12)
 NVM_INIT := source "$${NVM_DIR:-$$HOME/.nvm}/nvm.sh" 2>/dev/null && nvm use 22 2>/dev/null &&
 
-.PHONY: dev build-frontend build publish clean test install
+.PHONY: dev build-frontend build publish clean test install deploy
 
 # First-time setup: editable install + build frontend
 install:
 	uv pip install -e .
 	$(NVM_INIT) cd frontend && npm install && npm run build
+	rm -rf codefission/static
+	cp -r frontend/dist codefission/static
 
-# Development: install, rebuild frontend, then run
+# Development: install editable + rebuild frontend
 dev: install
-	uv run fission
 
 # Build frontend static assets
 build-frontend:
@@ -31,6 +32,12 @@ publish: build
 # Run tests
 test:
 	uv run pytest
+
+# Build frontend + install fission globally so it works from any repo
+deploy: build-frontend
+	rm -rf codefission/static
+	cp -r frontend/dist codefission/static
+	uv tool install -e . --force
 
 # Clean build artifacts
 clean:

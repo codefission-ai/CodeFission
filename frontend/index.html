@@ -1440,7 +1440,89 @@
     .katex { color: var(--text-primary); }
     .katex-display { margin: 12px 0; overflow-x: auto; }
 
-    /* ── Repo selector (inline in root node) ──────────────────── */
+    /* ── Branch info section (root node) ──────────────────────── */
+    .branch-info-path {
+      font-size: 9px; color: var(--text-dim);
+      font-family: var(--font-mono);
+      padding: 1px 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      direction: rtl; text-align: left;  /* show tail of long paths */
+    }
+    .branch-info-path.editable {
+      cursor: pointer; border-radius: 3px;
+      padding: 2px 4px;
+      border: 1px dashed transparent;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .branch-info-path.editable:hover {
+      border-color: var(--border-dim);
+      color: var(--text-secondary);
+    }
+    .branch-path-input {
+      font-size: 9px; font-family: var(--font-mono);
+      padding: 2px 6px; border-radius: 3px;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+      outline: none; width: 100%;
+    }
+    .branch-info-row {
+      display: flex; align-items: center; gap: 6px;
+      padding: 2px 0;
+    }
+    .branch-info-compact { padding: 0; margin-bottom: 4px; }
+    .branch-info-name {
+      font-size: 11px; font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--accent);
+      padding: 2px 8px;
+      background: var(--accent-dim);
+      border-radius: 4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .branch-info-sha {
+      font-size: 10px; font-family: var(--font-mono);
+      color: var(--text-muted);
+      cursor: pointer; user-select: all;
+      padding: 1px 4px; border-radius: 3px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .branch-info-sha:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+    .branch-info-sha.editable {
+      border: 1px dashed var(--border-dim);
+      cursor: pointer;
+    }
+    .branch-info-sha.editable:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .commit-input {
+      font-size: 10px; font-family: var(--font-mono);
+      padding: 1px 6px; border-radius: 3px;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+      outline: none; width: 100px;
+    }
+    .branch-select {
+      font-size: 11px; padding: 2px 6px;
+      font-family: var(--font-mono);
+      background: var(--bg-surface); color: var(--accent);
+      border: 1px solid var(--border-dim); border-radius: 4px;
+      outline: none; cursor: pointer;
+      max-width: 160px;
+    }
+    .branch-select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .root-section-locked .branch-info-path { opacity: 0.5; }
+    .root-section-locked .branch-info-name { opacity: 0.5; }
+    .root-section-locked .branch-info-sha { opacity: 0.5; cursor: default; }
+
     .root-input-hint {
       font-size: 9px; color: var(--text-muted); padding: 1px 2px;
       font-family: var(--font-sans);
@@ -2039,6 +2121,98 @@
       background: rgba(96, 165, 250, 0.1);
       border-color: #60a5fa; color: #93bbfc;
     }
+    /* ── Tree list: branch badge, staleness, project items ───── */
+    .tree-branch-badge {
+      font-size: 9px; font-weight: 500;
+      padding: 1px 5px; border-radius: 3px;
+      background: var(--accent-dim); color: var(--text-muted);
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .tree-activity-dot.stale {
+      background: var(--amber, #d97706);
+    }
+    .project-rename-input {
+      flex: 1; min-width: 0;
+      font-size: 12px; padding: 2px 6px;
+      border: 1px solid var(--border-visible); border-radius: 4px;
+      background: var(--bg-deep); color: var(--text-primary);
+      outline: none;
+    }
+    .project-display-name {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      min-width: 0; flex: 1;
+    }
+    .project-time {
+      font-size: 9px; color: var(--text-dim);
+      white-space: nowrap; flex-shrink: 0; margin-left: 4px;
+    }
+    .branch-picker {
+      font-size: 11px; padding: 2px 4px;
+      background: var(--bg-surface); color: var(--text-secondary);
+      border: 1px solid var(--border-dim); border-radius: 4px;
+      outline: none; max-width: 100px; flex-shrink: 0;
+    }
+
+    /* ── Staleness banner ──────────────────────────────────────── */
+    .staleness-banner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px; margin: 4px 0;
+      font-size: 11px; color: var(--amber, #d97706);
+      background: var(--amber-dim, rgba(217,119,6,0.08));
+      border: 1px solid rgba(217,119,6,0.2);
+      border-radius: 6px;
+    }
+    .staleness-banner span { flex: 1; }
+    .staleness-update-btn {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 4px;
+      background: transparent; color: var(--amber, #d97706);
+      border: 1px solid rgba(217,119,6,0.3);
+      cursor: pointer; white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .staleness-update-btn:hover {
+      background: rgba(217,119,6,0.12); border-color: var(--amber, #d97706);
+    }
+
+    /* ── Merge result banner ──────────────────────────────────── */
+    .merge-result-banner {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 6px 10px; margin-top: 4px;
+      font-size: 11px; border-radius: 6px;
+    }
+    .merge-result-banner.success {
+      color: var(--green, #16a34a);
+      background: var(--green-dim, rgba(22,163,74,0.10));
+      border: 1px solid rgba(22,163,74,0.2);
+    }
+    .merge-result-banner.error {
+      color: var(--red, #dc2626);
+      background: var(--red-dim, rgba(220,38,38,0.10));
+      border: 1px solid rgba(220,38,38,0.2);
+    }
+    .merge-result-banner span { flex: 1; }
+    .merge-result-error { flex: 1; }
+    .merge-conflicts-list {
+      margin: 4px 0 0 14px; font-size: 10px;
+      font-family: var(--font-mono); list-style: disc;
+    }
+    .merge-result-dismiss {
+      background: none; border: none; color: inherit;
+      cursor: pointer; font-size: 14px; line-height: 1;
+      opacity: 0.6; padding: 0;
+    }
+    .merge-result-dismiss:hover { opacity: 1; }
+    .tree-node-action-btn.merge-btn {
+      color: var(--accent); border-color: var(--border-dim);
+    }
+    .tree-node-action-btn.merge-btn:hover {
+      background: var(--accent-dim); border-color: var(--accent); color: var(--text-primary);
+    }
+    .tree-node-action-btn.merge-btn.merging {
+      opacity: 0.6; cursor: wait;
+    }
+
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>

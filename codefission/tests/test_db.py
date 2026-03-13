@@ -40,7 +40,7 @@ async def test_schema_has_required_columns(tmp_db):
         # Trees columns
         cursor = await db.execute("PRAGMA table_info(trees)")
         tree_cols = {row[1] for row in await cursor.fetchall()}
-        assert {"id", "name", "created_at", "provider", "model", "repo_mode", "repo_source"} <= tree_cols
+        assert {"id", "name", "created_at", "provider", "model", "repo_id", "repo_path", "repo_name"} <= tree_cols
 
         # Nodes columns
         cursor = await db.execute("PRAGMA table_info(nodes)")

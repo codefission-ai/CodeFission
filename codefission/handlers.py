@@ -6,22 +6,30 @@ import logging
 import os
 from dataclasses import dataclass
 
+from pathlib import Path
 from fastapi import WebSocket
 
+from config import set_project_path, get_project_path
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
 from services.tree_service import (
-    list_trees, get_tree, get_all_nodes, get_node,
+    list_trees, get_tree, get_all_nodes, get_node, find_tree,
     delete_tree, delete_subtree, update_tree, update_node,
     get_setting, set_setting, get_global_defaults,
 )
 from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
 from services.workspace_service import (
-    resolve_workspace, cleanup_tree_workspace,
+    resolve_workspace,
     list_files, get_diff, read_file,
     list_files_from_commit, read_file_from_commit, get_diff_from_commits,
     remove_worktree, remove_worktree_and_branch,
     list_artifact_files,
+    list_branches as ws_list_branches,
+    get_repo_info as ws_get_repo_info,
+    check_staleness,
+    _worktrees_dir,
+    compute_repo_id,
+    detect_repo_name,
 )
 from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree, find_child_by_cwd
 from services.orchestrator import Orchestrator
@@ -51,8 +59,12 @@ _active_streams: dict[str, StreamState] = {}
 class ConnectionHandler:
     """Holds per-connection state and dispatches WebSocket messages to handlers."""
 
-    def __init__(self, ws: WebSocket):
+    def __init__(self, ws: WebSocket, repo_path: str | None = None,
+                 repo_id: str | None = None, head_commit: str | None = None):
         self.ws = ws
+        self.repo_path = Path(repo_path) if repo_path else None
+        self.repo_id = repo_id
+        self.head_commit = head_commit
         self.orch = Orchestrator()
         self.tasks: dict[str, asyncio.Task] = {}
         self.stream_tasks: dict[str, asyncio.Task] = {}
@@ -84,14 +96,97 @@ class ConnectionHandler:
             if info.send_fn == self.send:
                 info.send_fn = None
 
+    def _set_context_for_repo(self, repo_path: Path):
+        """Set project context for git operations."""
+        set_project_path(repo_path)
+
+    async def _set_context_for_tree(self, tree_id: str) -> bool:
+        """Set project path from tree's repo_path before git operations.
+        Returns True if context was set, False otherwise."""
+        tree = await get_tree(tree_id)
+        if tree and tree.repo_path:
+            repo_path = Path(tree.repo_path)
+            if repo_path.is_dir():
+                set_project_path(repo_path)
+                return True
+        # Fall back to current repo_path on the connection
+        if self.repo_path:
+            set_project_path(self.repo_path)
+            return True
+        return False
+
     async def dispatch(self, data: dict):
         msg_type = data.get("type")
         if msg_type == "ping":
             await self.send("pong")
             return
+        # Set project context for this handler call
+        if self.repo_path:
+            set_project_path(self.repo_path)
         handler = self._dispatch_table.get(msg_type)
         if handler:
             await handler(self, data)
+
+    # ── Repo operations ──────────────────────────────────────────────
+
+    async def handle_open_repo(self, data: dict):
+        """Open a repo: find or create tree for the given repo_id + head_commit."""
+        repo_path_str = data.get("repo_path") or (str(self.repo_path) if self.repo_path else None)
+        repo_id = data.get("repo_id") or self.repo_id
+        head_commit = data.get("head_commit") or self.head_commit
+
+        if not repo_path_str or not repo_id or not head_commit:
+            await self.send(WS.ERROR, error="Missing repo context")
+            return
+
+        repo_path = Path(repo_path_str)
+        if not repo_path.is_dir():
+            await self.send(WS.ERROR, error=f"Not a directory: {repo_path}")
+            return
+
+        # Update connection state
+        self.repo_path = repo_path
+        self.repo_id = repo_id
+        self.head_commit = head_commit
+        set_project_path(repo_path)
+
+        repo_name = detect_repo_name(repo_path)
+
+        # Find existing tree for this repo+commit
+        tree = await find_tree(repo_id, head_commit, str(repo_path))
+
+        if not tree:
+            # Create new tree
+            try:
+                from services.workspace_service import _run_git
+                _, actual_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+                tree, root = await self.orch.create_tree(
+                    repo_name, base_branch=actual_branch,
+                    repo_id=repo_id, repo_path=str(repo_path), repo_name=repo_name,
+                )
+                from services.workspace_service import create_protective_ref
+                if tree.base_commit:
+                    await create_protective_ref(tree.id, tree.base_commit)
+            except Exception as e:
+                log.warning("Auto-create tree failed: %s", e)
+                await self.send(WS.ERROR, error=f"Failed to create tree: {e}")
+                return
+
+        # Load tree data
+        nodes = await get_all_nodes(tree.id)
+        staleness = {"stale": False, "commits_behind": 0}
+        if tree.base_commit:
+            staleness = await check_staleness(tree.base_branch, tree.base_commit)
+
+        info = await ws_get_repo_info(repo_path)
+        branches = await ws_list_branches()
+
+        await self.send(WS.REPO_OPENED, **info,
+                        tree=tree.model_dump(),
+                        nodes=[n.model_dump() for n in nodes],
+                        staleness=staleness,
+                        branches=branches,
+                        repo_id=repo_id, repo_name=repo_name)
 
     # ── Tree CRUD ─────────────────────────────────────────────────────
 
@@ -110,32 +205,47 @@ class ConnectionHandler:
 
     async def handle_create_tree(self, data: dict):
         name = data.get("name", "Untitled")
-        tree, root = await self.orch.create_tree(name, repo_mode="new")
-        await self.send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
+        base_branch = data.get("base_branch", "main")
+        try:
+            tree, root = await self.orch.create_tree(
+                name, base_branch=base_branch,
+                repo_id=self.repo_id,
+                repo_path=str(self.repo_path) if self.repo_path else None,
+                repo_name=detect_repo_name(self.repo_path) if self.repo_path else None,
+            )
+            await self.send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
+        except Exception as e:
+            await self.send(WS.ERROR, error=f"Failed to create tree: {e}")
 
     async def handle_load_tree(self, data: dict):
         tree_id = data["tree_id"]
+        await self._set_context_for_tree(tree_id)
         tree = await get_tree(tree_id)
         nodes = await get_all_nodes(tree_id)
 
         # Scan for running processes across all node workspaces
         node_processes = {}
-        if tree:
-            from services.workspace_service import WORKSPACES_DIR
-            tree_ws = WORKSPACES_DIR / tree_id
-            if tree_ws.exists():
-                raw = list_tree_processes(tree_ws)
+        if tree and tree.root_node_id:
+            wt_dir = _worktrees_dir()
+            if wt_dir.exists():
+                raw = list_tree_processes(wt_dir)
                 for nid, procs in raw.items():
                     node_processes[nid] = [
                         {"pid": p.pid, "command": p.command, "ports": p.ports}
                         for p in procs
                     ]
 
+        # Check staleness
+        staleness = {"stale": False, "commits_behind": 0}
+        if tree and tree.base_commit:
+            staleness = await check_staleness(tree.base_branch, tree.base_commit)
+
         await self.send(
             WS.TREE_LOADED,
             tree=tree.model_dump() if tree else None,
             nodes=[n.model_dump() for n in nodes],
             node_processes=node_processes,
+            staleness=staleness,
         )
 
         # Reconnect any active streams for this tree to the new connection.
@@ -149,10 +259,10 @@ class ConnectionHandler:
 
     async def handle_delete_tree(self, data: dict):
         tree_id = data["tree_id"]
+        await self._set_context_for_tree(tree_id)
         last = await get_setting("last_tree_id")
         if last == tree_id:
             await set_setting("last_tree_id", None)
-        cleanup_tree_workspace(tree_id)
         await delete_tree(tree_id)
         await self.send(WS.TREE_DELETED, tree_id=tree_id)
 
@@ -178,6 +288,11 @@ class ConnectionHandler:
         after_id = data.get("after_id")
         file_quotes = data.get("file_quotes") or []
         draft_node_id = data.get("draft_node_id")
+
+        # Set context for the tree this node belongs to
+        node = await get_node(node_id)
+        if node:
+            await self._set_context_for_tree(node.tree_id)
 
         task = asyncio.create_task(self._run_chat(node_id, content, after_id, file_quotes, draft_node_id))
         self.tasks[node_id] = task
@@ -258,10 +373,6 @@ class ConnectionHandler:
             state.sdk_pid = self.sdk_pids.get(nid)
 
             # Consume events from the queue.
-            # Inactivity timeout: if no events arrive for STREAM_INACTIVITY_TIMEOUT
-            # seconds, the stream is considered dead (e.g. API connection drop,
-            # stuck SDK subprocess).  We also check subprocess liveness on each
-            # timeout cycle so we don't wait uselessly for a dead process.
             STREAM_INACTIVITY_TIMEOUT = 180  # 3 minutes of silence → dead
             last_event_time = asyncio.get_event_loop().time()
             stream_timed_out = False
@@ -321,8 +432,7 @@ class ConnectionHandler:
                         is_error=event.is_error,
                     )
 
-            # Cancel stream task if still running (e.g. inactivity timeout or
-            # dead subprocess detected).  Give it a brief window to clean up.
+            # Cancel stream task if still running
             if not stream_task.done():
                 stream_task.cancel()
             try:
@@ -349,11 +459,11 @@ class ConnectionHandler:
                         if node:
                             tree = await get_tree(node.tree_id)
                             if tree:
-                                await remove_worktree(tree.id, tree.root_node_id, nid)
+                                await remove_worktree(tree.root_node_id, nid)
                 except Exception:
                     log.debug("Ephemeral worktree removal after cancel failed for %s", nid, exc_info=True)
                 # Broadcast tree-wide process state so UI updates all nodes
-                await self._send_tree_processes(ctx.workspace.parent)
+                await self._send_tree_processes()
             else:
                 full_response = self.streams[nid].text
                 if stream_timed_out:
@@ -368,9 +478,9 @@ class ConnectionHandler:
                     done_payload["git_commit"] = result.git_commit
                 # Brief delay to let SDK/tool subprocesses fully exit
                 await asyncio.sleep(0.15)
-                # Tree-wide process scan — catches changes on ALL nodes
-                tree_ws = ctx.workspace.parent
-                tree_procs_raw = list_tree_processes(tree_ws) if tree_ws.exists() else {}
+                # Tree-wide process scan
+                wt_dir = _worktrees_dir()
+                tree_procs_raw = list_tree_processes(wt_dir) if wt_dir.exists() else {}
                 this_node_procs = tree_procs_raw.get(nid, [])
                 if this_node_procs:
                     done_payload["processes"] = [
@@ -386,15 +496,15 @@ class ConnectionHandler:
                             if tree:
                                 if result.files_changed == 0 and node.parent_id:
                                     # No file changes — branch is noise, remove both
-                                    await remove_worktree_and_branch(tree.id, tree.root_node_id, nid)
+                                    await remove_worktree_and_branch(tree.root_node_id, nid)
                                     await update_node(nid, git_branch=None)
                                 else:
-                                    await remove_worktree(tree.id, tree.root_node_id, nid)
+                                    await remove_worktree(tree.root_node_id, nid)
                     except Exception:
                         log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
                 await self.send(WS.DONE, **done_payload)
                 # Broadcast tree-wide process state so UI updates all nodes
-                await self._send_tree_processes(tree_ws)
+                await self._send_tree_processes()
 
         except Exception as e:
             import traceback
@@ -410,12 +520,12 @@ class ConnectionHandler:
                 if node:
                     tree = await get_tree(node.tree_id)
                     if tree:
-                        ws_path = resolve_workspace(tree.id, tree.root_node_id, nid)
+                        ws_path = resolve_workspace(tree.root_node_id, nid)
                         procs = list_processes(ws_path) if ws_path.exists() else []
                         if not procs:
-                            await remove_worktree(tree.id, tree.root_node_id, nid)
+                            await remove_worktree(tree.root_node_id, nid)
                         # Broadcast tree-wide process state so UI updates all nodes
-                        await self._send_tree_processes(ws_path.parent)
+                        await self._send_tree_processes()
             except Exception:
                 log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
 
@@ -424,9 +534,7 @@ class ConnectionHandler:
             self.streams.pop(nid, None)
             _active_streams.pop(nid, None)
             self.tasks.pop(nid, None)
-            # Kill just the SDK/CLI process if it's still alive (e.g. stuck on a
-            # long-running Bash tool like a server).  We kill only the CLI itself
-            # — not its process tree — so user-started servers survive as orphans.
+            # Kill just the SDK/CLI process if it's still alive
             sdk_pid = self.sdk_pids.pop(nid, None)
             if sdk_pid:
                 import signal
@@ -453,7 +561,7 @@ class ConnectionHandler:
                 return  # auto-naming disabled
             api_key = defaults.get("api_key") or None
 
-            repo_info = tree.repo_source or tree.repo_mode
+            repo_info = tree.base_branch or "main"
             auth_mode = defaults.get("auth_mode", "cli")
             name = await generate_tree_name(
                 skill=tree.skill,
@@ -572,18 +680,27 @@ class ConnectionHandler:
         if tree:
             await self.send(WS.TREE_UPDATED, tree=tree.model_dump())
 
-    # ── Repo & file operations ────────────────────────────────────────
+    # ── Repo & branch operations ──────────────────────────────────────
 
-    async def handle_set_repo(self, data: dict):
-        tree_id = data["tree_id"]
-        repo_mode = data["repo_mode"]
-        repo_source = data.get("repo_source")
-        try:
-            updated_tree, root_node = await self.orch.set_repo(tree_id, repo_mode, repo_source)
-            await self.send(WS.TREE_UPDATED, tree=updated_tree.model_dump())
-            await self.send(WS.NODE_DATA, node=root_node.model_dump())
-        except Exception as e:
-            await self.send(WS.ERROR, error=f"Repo setup failed: {e}")
+    async def handle_get_repo_info(self, data: dict):
+        info = await ws_get_repo_info()
+        await self.send(WS.REPO_INFO, **info)
+
+    async def handle_list_branches(self, data: dict):
+        branches = await ws_list_branches()
+        await self.send(WS.BRANCHES, branches=branches)
+
+    async def handle_merge_to_branch(self, data: dict):
+        node_id = data["node_id"]
+        target_branch = data["target_branch"]
+        # Set context for the node's tree
+        node = await get_node(node_id)
+        if node:
+            await self._set_context_for_tree(node.tree_id)
+        result = await self.orch.merge_to_branch(node_id, target_branch)
+        await self.send(WS.MERGE_RESULT, node_id=node_id, **result)
+
+    # ── File operations ──────────────────────────────────────────────
 
     async def handle_get_node_files(self, data: dict):
         node_id = data["node_id"]
@@ -595,15 +712,16 @@ class ConnectionHandler:
         if not tree:
             await self.send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+        await self._set_context_for_tree(node.tree_id)
+        ws_path = resolve_workspace(tree.root_node_id, node_id)
         if ws_path.exists():
             files = await list_files(ws_path)
         elif node.git_commit:
-            files = await list_files_from_commit(tree.id, tree.root_node_id, node.git_commit)
+            files = await list_files_from_commit(node.git_commit)
         else:
             files = []
         # Append persisted artifact files (deduplicated)
-        artifact_files = list_artifact_files(tree.id, node_id)
+        artifact_files = list_artifact_files(node_id)
         if artifact_files:
             existing = set(files)
             files.extend(f for f in artifact_files if f not in existing)
@@ -619,7 +737,8 @@ class ConnectionHandler:
         if not tree:
             await self.send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+        await self._set_context_for_tree(node.tree_id)
+        ws_path = resolve_workspace(tree.root_node_id, node_id)
         parent_commit = None
         if node.parent_id:
             parent_node = await get_node(node.parent_id)
@@ -628,7 +747,7 @@ class ConnectionHandler:
         if ws_path.exists():
             diff = await get_diff(ws_path, parent_commit)
         elif node.git_commit:
-            diff = await get_diff_from_commits(tree.id, tree.root_node_id, parent_commit, node.git_commit)
+            diff = await get_diff_from_commits(parent_commit, node.git_commit)
         else:
             diff = ""
         await self.send(WS.NODE_DIFF, node_id=node_id, diff=diff)
@@ -644,12 +763,13 @@ class ConnectionHandler:
         if not tree:
             await self.send(WS.ERROR, error="Tree not found")
             return
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+        await self._set_context_for_tree(node.tree_id)
+        ws_path = resolve_workspace(tree.root_node_id, node_id)
         try:
             if ws_path.exists():
                 content = read_file(ws_path, file_path)
             elif node.git_commit:
-                content = await read_file_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+                content = await read_file_from_commit(node.git_commit, file_path)
             else:
                 raise FileNotFoundError(f"No worktree or commit for node {node_id}")
             await self.send(WS.FILE_CONTENT, node_id=node_id, file_path=file_path, content=content)
@@ -658,12 +778,13 @@ class ConnectionHandler:
 
     # ── Process management ─────────────────────────────────────────────
 
-    async def _send_tree_processes(self, tree_ws):
+    async def _send_tree_processes(self):
         """Scan and broadcast tree-wide process state so the UI stays in sync."""
         try:
-            if not tree_ws.exists():
+            wt_dir = _worktrees_dir()
+            if not wt_dir.exists():
                 return
-            raw = list_tree_processes(tree_ws)
+            raw = list_tree_processes(wt_dir)
             tree_procs = {}
             for nid, procs in raw.items():
                 tree_procs[nid] = [
@@ -675,22 +796,18 @@ class ConnectionHandler:
             log.debug("Tree-wide process scan failed", exc_info=True)
 
     async def _cleanup_node_worktree(self, node, tree):
-        """Remove a node's worktree after all processes have exited.
-
-        Also removes the branch ref if the node has no unique file changes
-        (i.e. its commit matches the parent's commit).
-        """
+        """Remove a node's worktree after all processes have exited."""
         try:
             node_id = node.id
             if not node.parent_id:
-                return  # Never remove root workspace
+                return  # Never remove root workspace (project path)
             # Check if node has unique changes vs parent
             parent = await get_node(node.parent_id)
             if parent and node.git_commit and node.git_commit == parent.git_commit:
-                await remove_worktree_and_branch(tree.id, tree.root_node_id, node_id)
+                await remove_worktree_and_branch(tree.root_node_id, node_id)
                 await update_node(node_id, git_branch=None)
             else:
-                await remove_worktree(tree.id, tree.root_node_id, node_id)
+                await remove_worktree(tree.root_node_id, node_id)
         except Exception:
             log.debug("Worktree cleanup failed for %s", node.id, exc_info=True)
 
@@ -704,7 +821,8 @@ class ConnectionHandler:
         if not tree:
             await self.send(WS.ERROR, error="Tree not found")
             return None, None, None
-        ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+        await self._set_context_for_tree(node.tree_id)
+        ws_path = resolve_workspace(tree.root_node_id, node_id)
         return node, tree, ws_path
 
     async def handle_get_node_processes(self, data: dict):
@@ -725,8 +843,8 @@ class ConnectionHandler:
         if not ws_path:
             return
         kill_process(pid, ws_path)
-        # Broadcast tree-wide process state (killing one process may affect others)
-        await self._send_tree_processes(ws_path.parent)
+        # Broadcast tree-wide process state
+        await self._send_tree_processes()
         # If no more processes on this node, clean up the worktree
         procs = list_processes(ws_path)
         if not procs and tree and node:
@@ -739,7 +857,7 @@ class ConnectionHandler:
             return
         kill_all_in_workspace(ws_path)
         # Broadcast tree-wide process state
-        await self._send_tree_processes(ws_path.parent)
+        await self._send_tree_processes()
         # If no more processes on this node, clean up the worktree
         procs = list_processes(ws_path)
         if not procs and tree and node:
@@ -756,6 +874,9 @@ class ConnectionHandler:
         if not node.parent_id:
             await self.send(WS.ERROR, error="Cannot delete root node")
             return
+
+        # Set context for tree
+        await self._set_context_for_tree(node.tree_id)
 
         # Check no node in subtree is actively streaming
         stack = [node_id]
@@ -775,10 +896,10 @@ class ConnectionHandler:
         if tree:
             for did in deleted_ids:
                 try:
-                    ws_path = resolve_workspace(tree.id, tree.root_node_id, did)
+                    ws_path = resolve_workspace(tree.root_node_id, did)
                     if ws_path.exists():
                         kill_all_in_workspace(ws_path)
-                    await remove_worktree_and_branch(tree.id, tree.root_node_id, did)
+                    await remove_worktree_and_branch(tree.root_node_id, did)
                 except Exception:
                     log.debug("Cleanup failed for deleted node %s", did, exc_info=True)
 
@@ -801,6 +922,110 @@ class ConnectionHandler:
                         deleted_ids=deleted_ids,
                         updated_nodes=[n.model_dump() for n in updated_nodes])
 
+    async def handle_update_base(self, data: dict):
+        """Update a tree's repo_path, base_branch, and/or base_commit.
+
+        All fields optional.  Only allowed when root has no children.
+        If `repo_path` changes, re-resolves repo_id/name/branches.
+        If a tree already exists for the resolved (repo_id, commit),
+        sends `existing_tree_id` so the frontend can switch to it.
+        """
+        tree_id = data["tree_id"]
+        new_path = data.get("repo_path")
+        new_branch = data.get("base_branch")
+        new_commit = data.get("base_commit")
+        tree = await get_tree(tree_id)
+        if not tree:
+            await self.send(WS.ERROR, error="Tree not found")
+            return
+
+        # Guard: changes only allowed when tree has no children
+        if tree.root_node_id:
+            root = await get_node(tree.root_node_id)
+            if root and root.children_ids:
+                await self.send(WS.ERROR, error="Cannot change base after conversations have started")
+                return
+
+        from services.workspace_service import _run_git, create_protective_ref
+
+        # If repo_path changed, validate and re-resolve repo context
+        extra_response: dict = {}
+        if new_path and new_path != tree.repo_path:
+            repo_path = Path(new_path)
+            if not repo_path.is_dir():
+                await self.send(WS.ERROR, error=f"Not a directory: {new_path}")
+                return
+            # Check it's a git repo
+            rc, _, _ = await _run_git(repo_path, "rev-parse", "--git-dir", check=False)
+            if rc != 0:
+                await self.send(WS.ERROR, error=f"Not a git repo: {new_path}")
+                return
+            set_project_path(repo_path)
+            self.repo_path = repo_path
+            new_repo_id = await compute_repo_id(repo_path)
+            new_repo_name = detect_repo_name(repo_path)
+            branches = await ws_list_branches()
+            extra_response["branches"] = branches
+
+            # Default branch/commit from the new repo if not explicitly given
+            if not new_branch:
+                _, detected_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+                new_branch = detected_branch.strip()
+            if not new_commit:
+                _, head_sha, _ = await _run_git(repo_path, "rev-parse", "HEAD", check=False)
+                new_commit = head_sha.strip()
+        else:
+            new_repo_id = tree.repo_id
+            new_repo_name = tree.repo_name
+            # Set context from existing tree
+            await self._set_context_for_tree(tree_id)
+
+        project_path = get_project_path()
+        target_branch = new_branch or tree.base_branch
+
+        # Resolve commit
+        if new_commit:
+            rc, full_sha, _ = await _run_git(project_path, "rev-parse", "--verify", new_commit, check=False)
+            if rc != 0:
+                await self.send(WS.ERROR, error=f"Commit {new_commit} not found")
+                return
+            resolved_sha = full_sha.strip()
+        else:
+            rc, head_sha, _ = await _run_git(project_path, "rev-parse", target_branch, check=False)
+            if rc != 0:
+                await self.send(WS.ERROR, error=f"Branch {target_branch} not found")
+                return
+            resolved_sha = head_sha.strip()
+
+        # Check if a different tree already exists for this (repo_id, commit)
+        if new_repo_id:
+            existing = await find_tree(new_repo_id, resolved_sha, new_path)
+            if existing and existing.id != tree_id:
+                await self.send(WS.BASE_UPDATED, existing_tree_id=existing.id,
+                                tree=existing.model_dump(), **extra_response)
+                return
+
+        # Update current tree
+        update_kwargs: dict = {"base_commit": resolved_sha}
+        if new_branch:
+            update_kwargs["base_branch"] = new_branch
+        if new_path and new_path != tree.repo_path:
+            update_kwargs["repo_path"] = new_path
+            update_kwargs["repo_id"] = new_repo_id
+            update_kwargs["repo_name"] = new_repo_name
+        await update_tree(tree_id, **update_kwargs)
+
+        if tree.root_node_id:
+            await update_node(tree.root_node_id, git_commit=resolved_sha)
+
+        await create_protective_ref(tree_id, resolved_sha)
+        staleness = await check_staleness(target_branch, resolved_sha)
+
+        updated = await get_tree(tree_id)
+        if updated:
+            await self.send(WS.BASE_UPDATED, tree=updated.model_dump(),
+                            staleness=staleness, **extra_response)
+
     # ── Dispatch table (class-level) ──────────────────────────────────
 
     _dispatch_table: dict = {
@@ -819,7 +1044,6 @@ class ConnectionHandler:
         WS.UPDATE_GLOBAL_SETTINGS: handle_update_global_settings,
         WS.UPDATE_TREE_SETTINGS: handle_update_tree_settings,
         WS.GET_NODE: handle_get_node,
-        WS.SET_REPO: handle_set_repo,
         WS.GET_NODE_FILES: handle_get_node_files,
         WS.GET_NODE_DIFF: handle_get_node_diff,
         WS.GET_FILE_CONTENT: handle_get_file_content,
@@ -827,4 +1051,9 @@ class ConnectionHandler:
         WS.KILL_PROCESS: handle_kill_process,
         WS.KILL_ALL_PROCESSES: handle_kill_all_processes,
         WS.DELETE_NODE: handle_delete_node,
+        WS.GET_REPO_INFO: handle_get_repo_info,
+        WS.LIST_BRANCHES: handle_list_branches,
+        WS.MERGE_TO_BRANCH: handle_merge_to_branch,
+        WS.OPEN_REPO: handle_open_repo,
+        WS.UPDATE_BASE: handle_update_base,
     }

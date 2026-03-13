@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import webbrowser
 
 # Allow running inside a Claude Code session
 os.environ.pop("CLAUDECODE", None)
@@ -13,10 +14,19 @@ from pathlib import Path
 # Add package dir to path so bare imports (db, handlers, etc.) resolve
 sys.path.insert(0, str(Path(__file__).parent))
 
+from config import set_project_path
 from db import init_db, close_db
 from handlers import ConnectionHandler
 
 app = FastAPI(title="CodeFission")
+
+
+def _set_context_for_tree(tree):
+    """Set project path context from a tree's repo_path, falling back to env var."""
+    if tree.repo_path:
+        set_project_path(Path(tree.repo_path))
+    elif os.environ.get("CODEFISSION_REPO_PATH"):
+        set_project_path(Path(os.environ["CODEFISSION_REPO_PATH"]))
 
 # Installed mode: pre-built static files bundled in package
 FRONTEND_DIR = Path(__file__).parent / "static"
@@ -37,9 +47,33 @@ def _silence_asyncgen_gc(loop, context):
 async def startup():
     loop = asyncio.get_running_loop()
     loop.set_exception_handler(_silence_asyncgen_gc)
+
+    # Init global DB unconditionally
     await init_db()
+
+    # If launched from a repo, set project context and run lazy migration
+    repo_path_str = os.environ.get("CODEFISSION_REPO_PATH")
+    repo_id = os.environ.get("CODEFISSION_REPO_ID")
+    if repo_path_str:
+        set_project_path(Path(repo_path_str))
+
     from services.sandbox import install_hook
     install_hook()
+
+    # Auto-open browser after server is listening
+    async def _open_browser():
+        await asyncio.sleep(0.5)
+        try:
+            port = int(os.environ.get("CODEFISSION_PORT", "8080"))
+            url = f"http://localhost:{port}"
+            if repo_path_str and repo_id:
+                from urllib.parse import quote
+                head_commit = os.environ.get("CODEFISSION_HEAD_COMMIT", "")
+                url += f"?repo_id={repo_id}&head={head_commit}&path={quote(repo_path_str, safe='/')}"
+            webbrowser.open(url)
+        except Exception:
+            pass
+    asyncio.create_task(_open_browser())
 
 
 @app.on_event("shutdown")
@@ -50,7 +84,21 @@ async def shutdown():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
-    handler = ConnectionHandler(ws)
+
+    # Set project context for this connection from env var
+    repo_path_str = os.environ.get("CODEFISSION_REPO_PATH")
+    repo_id = os.environ.get("CODEFISSION_REPO_ID")
+    head_commit = os.environ.get("CODEFISSION_HEAD_COMMIT")
+
+    if repo_path_str:
+        set_project_path(Path(repo_path_str))
+
+    handler = ConnectionHandler(
+        ws,
+        repo_path=repo_path_str,
+        repo_id=repo_id,
+        head_commit=head_commit,
+    )
 
     try:
         while True:
@@ -71,14 +119,10 @@ async def upload_node_files(
     files: list[UploadFile] = File(...),
     paths: list[str] = Form(...),
 ):
-    """Upload files into a node's workspace (additive merge).
-
-    `files` and `paths` are parallel arrays — paths[i] is the relative
-    path (preserving folder structure) for files[i].
-    """
+    """Upload files into a node's workspace (additive merge)."""
     from services.tree_service import get_node, get_tree, update_node
     from services.workspace_service import (
-        setup_repo, ensure_worktree, auto_commit,
+        ensure_worktree, auto_commit,
     )
 
     if len(files) != len(paths):
@@ -93,14 +137,16 @@ async def upload_node_files(
     if not tree or tree.id != node.tree_id:
         raise HTTPException(404, "Tree not found")
 
+    # Set context for this tree
+    _set_context_for_tree(tree)
+
     root_id = tree.root_node_id
     if not root_id:
         raise HTTPException(400, "Tree has no root node")
 
     # Ensure workspace exists
-    await setup_repo(tree_id, root_id, tree.repo_mode or "new", tree.repo_source)
     ws_path = await ensure_worktree(
-        tree_id, root_id, node_id,
+        root_id, node_id,
         node.parent_id, node.git_commit,
     )
 
@@ -153,7 +199,9 @@ async def delete_node_file(tree_id: str, node_id: str, file_path: str):
     if not tree or tree.id != node.tree_id:
         raise HTTPException(404, "Tree not found")
 
-    ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+    _set_context_for_tree(tree)
+
+    ws_path = resolve_workspace(tree.root_node_id, node_id)
     rel = Path(file_path)
     if rel.is_absolute() or ".." in rel.parts:
         raise HTTPException(400, "Invalid path")
@@ -184,6 +232,8 @@ async def prepare_draft(tree_id: str, parent_id: str):
     if not tree or tree.id != node.tree_id:
         raise HTTPException(404, "Tree not found")
 
+    _set_context_for_tree(tree)
+
     orch = Orchestrator()
     draft = await orch.prepare_draft(parent_id)
     return JSONResponse({"draft_node_id": draft.id})
@@ -192,7 +242,13 @@ async def prepare_draft(tree_id: str, parent_id: str):
 @app.delete("/api/trees/{tree_id}/drafts/{draft_id}")
 async def discard_draft(tree_id: str, draft_id: str):
     """Delete a draft node and its workspace."""
+    from services.tree_service import get_tree
     from services.orchestrator import Orchestrator
+
+    tree = await get_tree(tree_id)
+    if tree:
+        _set_context_for_tree(tree)
+
     orch = Orchestrator()
     await orch.discard_draft(tree_id, draft_id)
     return JSONResponse({"ok": True})
@@ -210,7 +266,10 @@ async def serve_node_file(node_id: str, file_path: str):
     tree = await get_tree(node.tree_id)
     if not tree:
         raise HTTPException(404, "Tree not found")
-    ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+
+    _set_context_for_tree(tree)
+
+    ws_path = resolve_workspace(tree.root_node_id, node_id)
     ws_resolved = str(ws_path.resolve())
     # If file_path is an absolute workspace path the model embedded, extract the relative part
     abs_candidate = "/" + file_path
@@ -223,7 +282,7 @@ async def serve_node_file(node_id: str, file_path: str):
         return FileResponse(resolved)
 
     # Try persisted artifacts (survives worktree removal)
-    artifact_data = read_artifact_bytes(tree.id, node_id, file_path)
+    artifact_data = read_artifact_bytes(node_id, file_path)
     if artifact_data is not None:
         import mimetypes
         mime, _ = mimetypes.guess_type(file_path)
@@ -232,7 +291,7 @@ async def serve_node_file(node_id: str, file_path: str):
     # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
         try:
-            raw = await read_file_bytes_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+            raw = await read_file_bytes_from_commit(node.git_commit, file_path)
             import mimetypes
             mime, _ = mimetypes.guess_type(file_path)
             return Response(content=raw, media_type=mime or "application/octet-stream")
@@ -254,14 +313,17 @@ async def download_node_file(node_id: str, file_path: str):
     tree = await get_tree(node.tree_id)
     if not tree:
         raise HTTPException(404, "Tree not found")
-    ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+
+    _set_context_for_tree(tree)
+
+    ws_path = resolve_workspace(tree.root_node_id, node_id)
     resolved = (ws_path / file_path).resolve()
     if str(resolved).startswith(str(ws_path.resolve())) and resolved.is_file():
         return FileResponse(resolved, filename=resolved.name,
                             media_type="application/octet-stream")
 
     # Try persisted artifacts
-    artifact_data = read_artifact_bytes(tree.id, node_id, file_path)
+    artifact_data = read_artifact_bytes(node_id, file_path)
     if artifact_data is not None:
         filename = Path(file_path).name
         return Response(
@@ -273,7 +335,7 @@ async def download_node_file(node_id: str, file_path: str):
     # Fall back to git (raw bytes to preserve binary files)
     if node.git_commit:
         try:
-            raw = await read_file_bytes_from_commit(tree.id, tree.root_node_id, node.git_commit, file_path)
+            raw = await read_file_bytes_from_commit(node.git_commit, file_path)
             filename = Path(file_path).name
             return Response(
                 content=raw,
@@ -293,7 +355,8 @@ async def download_node_zip(node_id: str, subpath: str = ""):
     import io
     import re
     from services.tree_service import get_node, get_tree
-    from services.workspace_service import resolve_workspace, _run_git, WORKSPACES_DIR
+    from services.workspace_service import resolve_workspace, _run_git
+    from config import get_project_path
 
     node = await get_node(node_id)
     if not node:
@@ -302,7 +365,9 @@ async def download_node_zip(node_id: str, subpath: str = ""):
     if not tree:
         raise HTTPException(404, "Tree not found")
 
-    ws_path = resolve_workspace(tree.id, tree.root_node_id, node_id)
+    _set_context_for_tree(tree)
+
+    ws_path = resolve_workspace(tree.root_node_id, node_id)
     raw_name = subpath.replace("/", "_") or node.label or node_id
     zip_name = re.sub(r"[^a-z0-9]+", "_", raw_name.lower()).strip("_") + ".zip"
 
@@ -325,12 +390,11 @@ async def download_node_zip(node_id: str, subpath: str = ""):
 
     # Fall back to git archive
     if node.git_commit:
-        main_repo = WORKSPACES_DIR / tree.id / tree.root_node_id
         try:
             import asyncio
             proc = await asyncio.create_subprocess_exec(
                 "git", "archive", "--format=zip", node.git_commit,
-                cwd=str(main_repo),
+                cwd=str(get_project_path()),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

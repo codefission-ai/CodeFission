@@ -111,10 +111,14 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
             "\n- You may READ files anywhere on the system for reference (e.g., to inspect dependencies or configs)."
             "\n- If a task requires writing outside your workspace, explain what's needed and let the user do it."
         )
-        if tree.repo_source:
-            parts.append(f"\nThis project was cloned from: {tree.repo_source}")
-        if tree.repo_mode == "new":
-            parts.append("\nThis is a fresh empty repository — create any files needed from scratch.")
+
+        from config import get_project_path
+        base_branch = tree.base_branch or "main"
+        parts.append(
+            f"\nThis is the user's project at {get_project_path()}. "
+            f"You are working in a git worktree branched from '{base_branch}'. "
+            f"Changes here are isolated until merged back."
+        )
 
         is_root = not node.parent_id
         if is_root:

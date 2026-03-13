@@ -1,21 +1,41 @@
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from config import DATA_DIR
+from config import get_project_path, get_project_dir
 from db import get_db
 from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
 from providers import PROVIDERS, DEFAULT_PROVIDER as FALLBACK_PROVIDER
-from services.workspace_service import cleanup_tree_workspace
+from services.workspace_service import cleanup_tree_workspaces
+
+log = logging.getLogger(__name__)
+
+
+def _tree_from_row(row, root_id: str | None = None) -> Tree:
+    """Build a Tree from a DB row."""
+    return Tree(
+        id=row["id"], name=row["name"], created_at=row["created_at"],
+        root_node_id=root_id,
+        provider=row["provider"], model=row["model"],
+        max_turns=row["max_turns"],
+        skill=row["skill"], notes=row["notes"],
+        base_branch=row["base_branch"], base_commit=row["base_commit"],
+        repo_id=row["repo_id"], repo_path=row["repo_path"], repo_name=row["repo_name"],
+    )
 
 
 async def create_tree(
     name: str,
     provider: str = "",
     model: str = "",
-    repo_mode: str = "new",
-    repo_source: str | None = None,
+    base_branch: str = "main",
+    base_commit: str | None = None,
+    repo_id: str | None = None,
+    repo_path: str | None = None,
+    repo_name: str | None = None,
 ) -> tuple[Tree, Node]:
     tree_id = uuid.uuid4().hex[:12]
     root_id = uuid.uuid4().hex[:12]
@@ -23,8 +43,11 @@ async def create_tree(
 
     async with get_db() as db:
         await db.execute(
-            "INSERT INTO trees (id, name, created_at, provider, model, repo_mode, repo_source) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (tree_id, name, now, provider, model, repo_mode, repo_source),
+            """INSERT INTO trees (id, name, created_at, provider, model,
+               base_branch, base_commit, repo_id, repo_path, repo_name)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (tree_id, name, now, provider, model, base_branch, base_commit,
+             repo_id, repo_path, repo_name),
         )
         await db.execute(
             "INSERT INTO nodes (id, tree_id, parent_id, user_message, assistant_response, label, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -33,23 +56,26 @@ async def create_tree(
         await db.commit()
 
     tree = Tree(id=tree_id, name=name, created_at=now, root_node_id=root_id,
-                provider=provider, model=model, repo_mode=repo_mode, repo_source=repo_source)
+                provider=provider, model=model, base_branch=base_branch, base_commit=base_commit,
+                repo_id=repo_id, repo_path=repo_path, repo_name=repo_name)
     node = Node(id=root_id, tree_id=tree_id, label="root", created_at=now)
     return tree, node
 
 
-async def list_trees() -> list[Tree]:
+async def list_trees(repo_id: str | None = None) -> list[Tree]:
     async with get_db() as db:
-        cursor = await db.execute("SELECT * FROM trees ORDER BY created_at DESC")
+        if repo_id:
+            cursor = await db.execute(
+                "SELECT * FROM trees WHERE repo_id = ? ORDER BY created_at DESC",
+                (repo_id,),
+            )
+        else:
+            # Only return trees that have a repo_id (exclude pre-migration orphans)
+            cursor = await db.execute(
+                "SELECT * FROM trees WHERE repo_id IS NOT NULL ORDER BY created_at DESC"
+            )
         rows = await cursor.fetchall()
-    return [
-        Tree(id=r["id"], name=r["name"], created_at=r["created_at"],
-             provider=r["provider"], model=r["model"],
-             max_turns=r["max_turns"],
-             repo_mode=r["repo_mode"], repo_source=r["repo_source"],
-             skill=r["skill"], notes=r["notes"])
-        for r in rows
-    ]
+    return [_tree_from_row(r) for r in rows]
 
 
 async def get_tree(tree_id: str) -> Tree | None:
@@ -63,15 +89,42 @@ async def get_tree(tree_id: str) -> Tree | None:
         )
         root = await cursor2.fetchone()
     root_id = root["id"] if root else None
-    return Tree(
-        id=row["id"], name=row["name"], created_at=row["created_at"],
-        root_node_id=root_id,
-        provider=row["provider"], model=row["model"],
-        max_turns=row["max_turns"],
-        repo_mode=row["repo_mode"], repo_source=row["repo_source"],
-        skill=row["skill"],
-        notes=row["notes"],
-    )
+    return _tree_from_row(row, root_id)
+
+
+async def find_tree(repo_id: str, base_commit: str, current_repo_path: str | None = None) -> Tree | None:
+    """Find a tree by repo_id + base_commit. Updates repo_path if it changed."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM trees WHERE repo_id = ? AND base_commit = ? ORDER BY created_at DESC",
+            (repo_id, base_commit),
+        )
+        rows = await cursor.fetchall()
+        if not rows:
+            return None
+
+        # Prefer matching repo_path if multiple trees share the same repo_id + commit
+        row = rows[0]
+        if current_repo_path and len(rows) > 1:
+            for r in rows:
+                if r["repo_path"] == current_repo_path:
+                    row = r
+                    break
+
+        # Update repo_path if it changed
+        if current_repo_path and row["repo_path"] != current_repo_path:
+            await db.execute(
+                "UPDATE trees SET repo_path = ? WHERE id = ?",
+                (current_repo_path, row["id"]),
+            )
+            await db.commit()
+
+        cursor2 = await db.execute(
+            "SELECT id FROM nodes WHERE tree_id = ? AND parent_id IS NULL", (row["id"],)
+        )
+        root = await cursor2.fetchone()
+    root_id = root["id"] if root else None
+    return _tree_from_row(row, root_id)
 
 
 async def get_all_nodes(tree_id: str) -> list[Node]:
@@ -222,7 +275,8 @@ async def update_tree(tree_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("name", "repo_mode", "repo_source", "provider", "model", "max_turns", "skill", "notes"):
+        if k in ("name", "provider", "model", "max_turns", "skill", "notes",
+                  "base_branch", "base_commit", "repo_id", "repo_path", "repo_name"):
             sets.append(f"{k} = ?")
             vals.append(v)
     if sets:
@@ -280,11 +334,29 @@ async def delete_subtree(node_id: str) -> tuple[list[str], list[Node]]:
 
 
 async def delete_tree(tree_id: str):
+    # Collect node IDs before deletion for cleanup
+    tree = await get_tree(tree_id)
+    root_id = tree.root_node_id if tree else None
+    all_nodes = await get_all_nodes(tree_id)
+    node_ids = [n.id for n in all_nodes]
+
+    # Resolve repo_path from tree record for worktree cleanup
+    repo_path = None
+    if tree and tree.repo_path:
+        repo_path = Path(tree.repo_path)
+    else:
+        try:
+            repo_path = get_project_path()
+        except RuntimeError:
+            pass
+
     async with get_db() as db:
         await db.execute("DELETE FROM nodes WHERE tree_id = ?", (tree_id,))
         await db.execute("DELETE FROM trees WHERE id = ?", (tree_id,))
         await db.commit()
-    cleanup_tree_workspace(tree_id)
+
+    if root_id and repo_path:
+        cleanup_tree_workspaces(repo_path, root_id, node_ids)
 
 
 async def get_setting(key: str) -> str | None:
@@ -318,6 +390,7 @@ async def get_global_defaults() -> dict:
     sandbox = (await get_setting("sandbox")) == "true"
     summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
 
+    from config import get_global_db_path
     from services.sandbox import check_available as sandbox_check
     return {
         "provider": provider,
@@ -328,7 +401,7 @@ async def get_global_defaults() -> dict:
         "sandbox": sandbox,
         "sandbox_available": sandbox_check(),
         "summary_model": summary_model,
-        "data_dir": str(DATA_DIR),
+        "data_dir": str(get_global_db_path().parent),
     }
 
 
