@@ -4,7 +4,7 @@ from events import WS
 from services.trees import get_node
 
 
-class NodeHandlersMixin:
+class NodesMixin:
 
     async def handle_branch(self, data: dict):
         parent_id = data["parent_id"]

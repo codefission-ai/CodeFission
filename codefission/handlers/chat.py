@@ -17,7 +17,7 @@ from services.orchestrator import StreamState
 log = logging.getLogger(__name__)
 
 
-class ChatHandlersMixin:
+class ChatMixin:
 
     async def handle_chat(self, data: dict):
         node_id = data["node_id"]

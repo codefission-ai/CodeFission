@@ -4,7 +4,7 @@ from events import WS
 from services.trees import get_node
 
 
-class FileHandlersMixin:
+class FilesMixin:
 
     async def handle_get_node_files(self, data: dict):
         node_id = data["node_id"]

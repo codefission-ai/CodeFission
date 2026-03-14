@@ -10,7 +10,7 @@ from services.workspace import (
 )
 
 
-class RepoHandlersMixin:
+class RepoMixin:
 
     async def handle_get_repo_info(self, data: dict):  # noqa: ARG002
         info = await ws_get_repo_info()

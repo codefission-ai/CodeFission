@@ -12,13 +12,13 @@ from events import WS
 from services.trees import get_tree
 from services.orchestrator import Orchestrator, StreamState
 
-from handlers.tree_handlers import TreeHandlersMixin
-from handlers.node_handlers import NodeHandlersMixin
-from handlers.chat_handlers import ChatHandlersMixin
-from handlers.file_handlers import FileHandlersMixin
-from handlers.settings_handlers import SettingsHandlersMixin
-from handlers.repo_handlers import RepoHandlersMixin
-from handlers.process_handlers import ProcessHandlersMixin
+from handlers.trees import TreesMixin
+from handlers.nodes import NodesMixin
+from handlers.chat import ChatMixin
+from handlers.files import FilesMixin
+from handlers.settings import SettingsMixin
+from handlers.repo import RepoMixin
+from handlers.processes import ProcessesMixin
 
 
 # Global registry of active streams — survives WebSocket reconnects.
@@ -28,13 +28,13 @@ _active_streams: dict[str, StreamState] = {}
 
 
 class ConnectionHandler(
-    TreeHandlersMixin,
-    NodeHandlersMixin,
-    ChatHandlersMixin,
-    FileHandlersMixin,
-    SettingsHandlersMixin,
-    RepoHandlersMixin,
-    ProcessHandlersMixin,
+    TreesMixin,
+    NodesMixin,
+    ChatMixin,
+    FilesMixin,
+    SettingsMixin,
+    RepoMixin,
+    ProcessesMixin,
 ):
     """Holds per-connection state and dispatches WebSocket messages to handlers."""
 
@@ -108,31 +108,31 @@ class ConnectionHandler(
     # -- Dispatch table (class-level) ------------------------------------------
 
     _dispatch_table: dict = {
-        WS.LIST_TREES: TreeHandlersMixin.handle_list_trees,
-        WS.CREATE_TREE: TreeHandlersMixin.handle_create_tree,
-        WS.LOAD_TREE: TreeHandlersMixin.handle_load_tree,
-        WS.DELETE_TREE: TreeHandlersMixin.handle_delete_tree,
-        WS.BRANCH: NodeHandlersMixin.handle_branch,
-        WS.CHAT: ChatHandlersMixin.handle_chat,
-        WS.CANCEL: ChatHandlersMixin.handle_cancel,
-        WS.DUPLICATE: ChatHandlersMixin.handle_duplicate,
-        WS.SELECT_TREE: SettingsHandlersMixin.handle_select_tree,
-        WS.SET_EXPANDED: SettingsHandlersMixin.handle_set_expanded,
-        WS.SET_SUBTREE_COLLAPSED: SettingsHandlersMixin.handle_set_subtree_collapsed,
-        WS.GET_SETTINGS: SettingsHandlersMixin.handle_get_settings,
-        WS.UPDATE_GLOBAL_SETTINGS: SettingsHandlersMixin.handle_update_global_settings,
-        WS.UPDATE_TREE_SETTINGS: SettingsHandlersMixin.handle_update_tree_settings,
-        WS.GET_NODE: NodeHandlersMixin.handle_get_node,
-        WS.GET_NODE_FILES: FileHandlersMixin.handle_get_node_files,
-        WS.GET_NODE_DIFF: FileHandlersMixin.handle_get_node_diff,
-        WS.GET_FILE_CONTENT: FileHandlersMixin.handle_get_file_content,
-        WS.GET_NODE_PROCESSES: ProcessHandlersMixin.handle_get_node_processes,
-        WS.KILL_PROCESS: ProcessHandlersMixin.handle_kill_process,
-        WS.KILL_ALL_PROCESSES: ProcessHandlersMixin.handle_kill_all_processes,
-        WS.DELETE_NODE: NodeHandlersMixin.handle_delete_node,
-        WS.GET_REPO_INFO: RepoHandlersMixin.handle_get_repo_info,
-        WS.LIST_BRANCHES: RepoHandlersMixin.handle_list_branches,
-        WS.MERGE_TO_BRANCH: RepoHandlersMixin.handle_merge_to_branch,
-        WS.OPEN_REPO: TreeHandlersMixin.handle_open_repo,
-        WS.UPDATE_BASE: RepoHandlersMixin.handle_update_base,
+        WS.LIST_TREES: TreesMixin.handle_list_trees,
+        WS.CREATE_TREE: TreesMixin.handle_create_tree,
+        WS.LOAD_TREE: TreesMixin.handle_load_tree,
+        WS.DELETE_TREE: TreesMixin.handle_delete_tree,
+        WS.BRANCH: NodesMixin.handle_branch,
+        WS.CHAT: ChatMixin.handle_chat,
+        WS.CANCEL: ChatMixin.handle_cancel,
+        WS.DUPLICATE: ChatMixin.handle_duplicate,
+        WS.SELECT_TREE: SettingsMixin.handle_select_tree,
+        WS.SET_EXPANDED: SettingsMixin.handle_set_expanded,
+        WS.SET_SUBTREE_COLLAPSED: SettingsMixin.handle_set_subtree_collapsed,
+        WS.GET_SETTINGS: SettingsMixin.handle_get_settings,
+        WS.UPDATE_GLOBAL_SETTINGS: SettingsMixin.handle_update_global_settings,
+        WS.UPDATE_TREE_SETTINGS: SettingsMixin.handle_update_tree_settings,
+        WS.GET_NODE: NodesMixin.handle_get_node,
+        WS.GET_NODE_FILES: FilesMixin.handle_get_node_files,
+        WS.GET_NODE_DIFF: FilesMixin.handle_get_node_diff,
+        WS.GET_FILE_CONTENT: FilesMixin.handle_get_file_content,
+        WS.GET_NODE_PROCESSES: ProcessesMixin.handle_get_node_processes,
+        WS.KILL_PROCESS: ProcessesMixin.handle_kill_process,
+        WS.KILL_ALL_PROCESSES: ProcessesMixin.handle_kill_all_processes,
+        WS.DELETE_NODE: NodesMixin.handle_delete_node,
+        WS.GET_REPO_INFO: RepoMixin.handle_get_repo_info,
+        WS.LIST_BRANCHES: RepoMixin.handle_list_branches,
+        WS.MERGE_TO_BRANCH: RepoMixin.handle_merge_to_branch,
+        WS.OPEN_REPO: TreesMixin.handle_open_repo,
+        WS.UPDATE_BASE: RepoMixin.handle_update_base,
     }

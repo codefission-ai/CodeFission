@@ -50,7 +50,7 @@ def list_providers() -> list[dict]:
     ]
 
 
-class SettingsHandlersMixin:
+class SettingsMixin:
 
     async def handle_select_tree(self, data: dict):
         tree_id = data.get("tree_id")

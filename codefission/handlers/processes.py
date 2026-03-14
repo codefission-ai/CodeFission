@@ -14,7 +14,7 @@ from services.process_service import list_processes, list_tree_processes, kill_p
 log = logging.getLogger(__name__)
 
 
-class ProcessHandlersMixin:
+class ProcessesMixin:
 
     async def _send_tree_processes(self):
         """Scan and broadcast tree-wide process state so the UI stays in sync."""

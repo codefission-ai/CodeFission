@@ -19,7 +19,7 @@ from services.process_service import list_tree_processes
 log = logging.getLogger(__name__)
 
 
-class TreeHandlersMixin:
+class TreesMixin:
 
     async def handle_open_repo(self, data: dict):
         """Open a repo: find or create tree for the given repo_id + head_commit."""
@@ -89,7 +89,7 @@ class TreeHandlersMixin:
                         repo_id=repo_id, repo_name=repo_name)
 
     async def handle_list_trees(self, data: dict):  # noqa: ARG002
-        from handlers.settings_handlers import list_providers
+        from handlers.settings import list_providers
 
         trees = await list_trees()
         last_tree_id = await get_setting("last_tree_id")
