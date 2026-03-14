@@ -19,6 +19,7 @@ dependencies = [
     "pydantic",
     "click",
     "httpx",
+    "agentbridge @ file:///Users/tianyu/Work/CodeFission/agentbridge",
 ]
 
 [project.urls]
@@ -34,6 +35,9 @@ dev = [
     "pytest",
     "pytest-asyncio",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build]
 # codefission/static/ is gitignored but must be in the wheel

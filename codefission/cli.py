@@ -355,9 +355,52 @@ def tree_ls():
 def tree_new(name, branch, from_node):
     """Create a new tree."""
     import httpx
+    import subprocess
 
     base = _require_server()
-    body = {"name": name, "base_branch": branch}
+
+    # Detect current git repo
+    repo_path = os.getcwd()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, cwd=repo_path,
+        )
+        if result.returncode == 0:
+            repo_path = result.stdout.strip()
+    except Exception:
+        pass
+
+    # Get repo_id (initial commit hash)
+    repo_id = None
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--max-parents=0", "HEAD"],
+            capture_output=True, text=True, cwd=repo_path,
+        )
+        if result.returncode == 0:
+            repo_id = result.stdout.strip().split("\n")[0]
+    except Exception:
+        pass
+
+    # Detect current branch if not specified
+    if branch == "main":
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True, text=True, cwd=repo_path,
+            )
+            if result.returncode == 0:
+                branch = result.stdout.strip()
+        except Exception:
+            pass
+
+    body = {
+        "name": name,
+        "base_branch": branch,
+        "repo_path": repo_path,
+        "repo_id": repo_id,
+    }
 
     r = httpx.post(f"{base}/api/trees", json=body, timeout=10)
     r.raise_for_status()
