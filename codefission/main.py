@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import set_project_path
 from db import init_db, close_db
-from handlers import ConnectionHandler
+from handlers import ConnectionHandler, list_providers
 from services.orchestrator import Orchestrator
 
 app = FastAPI(title="CodeFission")
@@ -730,7 +730,6 @@ async def api_get_log(tree_id: str, limit: int = 100):
 async def api_get_settings():
     """Get global settings."""
     from services.trees import get_global_defaults
-    from providers import list_providers
     defaults = await get_global_defaults()
     return {"global_defaults": defaults, "providers": list_providers()}
 
@@ -738,7 +737,6 @@ async def api_get_settings():
 @app.patch("/api/settings")
 async def api_patch_settings(req: PatchSettingsRequest):
     """Update global settings."""
-    from providers import list_providers
     data = req.dict(exclude_none=True)
     defaults = await _orchestrator.update_global_settings(data)
     return {"global_defaults": defaults, "providers": list_providers()}
@@ -747,7 +745,6 @@ async def api_patch_settings(req: PatchSettingsRequest):
 @app.get("/api/providers")
 async def api_get_providers():
     """List available providers."""
-    from providers import list_providers
     return {"providers": list_providers()}
 
 

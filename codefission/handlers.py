@@ -11,9 +11,8 @@ import logging
 from pathlib import Path
 from fastapi import WebSocket
 
-from config import set_project_path, get_project_path
+from config import set_project_path
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
-from providers import list_providers
 from services.trees import (
     list_trees, get_tree, get_all_nodes, get_node, find_tree,
     delete_tree, update_tree, update_node,
@@ -33,6 +32,48 @@ from services.process_service import list_processes, list_tree_processes, kill_p
 from services.orchestrator import Orchestrator, StreamState
 
 log = logging.getLogger(__name__)
+
+
+def list_providers() -> list[dict]:
+    """Return serializable list of known providers for the frontend.
+
+    This is a static registry — runtime availability and auth status
+    come from agentbridge.discover() on the settings page.
+    """
+    return [
+        {
+            "id": "claude-code",
+            "name": "Claude Code",
+            "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
+            "default_model": "claude-opus-4-6",
+            "auth_modes": ["cli", "api_key"],
+            "default_auth_mode": "cli",
+        },
+        {
+            "id": "codex",
+            "name": "Codex CLI",
+            "models": ["o4-mini", "codex-mini"],
+            "default_model": "o4-mini",
+            "auth_modes": ["api_key"],
+            "default_auth_mode": "api_key",
+        },
+        {
+            "id": "gemini-cli",
+            "name": "Gemini CLI",
+            "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
+            "default_model": "gemini-2.5-pro",
+            "auth_modes": ["api_key", "gcloud"],
+            "default_auth_mode": "api_key",
+        },
+        {
+            "id": "aider",
+            "name": "Aider",
+            "models": ["sonnet", "opus", "gpt-4o", "deepseek"],
+            "default_model": "sonnet",
+            "auth_modes": ["api_key"],
+            "default_auth_mode": "api_key",
+        },
+    ]
 
 
 # Global registry of active streams — survives WebSocket reconnects.
@@ -144,7 +185,7 @@ class ConnectionHandler:
             try:
                 from services.workspace import _run_git
                 _, actual_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
-                tree, root = await self.orch.create_tree(
+                tree, _root = await self.orch.create_tree(
                     repo_name, base_branch=actual_branch,
                     repo_id=repo_id, repo_path=str(repo_path), repo_name=repo_name,
                 )
@@ -174,7 +215,7 @@ class ConnectionHandler:
 
     # ── Tree CRUD ─────────────────────────────────────────────────────
 
-    async def handle_list_trees(self, data: dict):
+    async def handle_list_trees(self, data: dict):  # noqa: ARG002
         trees = await list_trees()
         last_tree_id = await get_setting("last_tree_id")
         raw = await get_setting("expanded_nodes")
@@ -504,7 +545,7 @@ class ConnectionHandler:
             subtrees_map.pop(node_id, None)
         await set_setting("collapsed_subtrees", json.dumps(subtrees_map))
 
-    async def handle_get_settings(self, data: dict):
+    async def handle_get_settings(self, data: dict):  # noqa: ARG002
         defaults = await get_global_defaults()
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
 
@@ -522,11 +563,11 @@ class ConnectionHandler:
 
     # ── Repo & branch operations ──────────────────────────────────────
 
-    async def handle_get_repo_info(self, data: dict):
+    async def handle_get_repo_info(self, data: dict):  # noqa: ARG002
         info = await ws_get_repo_info()
         await self.send(WS.REPO_INFO, **info)
 
-    async def handle_list_branches(self, data: dict):
+    async def handle_list_branches(self, data: dict):  # noqa: ARG002
         branches = await ws_list_branches()
         await self.send(WS.BRANCHES, branches=branches)
 

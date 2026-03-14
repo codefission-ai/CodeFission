@@ -279,8 +279,8 @@ if __name__ == "__main__":
     needing the full CodeFission DB/tree infrastructure.
 
     Usage:
-        python -m services.chat_service "What files are in this directory?"
-        python -m services.chat_service "Explain this codebase" --model claude-sonnet-4-6
+        python -m services.chat "What files are in this directory?"
+        python -m services.chat "Explain this codebase" --model claude-sonnet-4-6
     """
     import asyncio
     import sys

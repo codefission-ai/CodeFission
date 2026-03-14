@@ -72,7 +72,7 @@ def _current_node_id() -> str | None:
     return _load_state().get("node_id")
 
 
-# ── Server infrastructure (from old cli.py) ──────────────────────────
+# ── Server infrastructure ─────────────────────────────────────────────
 
 
 def _check_prerequisites():
@@ -351,11 +351,9 @@ def tree_ls():
 @tree.command("new")
 @click.argument("name")
 @click.option("--branch", default="main", help="Base branch")
-@click.option("--from", "from_node", default=None, help="Fork from this node ID")
-def tree_new(name, branch, from_node):
+def tree_new(name, branch):
     """Create a new tree."""
     import httpx
-    import subprocess
 
     base = _require_server()
 
@@ -593,8 +591,7 @@ def rm_node(node_id):
 @cli.command()
 @click.argument("message")
 @click.option("-q", "--quote", "quote_files", multiple=True, help="File to quote as context")
-@click.option("--model", default=None, help="Model override")
-def chat(message, quote_files, model):
+def chat(message, quote_files):
     """Send a message and stream the response."""
     import httpx
 
