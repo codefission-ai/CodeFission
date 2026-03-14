@@ -14,7 +14,7 @@ Will fail until the implementation is done.
 import pytest
 
 from services.orchestrator import Orchestrator
-from services.tree_service import (
+from services.trees import (
     get_node,
     get_tree,
     update_node,
@@ -22,7 +22,7 @@ from services.tree_service import (
     get_setting,
     update_tree,
 )
-from services.workspace_service import (
+from services.workspace import (
     _run_git,
     _GIT_ENV,
     ensure_worktree,
@@ -110,11 +110,16 @@ class TestDeleteNode:
 
     @pytest.mark.asyncio
     async def test_cannot_delete_streaming_node(self, orch, project):
-        """Cannot delete a node with status=active (currently streaming)."""
+        """Cannot delete a node with an active stream in the orchestrator."""
+        from services.orchestrator import StreamState
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         child = await orch.branch(root.id, label="streaming")
-        await update_node(child.id, status="active")
+
+        # Register child as actively streaming in the orchestrator
+        orch._active_streams[child.id] = StreamState(
+            node_id=child.id, tree_id=child.tree_id, status="active",
+        )
 
         with pytest.raises(ValueError):
             await orch.delete_node(child.id)
@@ -122,17 +127,17 @@ class TestDeleteNode:
     @pytest.mark.asyncio
     async def test_cleans_up_settings_on_delete(self, orch, project):
         """Expanded_nodes setting is cleaned up when a node is deleted."""
+        import json
         branch = await _init_project(project)
         tree, root = await orch.create_tree("T", base_branch=branch)
         child = await orch.branch(root.id, label="tracked")
 
-        # Simulate expanded_nodes containing the child ID
-        import json
-        await set_setting(f"expanded_nodes_{tree.id}", json.dumps([child.id, root.id]))
+        # Simulate expanded_nodes containing the child ID (dict format: {node_id: True})
+        await set_setting("expanded_nodes", json.dumps({child.id: True, root.id: True}))
 
         await orch.delete_node(child.id)
 
-        expanded_raw = await get_setting(f"expanded_nodes_{tree.id}")
+        expanded_raw = await get_setting("expanded_nodes")
         if expanded_raw:
             expanded = json.loads(expanded_raw)
             assert child.id not in expanded
@@ -205,7 +210,7 @@ class TestOpenRepo:
             "T", base_branch=branch,
             repo_id="repo1", repo_path="/old/path",
         )
-        from services.tree_service import update_tree as _update_tree
+        from services.trees import update_tree as _update_tree
         await _update_tree(tree.id, base_commit=tree.base_commit)
 
         result = await orch.open_repo(
@@ -238,7 +243,7 @@ class TestUpdateBase:
         await _run_git(project, "commit", "-m", "second commit", env=_GIT_ENV)
         _, new_sha, _ = await _run_git(project, "rev-parse", "HEAD")
 
-        await orch.update_base(tree.id, new_sha)
+        await orch.update_base(tree.id, new_commit=new_sha)
 
         updated = await get_tree(tree.id)
         assert updated.base_commit == new_sha
@@ -250,7 +255,7 @@ class TestUpdateBase:
         tree, _ = await orch.create_tree("T", base_branch=branch)
 
         with pytest.raises((ValueError, RuntimeError)):
-            await orch.update_base(tree.id, "deadbeef" * 5)
+            await orch.update_base(tree.id, new_commit="not-a-valid-ref")
 
     @pytest.mark.asyncio
     async def test_rejects_update_after_children_created(self, orch, project):
@@ -266,7 +271,7 @@ class TestUpdateBase:
         _, new_sha, _ = await _run_git(project, "rev-parse", "HEAD")
 
         with pytest.raises((ValueError, RuntimeError)):
-            await orch.update_base(tree.id, new_sha)
+            await orch.update_base(tree.id, new_commit=new_sha)
 
 
 # ---------------------------------------------------------------------------
@@ -281,13 +286,13 @@ class TestSettings:
         """update_global_settings persists provider, model, max_turns."""
         branch = await _init_project(project)
 
-        await orch.update_global_settings(
-            default_provider="codex",
-            default_model="o4-mini",
-            default_max_turns="10",
-        )
+        await orch.update_global_settings({
+            "default_provider": "codex",
+            "default_model": "o4-mini",
+            "default_max_turns": "10",
+        })
 
-        from services.tree_service import get_global_defaults
+        from services.trees import get_global_defaults
         defaults = await get_global_defaults()
         assert defaults["provider"] == "codex"
         assert defaults["model"] == "o4-mini"
@@ -299,7 +304,7 @@ class TestSettings:
         branch = await _init_project(project)
         tree, _ = await orch.create_tree("T", base_branch=branch)
 
-        await orch.update_tree_settings(tree.id, provider="codex", model="o4-mini")
+        await orch.update_tree_settings(tree.id, {"provider": "codex", "model": "o4-mini"})
 
         updated = await get_tree(tree.id)
         assert updated.provider == "codex"
@@ -314,7 +319,7 @@ class TestSettings:
         tree, _ = await orch.create_tree("T", base_branch=branch)
         await update_tree(tree.id, model="claude-sonnet-4-6")
 
-        from services.tree_service import resolve_tree_settings
+        from services.trees import resolve_tree_settings
         fetched_tree = await get_tree(tree.id)
         effective = await resolve_tree_settings(fetched_tree)
         assert effective["model"] == "claude-sonnet-4-6"

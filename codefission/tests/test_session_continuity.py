@@ -60,7 +60,7 @@ class TestResolveSessionContinuity:
     async def test_root_parent_returns_fresh_start(self):
         """Root node (no user_message) -> fresh start: (None, False, None)."""
         # Import from the planned module path
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         root = FakeNode(user_message="")
         resume_id, fork, context = await resolve_session_continuity(root, "claude")
@@ -72,7 +72,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_same_provider_returns_fork(self):
         """Same provider with session_id -> fork: (session_id, True, None)."""
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         parent = FakeNode(
             user_message="hello",
@@ -88,7 +88,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_same_provider_different_model_still_forks(self):
         """Same provider, different model -> still forks (sessions are provider-level)."""
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         parent = FakeNode(
             user_message="hello",
@@ -106,7 +106,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_different_provider_returns_context_transfer(self):
         """Different provider -> context transfer: (None, False, '<context text>')."""
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         parent = FakeNode(
             id="parent-1",
@@ -117,7 +117,7 @@ class TestResolveSessionContinuity:
         )
 
         # Mock get_ancestor_chain to return ancestors
-        with patch("services.chat_service.get_ancestor_chain", new_callable=AsyncMock) as mock_ancestors:
+        with patch("services.chat.get_ancestor_chain", new_callable=AsyncMock) as mock_ancestors:
             mock_ancestors.return_value = [parent]  # just the parent in the chain
             resume_id, fork, context = await resolve_session_continuity(parent, "codex")
 
@@ -131,7 +131,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_no_session_id_returns_context_transfer(self):
         """Same provider but no session_id -> context transfer (can't fork)."""
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         parent = FakeNode(
             id="parent-1",
@@ -141,7 +141,7 @@ class TestResolveSessionContinuity:
             session_id=None,  # no session to fork from
         )
 
-        with patch("services.chat_service.get_ancestor_chain", new_callable=AsyncMock) as mock_ancestors:
+        with patch("services.chat.get_ancestor_chain", new_callable=AsyncMock) as mock_ancestors:
             mock_ancestors.return_value = [parent]
             resume_id, fork, context = await resolve_session_continuity(parent, "claude")
 
@@ -152,7 +152,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_empty_parent_message_returns_fresh(self):
         """Empty parent message (branch with no chat yet) -> fresh start."""
-        from services.chat_service import resolve_session_continuity
+        from services.chat import resolve_session_continuity
 
         parent = FakeNode(
             user_message="",
@@ -175,7 +175,7 @@ class TestBuildContextFromAncestors:
 
     def test_single_ancestor(self):
         """Single ancestor produces context with its conversation."""
-        from services.chat_service import _build_context_from_ancestors
+        from services.chat import _build_context_from_ancestors
 
         parent = FakeNode(
             user_message="hello",
@@ -191,7 +191,7 @@ class TestBuildContextFromAncestors:
 
     def test_ancestor_chain_in_order(self):
         """Grandparent -> parent -> (current): grandparent conversation comes first."""
-        from services.chat_service import _build_context_from_ancestors
+        from services.chat import _build_context_from_ancestors
 
         grandparent = FakeNode(
             id="gp",
@@ -217,7 +217,7 @@ class TestBuildContextFromAncestors:
 
     def test_skips_empty_messages(self):
         """Root (empty message) is skipped; only real conversations included."""
-        from services.chat_service import _build_context_from_ancestors
+        from services.chat import _build_context_from_ancestors
 
         root = FakeNode(
             id="root",
@@ -241,7 +241,7 @@ class TestBuildContextFromAncestors:
 
     def test_uses_agentbridge_format(self):
         """Context is formatted via agentbridge's format_history_as_context."""
-        from services.chat_service import _build_context_from_ancestors
+        from services.chat import _build_context_from_ancestors
 
         parent = FakeNode(
             user_message="hello",
@@ -257,7 +257,7 @@ class TestBuildContextFromAncestors:
 
     def test_truncation_on_long_history(self):
         """Very long ancestor chains are truncated to a reasonable size."""
-        from services.chat_service import _build_context_from_ancestors
+        from services.chat import _build_context_from_ancestors
 
         # Create 20 ancestors with long responses
         ancestors = []

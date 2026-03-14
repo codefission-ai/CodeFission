@@ -8,20 +8,19 @@ calls, and WS response formatting.
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from fastapi import WebSocket
 
 from config import set_project_path, get_project_path
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
 from providers import list_providers
-from services.tree_service import (
+from services.trees import (
     list_trees, get_tree, get_all_nodes, get_node, find_tree,
     delete_tree, update_tree, update_node,
     get_setting, set_setting, get_global_defaults,
 )
-from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
-from services.workspace_service import (
+from services.chat import TextDelta, ToolStart, ToolEnd, SessionInit
+from services.workspace import (
     resolve_workspace,
     remove_worktree, remove_worktree_and_branch,
     list_branches as ws_list_branches,
@@ -30,7 +29,7 @@ from services.workspace_service import (
     _worktrees_dir,
     detect_repo_name,
 )
-from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree, find_child_by_cwd
+from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace, kill_process_tree
 from services.orchestrator import Orchestrator, StreamState
 
 log = logging.getLogger(__name__)
@@ -46,17 +45,16 @@ class ConnectionHandler:
     """Holds per-connection state and dispatches WebSocket messages to handlers."""
 
     def __init__(self, ws: WebSocket, repo_path: str | None = None,
-                 repo_id: str | None = None, head_commit: str | None = None):
+                 repo_id: str | None = None, head_commit: str | None = None,
+                 orchestrator: Orchestrator | None = None):
         self.ws = ws
         self.repo_path = Path(repo_path) if repo_path else None
         self.repo_id = repo_id
         self.head_commit = head_commit
-        self.orch = Orchestrator()
+        self.orch = orchestrator or Orchestrator()
         self.tasks: dict[str, asyncio.Task] = {}
-        self.stream_tasks: dict[str, asyncio.Task] = {}
         self.cancelled: set[str] = set()
         self.streams: dict[str, StreamState] = {}
-        self.sdk_pids: dict[str, int] = {}  # node_id -> SDK subprocess PID
 
     async def send(self, msg_type: str, **payload):
         # If this stream has been claimed by a newer connection, route there
@@ -144,13 +142,13 @@ class ConnectionHandler:
         if not tree:
             # Create new tree
             try:
-                from services.workspace_service import _run_git
+                from services.workspace import _run_git
                 _, actual_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
                 tree, root = await self.orch.create_tree(
                     repo_name, base_branch=actual_branch,
                     repo_id=repo_id, repo_path=str(repo_path), repo_name=repo_name,
                 )
-                from services.workspace_service import create_protective_ref
+                from services.workspace import create_protective_ref
                 if tree.base_commit:
                     await create_protective_ref(tree.id, tree.base_commit)
             except Exception as e:
@@ -283,117 +281,54 @@ class ConnectionHandler:
         self.tasks[node_id] = task
 
     async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, file_quotes: list[dict] | None = None, draft_node_id: str | None = None):
+        """Thin WS consumer of Orchestrator.chat() async generator.
+
+        Translates domain events into WebSocket messages. All business logic
+        lives in the Orchestrator; this method is pure transport.
+        """
+        from services.orchestrator import ChatNodeCreated, ChatCompleted
+
         nid = node_id
+        tool_names: dict[str, str] = {}
+
         try:
-            # Prepare chat: create child node, resolve workspace/session/settings
-            ctx = await self.orch.prepare_chat(node_id, msg, after_id=after_id, file_quotes=file_quotes, draft_node_id=draft_node_id)
-            nid = ctx.node_id
+            async for event in self.orch.chat(
+                node_id, msg,
+                after_id=after_id,
+                file_quotes=file_quotes,
+                draft_node_id=draft_node_id,
+            ):
+                if isinstance(event, ChatNodeCreated):
+                    nid = event.node.id
+                    created_payload = {"node": event.node.model_dump()}
+                    if event.after_id:
+                        created_payload["after_id"] = event.after_id
+                    await self.send(WS.NODE_CREATED, **created_payload)
 
-            # Notify client of new node
-            created_payload = {"node": ctx.node.model_dump()}
-            if ctx.after_id:
-                created_payload["after_id"] = ctx.after_id
-            await self.send(WS.NODE_CREATED, **created_payload)
+                    # Re-key task under child id so cancel can find it
+                    self.tasks[nid] = self.tasks.pop(node_id, asyncio.current_task())
 
-            # Re-key task under child id so cancel can find it
-            self.tasks[nid] = self.tasks.pop(node_id, asyncio.current_task())
+                    # Send node data (now has user_message, status=active)
+                    await self.send(WS.NODE_DATA, node=event.node.model_dump())
 
-            # Send updated node data (now has user_message, status=active)
-            await self.send(WS.NODE_DATA, node=ctx.node.model_dump())
+                    # Auto-name tree on first message
+                    tree = await get_tree(event.node.tree_id)
+                    if tree and tree.name == "Untitled":
+                        asyncio.create_task(self._auto_name_tree(tree.id, msg, tree))
 
-            # Auto-name tree on first message
-            tree = await get_tree(ctx.node.tree_id)
-            if tree and tree.name == "Untitled":
-                log.info("Triggering auto-name for tree %s", tree.id)
-                asyncio.create_task(self._auto_name_tree(tree.id, msg, tree))
+                    # Init streaming state for reconnect support
+                    state = StreamState(node_id=nid, tree_id=event.node.tree_id, send_fn=self.send)
+                    self.streams[nid] = state
+                    _active_streams[nid] = state
+                    await bus.emit(STREAM_START, node_id=nid)
+                    await self.send(WS.STATUS, node_id=nid, status="active")
 
-            # Init streaming state (shared with global registry for reconnect)
-            state = StreamState(node_id=nid, tree_id=ctx.node.tree_id, send_fn=self.send)
-            self.streams[nid] = state
-            _active_streams[nid] = state
-            await bus.emit(STREAM_START, node_id=nid)
-            await self.send(WS.STATUS, node_id=nid, status="active")
-
-            # Track tool names for pairing start->end
-            tool_names: dict[str, str] = {}
-
-            # Run streaming in a separate task so the SDK's anyio
-            # cancel scope is bound to that task, not ours.
-            event_queue: asyncio.Queue = asyncio.Queue()
-            gen = stream_chat(
-                nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
-                model=ctx.model,
-                max_turns=ctx.max_turns,
-                auth_mode=ctx.auth_mode,
-                api_key=ctx.api_key,
-            )
-
-            async def _pump_stream():
-                try:
-                    async for event in gen:
-                        await event_queue.put(event)
-                except asyncio.CancelledError:
-                    pass
-                except Exception as exc:
-                    await event_queue.put(exc)
-                finally:
-                    try:
-                        await asyncio.wait_for(gen.aclose(), timeout=5.0)
-                    except Exception:
-                        pass
-                    await event_queue.put(None)
-                    self.stream_tasks.pop(nid, None)
-
-            stream_task = asyncio.create_task(_pump_stream())
-            self.stream_tasks[nid] = stream_task
-            state.stream_task = stream_task
-
-            # Find SDK subprocess PID (direct child of our process with cwd=workspace)
-            await asyncio.sleep(0.3)  # Give subprocess time to start
-            self._track_sdk_pid(nid, ctx.workspace)
-            state.sdk_pid = self.sdk_pids.get(nid)
-
-            # Track session_id for provider/model recording
-            session_id = None
-
-            # Consume events from the queue.
-            STREAM_INACTIVITY_TIMEOUT = 180  # 3 minutes of silence → dead
-            last_event_time = asyncio.get_event_loop().time()
-            stream_timed_out = False
-            while True:
-                try:
-                    event = await asyncio.wait_for(event_queue.get(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    if state.cancelled:
-                        break
-                    now = asyncio.get_event_loop().time()
-                    idle = now - last_event_time
-                    # Check if the SDK subprocess is still alive
-                    sdk_pid = state.sdk_pid or self.sdk_pids.get(nid)
-                    if sdk_pid:
-                        try:
-                            os.kill(sdk_pid, 0)  # signal 0 = existence check
-                        except (ProcessLookupError, PermissionError):
-                            log.warning("SDK subprocess %d for node %s is dead after %.0fs idle — ending stream", sdk_pid, nid, idle)
-                            stream_timed_out = True
-                            break
-                    if idle >= STREAM_INACTIVITY_TIMEOUT:
-                        log.warning("Stream for node %s idle for %.0fs — treating as dead", nid, idle)
-                        stream_timed_out = True
-                        break
-                    continue
-                last_event_time = asyncio.get_event_loop().time()
-                if event is None:
-                    break
-                if isinstance(event, Exception):
-                    raise event
-
-                if isinstance(event, SessionInit):
-                    session_id = event.session_id
-                    await update_node(nid, session_id=event.session_id)
+                elif isinstance(event, SessionInit):
+                    pass  # Orchestrator handles session_id saving
 
                 elif isinstance(event, TextDelta):
-                    self.streams[nid].text += event.text
+                    if nid in self.streams:
+                        self.streams[nid].text += event.text
                     await bus.emit(STREAM_DELTA, node_id=nid, text=event.text)
                     await self.send(WS.CHUNK, node_id=nid, text=event.text)
 
@@ -417,90 +352,49 @@ class ConnectionHandler:
                         is_error=event.is_error,
                     )
 
-            # Cancel stream task if still running
-            if not stream_task.done():
-                stream_task.cancel()
-            try:
-                await asyncio.wait_for(stream_task, timeout=5.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError, BaseException):
-                pass
+                elif isinstance(event, ChatCompleted):
+                    if nid in self.streams:
+                        self.streams[nid].status = "done"
+                    full_response = event.result.full_response
+                    await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
+                    done_payload = {"node_id": nid, "full_response": full_response}
+                    if event.result.git_commit:
+                        done_payload["git_commit"] = event.result.git_commit
 
-            # Check if this node was cancelled
-            was_cancelled = state.cancelled
+                    # Brief delay to let SDK/tool subprocesses fully exit
+                    await asyncio.sleep(0.15)
+                    # Tree-wide process scan
+                    wt_dir = _worktrees_dir()
+                    tree_procs_raw = list_tree_processes(wt_dir) if wt_dir.exists() else {}
+                    this_node_procs = tree_procs_raw.get(nid, [])
+                    if this_node_procs:
+                        done_payload["processes"] = [
+                            {"pid": p.pid, "command": p.command, "ports": p.ports}
+                            for p in this_node_procs
+                        ]
+                    else:
+                        # No running processes — remove ephemeral worktree
+                        try:
+                            node = await get_node(nid)
+                            if node:
+                                tree = await get_tree(node.tree_id)
+                                if tree:
+                                    if event.result.files_changed == 0 and node.parent_id:
+                                        await remove_worktree_and_branch(tree.root_node_id, nid)
+                                        await update_node(nid, git_branch=None)
+                                    else:
+                                        await remove_worktree(tree.root_node_id, nid)
+                        except Exception:
+                            log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
 
-            if was_cancelled:
-                if nid in self.streams:
-                    self.streams[nid].status = "error"
-                partial = self.streams.get(nid, StreamState(nid)).text
-                active_tools = list(tool_names.values())
-                result = await self.orch.cancel_chat(nid, partial, active_tools, ctx.workspace)
-                await self.send(WS.CHUNK, node_id=nid, text=result.saved_text)
-                await self.send(WS.ERROR, node_id=nid, error="Cancelled")
-                # Remove ephemeral worktree if no running processes
-                try:
-                    procs = list_processes(ctx.workspace)
-                    if not procs:
-                        node = await get_node(nid)
-                        if node:
-                            tree = await get_tree(node.tree_id)
-                            if tree:
-                                await remove_worktree(tree.root_node_id, nid)
-                except Exception:
-                    log.debug("Ephemeral worktree removal after cancel failed for %s", nid, exc_info=True)
-                # Broadcast tree-wide process state so UI updates all nodes
-                await self._send_tree_processes()
-            else:
-                full_response = self.streams[nid].text
-                if stream_timed_out:
-                    timeout_note = "\n\n---\n*Stream interrupted — the connection to the AI was lost. You can duplicate this node to retry.*"
-                    full_response += timeout_note
-                    await self.send(WS.CHUNK, node_id=nid, text=timeout_note)
-                self.streams[nid].status = "done"
-                result = await self.orch.complete_chat(
-                    nid, full_response, msg, ctx.workspace,
-                    provider="claude",  # Record which provider was used
-                    model=ctx.model,    # Record which model was used
-                )
-                await bus.emit(STREAM_END, node_id=nid, full_response=full_response)
-                done_payload = {"node_id": nid, "full_response": full_response}
-                if result.git_commit:
-                    done_payload["git_commit"] = result.git_commit
-                # Brief delay to let SDK/tool subprocesses fully exit
-                await asyncio.sleep(0.15)
-                # Tree-wide process scan
-                wt_dir = _worktrees_dir()
-                tree_procs_raw = list_tree_processes(wt_dir) if wt_dir.exists() else {}
-                this_node_procs = tree_procs_raw.get(nid, [])
-                if this_node_procs:
-                    done_payload["processes"] = [
-                        {"pid": p.pid, "command": p.command, "ports": p.ports}
-                        for p in this_node_procs
-                    ]
-                else:
-                    # No running processes — remove ephemeral worktree
-                    try:
-                        node = await get_node(nid)
-                        if node:
-                            tree = await get_tree(node.tree_id)
-                            if tree:
-                                if result.files_changed == 0 and node.parent_id:
-                                    # No file changes — branch is noise, remove both
-                                    await remove_worktree_and_branch(tree.root_node_id, nid)
-                                    await update_node(nid, git_branch=None)
-                                else:
-                                    await remove_worktree(tree.root_node_id, nid)
-                    except Exception:
-                        log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
-                await self.send(WS.DONE, **done_payload)
-                # Broadcast tree-wide process state so UI updates all nodes
-                await self._send_tree_processes()
+                    await self.send(WS.DONE, **done_payload)
+                    await self._send_tree_processes()
 
         except Exception as e:
             import traceback
             traceback.print_exc()
             if nid in self.streams:
                 self.streams[nid].status = "error"
-            await self.orch.fail_chat(nid)
             await bus.emit(STREAM_ERROR, node_id=nid, error=str(e))
             await self.send(WS.ERROR, node_id=nid, error=str(e))
             # Try to remove ephemeral worktree on error
@@ -513,7 +407,6 @@ class ConnectionHandler:
                         procs = list_processes(ws_path) if ws_path.exists() else []
                         if not procs:
                             await remove_worktree(tree.root_node_id, nid)
-                        # Broadcast tree-wide process state so UI updates all nodes
                         await self._send_tree_processes()
             except Exception:
                 log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
@@ -522,21 +415,6 @@ class ConnectionHandler:
             self.streams.pop(nid, None)
             _active_streams.pop(nid, None)
             self.tasks.pop(nid, None)
-            # Kill just the SDK/CLI process if it's still alive
-            sdk_pid = self.sdk_pids.pop(nid, None)
-            if sdk_pid:
-                import signal
-                try:
-                    os.kill(sdk_pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError):
-                    pass
-
-    def _track_sdk_pid(self, node_id: str, workspace):
-        """Find the SDK subprocess PID — direct child of server with matching cwd."""
-        from pathlib import Path
-        pid = find_child_by_cwd(Path(workspace))
-        if pid is not None:
-            self.sdk_pids[node_id] = pid
 
     async def _auto_name_tree(self, tree_id: str, first_message: str, tree):
         """Background task: generate a short name for a tree and push it to the client."""
@@ -579,15 +457,11 @@ class ConnectionHandler:
             if info.stream_task and not info.stream_task.done():
                 info.stream_task.cancel()
         else:
-            # Fallback to instance state (shouldn't normally happen)
+            # Fallback: cancel the task directly
             self.cancelled.add(node_id)
-            sdk_pid = self.sdk_pids.get(node_id)
-            if sdk_pid:
-                kill_process_tree(sdk_pid)
-                self.sdk_pids.pop(node_id, None)
-            st = self.stream_tasks.get(node_id)
-            if st and not st.done():
-                st.cancel()
+            task = self.tasks.get(node_id)
+            if task and not task.done():
+                task.cancel()
 
     async def handle_duplicate(self, data: dict):
         """Re-run the same user message from the same parent, creating a sibling."""

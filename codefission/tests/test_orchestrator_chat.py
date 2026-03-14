@@ -26,8 +26,8 @@ from agentbridge import (
     TurnComplete,
 )
 from services.orchestrator import Orchestrator
-from services.tree_service import get_node, get_tree
-from services.workspace_service import _run_git, _GIT_ENV
+from services.trees import get_node, get_tree
+from services.workspace import _run_git, _GIT_ENV
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ class TestOrchestratorChat:
         tree, root = await orch.create_tree("T", base_branch=branch)
 
         mock_fn = await _mock_stream_chat_factory()
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             events = []
             async for event in orch.chat(root.id, "hello"):
                 events.append(event)
@@ -128,7 +128,7 @@ class TestOrchestratorChat:
             TurnComplete(session_id="s1", cost_usd=0.01, provider="claude"),
         ])
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             text_deltas = []
             async for event in orch.chat(root.id, "greet me"):
                 if isinstance(event, TextDelta):
@@ -151,7 +151,7 @@ class TestOrchestratorChat:
             TurnComplete(session_id="s1", cost_usd=0.02, provider="claude"),
         ])
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             tool_events = []
             async for event in orch.chat(root.id, "run ls"):
                 if isinstance(event, (ToolStart, ToolEnd)):
@@ -171,7 +171,7 @@ class TestOrchestratorChat:
 
         mock_fn = await _mock_stream_chat_factory()
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             events = []
             async for event in orch.chat(root.id, "hello"):
                 events.append(event)
@@ -195,7 +195,7 @@ class TestOrchestratorChat:
             TurnComplete(session_id="s1", cost_usd=0.01, provider="claude"),
         ])
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             node_id = None
             async for event in orch.chat(root.id, "hello"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -218,7 +218,7 @@ class TestOrchestratorChat:
             session_id="s1",
         )
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             node_id = None
             async for event in orch.chat(root.id, "hello"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -242,7 +242,7 @@ class TestOrchestratorChat:
             await asyncio.sleep(10)
             yield TurnComplete(session_id="s1", provider="claude")
 
-        with patch("services.chat_service.stream_chat", side_effect=slow_stream):
+        with patch("services.orchestrator.stream_chat", side_effect=slow_stream):
             node_id = None
             async for event in orch.chat(root.id, "long task"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -270,7 +270,7 @@ class TestOrchestratorChat:
             yield SessionInit(session_id="s1", provider="claude")
             raise RuntimeError("Connection lost")
 
-        with patch("services.chat_service.stream_chat", side_effect=failing_stream):
+        with patch("services.orchestrator.stream_chat", side_effect=failing_stream):
             node_id = None
             events = []
             try:
@@ -297,7 +297,7 @@ class TestOrchestratorChat:
             TurnComplete(session_id="s1", cost_usd=0.005, provider="claude"),
         ])
 
-        with patch("services.chat_service.stream_chat", side_effect=mock_fn):
+        with patch("services.orchestrator.stream_chat", side_effect=mock_fn):
             completed_event = None
             async for event in orch.chat(root.id, "explain something"):
                 if type(event).__name__ == "ChatCompleted":

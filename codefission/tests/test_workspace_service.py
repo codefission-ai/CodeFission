@@ -6,7 +6,7 @@ These tests work against a temporary git project (not the user's real repo).
 import pytest
 from pathlib import Path
 
-from services.workspace_service import (
+from services.workspace import (
     create_worktree, ensure_worktree,
     auto_commit, resolve_workspace, copy_session,
     list_files, get_diff, read_file,
@@ -636,7 +636,7 @@ def test_claude_project_dir_nested(tmp_path):
 
 def test_copy_session(tmp_path, monkeypatch):
     """copy_session copies session file from parent to child project dir."""
-    import services.workspace_service as ws_mod
+    import services.workspace as ws_mod
     monkeypatch.setattr(ws_mod, "CLAUDE_PROJECTS_DIR", tmp_path / "projects")
 
     parent_ws = Path("/fake/parent")
@@ -656,7 +656,7 @@ def test_copy_session(tmp_path, monkeypatch):
 
 def test_copy_session_idempotent(tmp_path, monkeypatch):
     """copy_session doesn't overwrite existing session file."""
-    import services.workspace_service as ws_mod
+    import services.workspace as ws_mod
     monkeypatch.setattr(ws_mod, "CLAUDE_PROJECTS_DIR", tmp_path / "projects")
 
     parent_ws = Path("/fake/parent")
@@ -677,7 +677,7 @@ def test_copy_session_idempotent(tmp_path, monkeypatch):
 
 def test_copy_session_missing_source(tmp_path, monkeypatch):
     """copy_session handles missing parent session gracefully."""
-    import services.workspace_service as ws_mod
+    import services.workspace as ws_mod
     monkeypatch.setattr(ws_mod, "CLAUDE_PROJECTS_DIR", tmp_path / "projects")
 
     parent_ws = Path("/fake/parent")

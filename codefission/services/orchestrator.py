@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from models import Node, Tree
-from services.tree_service import (
+from services.trees import (
     create_tree as _create_tree,
     get_tree,
     get_node,
@@ -36,7 +36,7 @@ from services.tree_service import (
     get_ancestor_chain,
 )
 from config import get_project_path, set_project_path
-from services.workspace_service import (
+from services.workspace import (
     create_worktree,
     ensure_worktree,
     auto_commit,
@@ -60,7 +60,7 @@ from services.workspace_service import (
     list_branches as ws_list_branches,
     create_protective_ref,
 )
-from services.chat_service import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit
+from services.chat import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit, TurnComplete
 from services.process_service import (
     list_processes,
     kill_all_in_workspace,
@@ -102,6 +102,7 @@ class ChatContext:
     workspace: Path
     sdk_message: str
     parent_session_id: str | None
+    provider: str
     model: str
     max_turns: int
     auth_mode: str
@@ -245,7 +246,7 @@ class Orchestrator:
             raise ValueError("Tree not found")
 
         # Check for existing draft under this parent and reuse it
-        from services.tree_service import get_drafts_for_parent
+        from services.trees import get_drafts_for_parent
         existing = await get_drafts_for_parent(parent_id)
         if existing:
             return existing[0]
@@ -280,7 +281,7 @@ class Orchestrator:
             log.debug("Draft worktree removal failed for %s", draft_node_id, exc_info=True)
 
         # Delete the node from DB
-        from services.tree_service import delete_single_node
+        from services.trees import delete_single_node
         await delete_single_node(draft_node_id)
 
     # ── File quote context ────────────────────────────────────────────
@@ -556,12 +557,95 @@ class Orchestrator:
             workspace=workspace,
             sdk_message=sdk_msg,
             parent_session_id=parent_session_id,
+            provider=effective["provider"],
             model=effective["model"],
             max_turns=effective["max_turns"],
             auth_mode=global_cfg["auth_mode"],
             api_key=global_cfg["api_key"],
             after_id=after_id,
         )
+
+    # ── Chat async generator ────────────────────────────────────────
+
+    async def chat(
+        self,
+        parent_node_id: str,
+        message: str,
+        after_id: str | None = None,
+        created_by: str = "human",
+        file_quotes: list[dict] | None = None,
+        draft_node_id: str | None = None,
+    ) -> AsyncGenerator:
+        """Run a chat as an async generator yielding domain events.
+
+        Yields in order:
+          1. ChatNodeCreated  — a new child node was created
+          2. SessionInit / TextDelta / ToolStart / ToolEnd  — stream events
+          3. ChatCompleted  — chat finished successfully
+
+        On error, the generator marks the node as failed and raises.
+        The caller (WS presenter, REST SSE, CLI) consumes events and
+        delivers them over its transport.
+        """
+        # 1. Prepare: create child node, resolve workspace/session/settings
+        ctx = await self.prepare_chat(
+            parent_node_id, message,
+            after_id=after_id,
+            created_by=created_by,
+            file_quotes=file_quotes,
+            draft_node_id=draft_node_id,
+        )
+        nid = ctx.node_id
+
+        # Yield ChatNodeCreated so the caller can notify the UI
+        yield ChatNodeCreated(node=ctx.node, after_id=ctx.after_id)
+
+        # 2. Stream the chat via agentbridge
+        full_text = ""
+        provider_name = ctx.provider or "claude"
+
+        try:
+            async for event in stream_chat(
+                nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
+                provider=ctx.provider,
+                model=ctx.model,
+                max_turns=ctx.max_turns,
+                auth_mode=ctx.auth_mode,
+                api_key=ctx.api_key,
+            ):
+                if isinstance(event, SessionInit):
+                    await update_node(nid, session_id=event.session_id)
+                    if hasattr(event, "provider") and event.provider:
+                        provider_name = event.provider
+                    yield event
+
+                elif isinstance(event, TextDelta):
+                    full_text += event.text
+                    yield event
+
+                elif isinstance(event, ToolStart):
+                    yield event
+
+                elif isinstance(event, ToolEnd):
+                    yield event
+
+                elif isinstance(event, TurnComplete):
+                    # TurnComplete signals end of streaming — don't yield it,
+                    # instead finalize and yield ChatCompleted below
+                    pass
+
+            # 3. Complete: save response, auto-commit, yield ChatCompleted
+            result = await self.complete_chat(
+                nid, full_text, message, ctx.workspace,
+                provider=provider_name,
+                model=ctx.model,
+            )
+            yield ChatCompleted(result=result)
+
+        except Exception:
+            # Mark node as failed before re-raising
+            await self.fail_chat(nid)
+            raise
 
     # ── Chat completion / cancel / fail ───────────────────────────────
 
@@ -900,6 +984,58 @@ class Orchestrator:
             raise FileNotFoundError(f"No worktree or commit for node {node_id}")
 
         return FileContentResult(node_id=node_id, file_path=file_path, content=content)
+
+    # ── Convenience aliases for test compatibility ──────────────────
+
+    async def list_files(self, node_id: str) -> list[str]:
+        """Convenience: return just the file list (no wrapper)."""
+        result = await self.list_node_files(node_id)
+        return result.files
+
+    async def get_diff(self, node_id: str) -> str:
+        """Convenience: return just the diff string."""
+        result = await self.get_node_diff(node_id)
+        return result.diff
+
+    async def read_file(self, node_id: str, file_path: str) -> str:
+        """Convenience: return just the file content string."""
+        result = await self.read_node_file(node_id, file_path)
+        return result.content
+
+    # ── Open repo ─────────────────────────────────────────────────────
+
+    async def open_repo(
+        self,
+        repo_id: str,
+        repo_path: str,
+        base_commit: str,
+        base_branch: str = "main",
+        repo_name: str | None = None,
+    ) -> Tree:
+        """Find or create a tree for a given repo+commit combination.
+
+        If a tree already exists for repo_id+base_commit, returns it
+        (updating repo_path if it changed). Otherwise creates a new one.
+        """
+        existing = await find_tree(repo_id, base_commit, repo_path)
+
+        if existing:
+            # Update repo_path if it has moved
+            if existing.repo_path != repo_path:
+                await update_tree(existing.id, repo_path=repo_path)
+                existing = await get_tree(existing.id)
+            return existing
+
+        # Create new tree
+        rname = repo_name or (Path(repo_path).name if repo_path else "untitled")
+        tree, root = await self.create_tree(
+            rname,
+            base_branch=base_branch,
+            repo_id=repo_id,
+            repo_path=repo_path,
+            repo_name=rname,
+        )
+        return tree
 
     # ── Merge ────────────────────────────────────────────────────────
 

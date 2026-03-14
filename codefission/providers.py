@@ -1,8 +1,7 @@
 """Provider registry — lists supported coding tools, models, and auth modes.
 
 Each provider represents a CLI tool (Claude Code, Codex, etc.) that can be
-used as the backend for a tree's chat. Only claude-code is implemented;
-others are stubs for future work.
+used as the backend for a tree's chat.
 """
 
 from dataclasses import dataclass

@@ -8,8 +8,8 @@ No mocks except where noted — this validates the full data flow.
 import pytest
 
 from services.orchestrator import Orchestrator, ChatContext, ChatResult, CancelResult
-from services.tree_service import get_node, get_tree, update_node, set_setting
-from services.workspace_service import _run_git, _GIT_ENV
+from services.trees import get_node, get_tree, update_node, set_setting
+from services.workspace import _run_git, _GIT_ENV
 
 
 async def _init_project(project_path):
@@ -227,7 +227,7 @@ class TestPrepareChat:
     @pytest.mark.asyncio
     async def test_tree_overrides_global_defaults(self, orch, project):
         """Per-tree settings override global defaults."""
-        from services.tree_service import update_tree
+        from services.trees import update_tree
         branch = await _init_project(project)
         await set_setting("default_model", "claude-sonnet-4-6")
         await set_setting("default_max_turns", "25")
@@ -462,7 +462,7 @@ class TestFullLifecycle:
         branch_node = await orch.branch(ctx1.node_id, label="refactor")
 
         # Ensure the worktree exists (branch creates lazily)
-        from services.workspace_service import ensure_worktree
+        from services.workspace import ensure_worktree
         wt = await ensure_worktree(
             tree.root_node_id, branch_node.id,
             ctx1.node_id, branch_node.git_commit,

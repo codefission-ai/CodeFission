@@ -137,4 +137,20 @@ async def init_db():
         # Index for repo_id + base_commit lookups
         await db.execute("CREATE INDEX IF NOT EXISTS idx_trees_repo ON trees(repo_id, base_commit)")
 
+        # Actions table (audit log) — no FK so entries survive tree deletion
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS actions (
+                id TEXT PRIMARY KEY,
+                seq INTEGER UNIQUE,
+                ts TEXT NOT NULL,
+                tree_id TEXT,
+                node_id TEXT,
+                kind TEXT NOT NULL,
+                params TEXT NOT NULL DEFAULT '{}',
+                result TEXT NOT NULL DEFAULT '{}',
+                source TEXT NOT NULL DEFAULT 'gui'
+            );
+            CREATE INDEX IF NOT EXISTS idx_actions_tree ON actions(tree_id, seq);
+        """)
+
         await db.commit()
