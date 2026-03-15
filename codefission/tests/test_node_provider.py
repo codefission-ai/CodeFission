@@ -16,9 +16,9 @@ from unittest.mock import patch
 import pytest
 
 from agentbridge import SessionInit, TextDelta, TurnComplete
-from services.orchestrator import Orchestrator
-from services.trees import get_node, get_tree, create_tree, update_node
-from services.workspace import _run_git, _GIT_ENV
+from orchestrator import Orchestrator
+from store.trees import get_node, get_tree, create_tree, update_node
+from store.git import _run_git, _GIT_ENV
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ class TestNodeProviderModel:
 
         mock_fn = await _make_mock_stream(provider="claude")
 
-        with patch("services.orchestrator.chat.stream_chat", side_effect=mock_fn):
+        with patch("orchestrator.chat.stream_chat", side_effect=mock_fn):
             node_id = None
             async for event in orch.chat(root.id, "hello"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -105,7 +105,7 @@ class TestNodeProviderModel:
 
         mock_fn = await _make_mock_stream(provider="claude")
 
-        with patch("services.orchestrator.chat.stream_chat", side_effect=mock_fn):
+        with patch("orchestrator.chat.stream_chat", side_effect=mock_fn):
             node_id = None
             async for event in orch.chat(root.id, "hello"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -137,7 +137,7 @@ class TestNodeProviderModel:
 
         # n2: claude
         mock_claude = await _make_mock_stream(provider="claude", session_id="sess-c1")
-        with patch("services.orchestrator.chat.stream_chat", side_effect=mock_claude):
+        with patch("orchestrator.chat.stream_chat", side_effect=mock_claude):
             n2_id = None
             async for event in orch.chat(root.id, "first (claude)"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -145,7 +145,7 @@ class TestNodeProviderModel:
 
         # n3: codex (child of n2)
         mock_codex = await _make_mock_stream(provider="codex", session_id="sess-x1")
-        with patch("services.orchestrator.chat.stream_chat", side_effect=mock_codex):
+        with patch("orchestrator.chat.stream_chat", side_effect=mock_codex):
             n3_id = None
             async for event in orch.chat(n2_id, "second (codex)"):
                 if type(event).__name__ == "ChatNodeCreated":
@@ -153,7 +153,7 @@ class TestNodeProviderModel:
 
         # n4: claude again (child of n3)
         mock_claude2 = await _make_mock_stream(provider="claude", session_id="sess-c2")
-        with patch("services.orchestrator.chat.stream_chat", side_effect=mock_claude2):
+        with patch("orchestrator.chat.stream_chat", side_effect=mock_claude2):
             n4_id = None
             async for event in orch.chat(n3_id, "third (claude again)"):
                 if type(event).__name__ == "ChatNodeCreated":

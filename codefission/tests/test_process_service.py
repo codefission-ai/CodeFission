@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from services import process_service
-from services.process_service import list_processes, kill_process, kill_all_in_workspace, kill_process_tree
+from store import processes as process_service
+from store.processes import list_processes, kill_process, kill_all_in_workspace, kill_process_tree
 
 
 def _free_port():

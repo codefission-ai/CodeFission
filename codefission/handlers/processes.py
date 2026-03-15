@@ -3,13 +3,13 @@
 import logging
 
 from events import WS
-from services.trees import get_node, get_tree, update_node
-from services.workspace import (
+from store.trees import get_node, get_tree, update_node
+from store.git import (
     resolve_workspace,
     remove_worktree, remove_worktree_and_branch,
     _worktrees_dir,
 )
-from services.process_service import list_processes, list_tree_processes, kill_process, kill_all_in_workspace
+from store.processes import list_processes, list_tree_processes, kill_process, kill_all_in_workspace
 
 log = logging.getLogger(__name__)
 

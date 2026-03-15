@@ -559,7 +559,7 @@ def cleanup_tree_workspaces(project_path: Path, root_id: str, node_ids: list[str
     Takes project_path explicitly since this may be called from sync context.
     Never touches the project path itself.
     """
-    from services.process_service import kill_all_in_workspace
+    from store.processes import kill_all_in_workspace
 
     worktrees_dir = project_path / ".codefission" / "worktrees"
     artifacts_dir = project_path / ".codefission" / "artifacts"

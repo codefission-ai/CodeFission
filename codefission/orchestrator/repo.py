@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from models import Tree
-from services.trees import (
+from models import Tree, UpdateBaseResult
+from store.trees import (
     get_tree,
     get_node,
     update_node,
     update_tree,
     find_tree,
 )
-from services.workspace import (
+from store.git import (
     _run_git,
     ensure_worktree,
     compute_repo_id,
@@ -22,7 +22,6 @@ from services.workspace import (
     merge_to_branch as ws_merge_to_branch,
     list_branches as ws_list_branches,
 )
-from services.orchestrator.types import UpdateBaseResult
 from config import get_project_path, set_project_path
 
 

@@ -25,7 +25,7 @@ Homepage = "https://github.com/codefission-ai/CodeFission"
 Repository = "https://github.com/codefission-ai/CodeFission"
 
 [project.scripts]
-fission = "codefission.main:main"
+fission = "codefission.server:main"
 
 [dependency-groups]
 dev = [

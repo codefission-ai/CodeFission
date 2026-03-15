@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.trees import (
+from store.trees import (
     create_tree, list_trees, get_tree, get_all_nodes, get_node,
     create_child_node, update_node, update_tree, delete_tree,
     get_path_to_root, find_tree,

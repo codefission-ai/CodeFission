@@ -17,19 +17,20 @@ import pytest
 
 from db import get_db
 from models import Node
-from services.orchestrator import (
+from orchestrator import (
     Orchestrator, ChatContext, ChatResult, CancelResult,
     ChatNodeCreated, ChatCompleted,
     DeleteNodeResult, UpdateBaseResult,
     FileListResult, DiffResult, FileContentResult,
     StreamState,
 )
-from services.trees import (
-    get_node, get_tree, update_node, set_setting, get_setting,
+from store.trees import (
+    get_node, get_tree, update_node,
     get_ancestor_chain, get_path_to_root,
     update_tree, create_child_node,
 )
-from services.workspace import _run_git, _GIT_ENV
+from store.settings import set_setting, get_setting
+from store.git import _run_git, _GIT_ENV
 
 
 async def _init_project(project_path):
@@ -212,7 +213,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_root_node_returns_fresh_start(self, orch, project):
         """Root node with no user_message returns fresh start."""
-        from services.chat import resolve_session_continuity
+        from store.ai import resolve_session_continuity
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         node = await get_node(root.id)
@@ -225,7 +226,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_same_provider_forks_session(self, orch, project):
         """Same provider with session_id returns fork parameters."""
-        from services.chat import resolve_session_continuity
+        from store.ai import resolve_session_continuity
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         ctx = await orch.prepare_chat(root.id, "hello")
@@ -240,7 +241,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_different_provider_context_transfer(self, orch, project):
         """Different provider returns context transfer text."""
-        from services.chat import resolve_session_continuity
+        from store.ai import resolve_session_continuity
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         ctx = await orch.prepare_chat(root.id, "hello")
@@ -258,7 +259,7 @@ class TestResolveSessionContinuity:
     @pytest.mark.asyncio
     async def test_no_session_id_context_transfer(self, orch, project):
         """No session_id on parent triggers context transfer even for same provider."""
-        from services.chat import resolve_session_continuity
+        from store.ai import resolve_session_continuity
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         ctx = await orch.prepare_chat(root.id, "hello")
@@ -507,13 +508,13 @@ class TestSandboxRemoval:
     def test_sandbox_module_not_importable(self):
         """sandbox.py has been deleted and cannot be imported."""
         with pytest.raises(ModuleNotFoundError):
-            import services.sandbox  # noqa: F401
+            import store.sandbox  # noqa: F401
 
     @pytest.mark.asyncio
     async def test_global_defaults_no_sandbox_keys(self, orch, project):
         """Global defaults no longer include sandbox-related keys."""
         branch = await _init_project(project)
-        from services.trees import get_global_defaults
+        from store.settings import get_global_defaults
         defaults = await get_global_defaults()
         assert "sandbox" not in defaults
         assert "sandbox_available" not in defaults

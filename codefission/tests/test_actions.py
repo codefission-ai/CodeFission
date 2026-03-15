@@ -18,7 +18,7 @@ import pytest
 
 async def _create_action_log():
     """Import and return an ActionLog instance."""
-    from services.actions import ActionLog
+    from store.actions import ActionLog
     return ActionLog()
 
 

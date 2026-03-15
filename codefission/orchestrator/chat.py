@@ -7,16 +7,20 @@ from pathlib import Path
 from typing import AsyncGenerator
 
 from models import Node, Tree
-from services.trees import (
+from store.trees import (
     get_tree,
     get_node,
     create_child_node,
     update_node,
     update_tree,
+    get_drafts_for_parent,
+    delete_single_node,
+)
+from store.settings import (
     resolve_tree_settings,
     get_global_defaults,
 )
-from services.workspace import (
+from store.git import (
     ensure_worktree,
     auto_commit,
     persist_artifacts,
@@ -26,8 +30,8 @@ from services.workspace import (
     read_file_from_commit,
     list_files_from_commit,
 )
-from services.chat import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit, TurnComplete
-from services.orchestrator.types import (
+from store.ai import stream_chat, TextDelta, ToolStart, ToolEnd, SessionInit, TurnComplete
+from models import (
     ChatNodeCreated,
     ChatCompleted,
     ChatContext,
@@ -497,7 +501,6 @@ class ChatMixin:
             raise ValueError("Tree not found")
 
         # Check for existing draft under this parent and reuse it
-        from services.trees import get_drafts_for_parent
         existing = await get_drafts_for_parent(parent_id)
         if existing:
             return existing[0]
@@ -532,5 +535,4 @@ class ChatMixin:
             log.debug("Draft worktree removal failed for %s", draft_node_id, exc_info=True)
 
         # Delete the node from DB
-        from services.trees import delete_single_node
         await delete_single_node(draft_node_id)

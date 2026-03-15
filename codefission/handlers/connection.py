@@ -9,8 +9,8 @@ from fastapi import WebSocket
 
 from config import set_project_path
 from events import WS
-from services.trees import get_tree
-from services.orchestrator import Orchestrator, StreamState
+from store.trees import get_tree
+from orchestrator import Orchestrator, StreamState
 
 from handlers.trees import TreesMixin
 from handlers.nodes import NodesMixin

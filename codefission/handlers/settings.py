@@ -3,7 +3,7 @@
 import json
 
 from events import WS
-from services.trees import (
+from store.settings import (
     get_setting, set_setting, get_global_defaults,
 )
 

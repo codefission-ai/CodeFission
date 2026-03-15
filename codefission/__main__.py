@@ -1,5 +1,5 @@
 """Allow running as `python -m codefission`."""
 
-from codefission.main import main
+from codefission.server import main
 
 main()

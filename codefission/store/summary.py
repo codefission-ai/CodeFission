@@ -41,7 +41,7 @@ async def generate_tree_name(
     try:
         from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, AssistantMessage, query
         from claude_agent_sdk.types import TextBlock
-        from services.chat import _sdk_env
+        from store.ai import _sdk_env
 
         prompt = _format_prompt(skill, repo_info, first_message)
 

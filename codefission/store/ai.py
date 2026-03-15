@@ -23,7 +23,7 @@ from agentbridge import (
     TurnComplete,
 )
 
-from services.trees import get_tree, get_node, get_ancestor_chain
+from store.trees import get_tree, get_node, get_ancestor_chain
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +237,7 @@ async def stream_chat(
 
     # If we got a session to fork, verify the session file exists
     if resume_sid and fork:
-        from services.workspace import session_file_exists
+        from store.git import session_file_exists
         if not session_file_exists(workspace, resume_sid):
             log.info("Parent session file missing, starting fresh for node %s", node_id)
             resume_sid = None
@@ -279,8 +279,8 @@ if __name__ == "__main__":
     needing the full CodeFission DB/tree infrastructure.
 
     Usage:
-        python -m services.chat "What files are in this directory?"
-        python -m services.chat "Explain this codebase" --model claude-sonnet-4-6
+        python -m store.ai "What files are in this directory?"
+        python -m store.ai "Explain this codebase" --model claude-sonnet-4-6
     """
     import asyncio
     import sys

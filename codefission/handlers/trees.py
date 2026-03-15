@@ -4,17 +4,23 @@ import json
 import logging
 
 from events import WS
-from services.trees import (
+from store.trees import (
     list_trees, get_tree, get_all_nodes,
-    delete_tree,
+    delete_tree, find_tree,
+)
+from store.settings import (
     get_setting, set_setting, get_global_defaults,
 )
-from services.workspace import (
+from store.git import (
     check_staleness,
     _worktrees_dir,
     detect_repo_name,
+    _run_git,
+    create_protective_ref,
+    get_repo_info as ws_get_repo_info,
+    list_branches as ws_list_branches,
 )
-from services.process_service import list_tree_processes
+from store.processes import list_tree_processes
 
 log = logging.getLogger(__name__)
 
@@ -25,11 +31,6 @@ class TreesMixin:
         """Open a repo: find or create tree for the given repo_id + head_commit."""
         from pathlib import Path
         from config import set_project_path
-        from services.trees import find_tree
-        from services.workspace import (
-            get_repo_info as ws_get_repo_info,
-            list_branches as ws_list_branches,
-        )
 
         repo_path_str = data.get("repo_path") or (str(self.repo_path) if self.repo_path else None)
         repo_id = data.get("repo_id") or self.repo_id
@@ -58,13 +59,11 @@ class TreesMixin:
         if not tree:
             # Create new tree
             try:
-                from services.workspace import _run_git
                 _, actual_branch, _ = await _run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
                 tree, _root = await self.orch.create_tree(
                     repo_name, base_branch=actual_branch,
                     repo_id=repo_id, repo_path=str(repo_path), repo_name=repo_name,
                 )
-                from services.workspace import create_protective_ref
                 if tree.base_commit:
                     await create_protective_ref(tree.id, tree.base_commit)
             except Exception as e:

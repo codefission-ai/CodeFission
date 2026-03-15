@@ -8,24 +8,10 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from db import get_db
-
-
-@dataclass
-class Action:
-    """A single recorded action in the audit log."""
-    id: str
-    seq: int
-    ts: str
-    tree_id: str | None
-    node_id: str | None
-    kind: str
-    params: dict = field(default_factory=dict)
-    result: dict = field(default_factory=dict)
-    source: str = "gui"  # "gui" or "cli"
+from models import Action
 
 
 class ActionLog:

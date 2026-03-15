@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from events import WS
-from services.trees import get_node, get_tree
-from services.workspace import (
+from store.trees import get_node, get_tree
+from store.git import (
     list_branches as ws_list_branches,
     get_repo_info as ws_get_repo_info,
 )

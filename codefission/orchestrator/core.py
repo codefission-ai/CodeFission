@@ -6,13 +6,13 @@ this class instead of scattering logic across the transport layer.
 
 from __future__ import annotations
 
-from services.orchestrator.types import StreamState
-from services.orchestrator.chat import ChatMixin
-from services.orchestrator.trees import TreesMixin
-from services.orchestrator.nodes import NodesMixin
-from services.orchestrator.files import FilesMixin
-from services.orchestrator.settings import SettingsMixin
-from services.orchestrator.repo import RepoMixin
+from models import StreamState
+from orchestrator.chat import ChatMixin
+from orchestrator.trees import TreesMixin
+from orchestrator.nodes import NodesMixin
+from orchestrator.files import FilesMixin
+from orchestrator.settings import SettingsMixin
+from orchestrator.repo import RepoMixin
 
 
 class Orchestrator(

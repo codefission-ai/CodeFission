@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 
-from models import Node, Tree
-from services.trees import (
+from models import Node, Tree, DeleteNodeResult
+from store.trees import (
     create_tree as _create_tree,
     get_tree,
     get_node,
@@ -14,17 +14,18 @@ from services.trees import (
     update_node,
     update_tree,
     delete_subtree,
+)
+from store.settings import (
     get_setting,
     set_setting,
 )
-from services.workspace import (
+from store.git import (
     resolve_workspace,
     remove_worktree_and_branch,
     _run_git,
     create_protective_ref,
 )
-from services.process_service import kill_all_in_workspace
-from services.orchestrator.types import DeleteNodeResult
+from store.processes import kill_all_in_workspace
 from config import get_project_path
 
 log = logging.getLogger(__name__)

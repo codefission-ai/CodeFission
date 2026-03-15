@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from services.trees import get_tree, get_node
-from services.workspace import (
+from store.trees import get_tree, get_node
+from store.git import (
     resolve_workspace,
     list_files,
     list_files_from_commit,
@@ -13,7 +13,7 @@ from services.workspace import (
     get_diff_from_commits,
     list_artifact_files,
 )
-from services.orchestrator.types import FileListResult, DiffResult, FileContentResult
+from models import FileListResult, DiffResult, FileContentResult
 
 
 class FilesMixin:

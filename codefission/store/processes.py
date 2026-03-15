@@ -24,10 +24,10 @@ log = logging.getLogger(__name__)
 
 def _load_backend():
     if sys.platform == "linux":
-        from services import _process_linux as backend
+        from store import _process_linux as backend
         return backend
     elif sys.platform == "darwin":
-        from services import _process_darwin as backend
+        from store import _process_darwin as backend
         return backend
     return None
 

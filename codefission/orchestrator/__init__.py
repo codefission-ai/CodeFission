@@ -1,10 +1,7 @@
-"""services.orchestrator package — re-exports for backward compatibility.
+"""orchestrator package — re-exports Orchestrator and all types from models.py."""
 
-``from services.orchestrator import Orchestrator`` still works.
-"""
-
-from services.orchestrator.core import Orchestrator
-from services.orchestrator.types import (
+from orchestrator.core import Orchestrator
+from models import (
     ChatNodeCreated,
     ChatCompleted,
     ChatContext,

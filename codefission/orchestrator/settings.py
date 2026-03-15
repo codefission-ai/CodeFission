@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from models import Tree
-from services.trees import (
+from store.trees import (
     get_tree,
     update_tree,
+)
+from store.settings import (
     set_setting,
     get_global_defaults,
 )

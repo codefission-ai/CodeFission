@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from models import Node
-from services.trees import (
+from store.trees import (
     get_node,
     create_child_node,
     update_node,

@@ -4,15 +4,15 @@ import asyncio
 import logging
 
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
-from services.trees import get_node, get_tree, update_tree
-from services.chat import TextDelta, ToolStart, ToolEnd, SessionInit
-from services.workspace import (
+from store.trees import get_node, get_tree, update_tree, update_node
+from store.ai import TextDelta, ToolStart, ToolEnd, SessionInit
+from store.git import (
     resolve_workspace,
     remove_worktree, remove_worktree_and_branch,
     _worktrees_dir,
 )
-from services.process_service import list_processes, list_tree_processes, kill_process_tree
-from services.orchestrator import StreamState
+from store.processes import list_processes, list_tree_processes, kill_process_tree
+from models import StreamState
 
 log = logging.getLogger(__name__)
 
@@ -41,8 +41,7 @@ class ChatMixin:
         lives in the Orchestrator; this method is pure transport.
         """
         from handlers.connection import _active_streams
-        from services.orchestrator import ChatNodeCreated, ChatCompleted
-        from services.trees import update_node
+        from models import ChatNodeCreated, ChatCompleted
 
         nid = node_id
         tool_names: dict[str, str] = {}
@@ -174,10 +173,10 @@ class ChatMixin:
 
     async def _auto_name_tree(self, tree_id: str, first_message: str, tree):
         """Background task: generate a short name for a tree and push it to the client."""
-        from services.trees import get_global_defaults
+        from store.settings import get_global_defaults
 
         try:
-            from services.summary_service import generate_tree_name
+            from store.summary import generate_tree_name
 
             defaults = await get_global_defaults()
             summary_model = defaults.get("summary_model") or ""

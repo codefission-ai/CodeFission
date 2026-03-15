@@ -1,7 +1,7 @@
 """Node operation handler methods — mixin for ConnectionHandler."""
 
 from events import WS
-from services.trees import get_node
+from store.trees import get_node
 
 
 class NodesMixin:

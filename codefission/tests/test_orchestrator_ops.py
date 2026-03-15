@@ -13,16 +13,15 @@ Will fail until the implementation is done.
 
 import pytest
 
-from services.orchestrator import Orchestrator
-from services.trees import (
+from orchestrator import Orchestrator
+from store.trees import (
     get_node,
     get_tree,
     update_node,
-    set_setting,
-    get_setting,
     update_tree,
 )
-from services.workspace import (
+from store.settings import set_setting, get_setting
+from store.git import (
     _run_git,
     _GIT_ENV,
     ensure_worktree,
@@ -111,7 +110,7 @@ class TestDeleteNode:
     @pytest.mark.asyncio
     async def test_cannot_delete_streaming_node(self, orch, project):
         """Cannot delete a node with an active stream in the orchestrator."""
-        from services.orchestrator import StreamState
+        from orchestrator import StreamState
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         child = await orch.branch(root.id, label="streaming")
@@ -210,7 +209,7 @@ class TestOpenRepo:
             "T", base_branch=branch,
             repo_id="repo1", repo_path="/old/path",
         )
-        from services.trees import update_tree as _update_tree
+        from store.trees import update_tree as _update_tree
         await _update_tree(tree.id, base_commit=tree.base_commit)
 
         result = await orch.open_repo(
@@ -292,7 +291,7 @@ class TestSettings:
             "default_max_turns": "10",
         })
 
-        from services.trees import get_global_defaults
+        from store.settings import get_global_defaults
         defaults = await get_global_defaults()
         assert defaults["provider"] == "codex"
         assert defaults["model"] == "o4-mini"
@@ -319,7 +318,7 @@ class TestSettings:
         tree, _ = await orch.create_tree("T", base_branch=branch)
         await update_tree(tree.id, model="claude-sonnet-4-6")
 
-        from services.trees import resolve_tree_settings
+        from store.settings import resolve_tree_settings
         fetched_tree = await get_tree(tree.id)
         effective = await resolve_tree_settings(fetched_tree)
         assert effective["model"] == "claude-sonnet-4-6"

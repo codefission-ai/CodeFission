@@ -1,15 +1,8 @@
-import argparse
 import asyncio
-import atexit
-import json
 import os
-import shutil
-import socket
-import subprocess
 import sys
 import webbrowser
-from datetime import datetime, timezone
-from urllib.parse import quote
+from pathlib import Path
 
 # Allow running inside a Claude Code session
 os.environ.pop("CLAUDECODE", None)
@@ -17,7 +10,6 @@ os.environ.pop("CLAUDECODE", None)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse, Response, JSONResponse
-from pathlib import Path
 
 # Add package dir to path so bare imports (db, handlers, etc.) resolve
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import set_project_path
 from db import init_db, close_db
 from handlers import ConnectionHandler
-from services.orchestrator import Orchestrator
+from orchestrator import Orchestrator
 
 app = FastAPI(title="CodeFission")
 
@@ -136,8 +128,8 @@ async def upload_node_files(
     paths: list[str] = Form(...),
 ):
     """Upload files into a node's workspace (additive merge)."""
-    from services.trees import get_node, get_tree, update_node
-    from services.workspace import (
+    from store.trees import get_node, get_tree, update_node
+    from store.git import (
         ensure_worktree, auto_commit,
     )
 
@@ -205,8 +197,8 @@ async def upload_node_files(
 @app.delete("/api/trees/{tree_id}/nodes/{node_id}/files/{file_path:path}")
 async def delete_node_file(tree_id: str, node_id: str, file_path: str):
     """Remove a file from a node's workspace and commit the deletion."""
-    from services.trees import get_node, get_tree, update_node
-    from services.workspace import resolve_workspace, auto_commit
+    from store.trees import get_node, get_tree, update_node
+    from store.git import resolve_workspace, auto_commit
 
     node = await get_node(node_id)
     if not node:
@@ -238,7 +230,7 @@ async def delete_node_file(tree_id: str, node_id: str, file_path: str):
 @app.post("/api/trees/{tree_id}/nodes/{parent_id}/prepare-draft")
 async def prepare_draft(tree_id: str, parent_id: str):
     """Create a draft child node with workspace ready for file uploads."""
-    from services.trees import get_node, get_tree
+    from store.trees import get_node, get_tree
 
     node = await get_node(parent_id)
     if not node:
@@ -256,7 +248,7 @@ async def prepare_draft(tree_id: str, parent_id: str):
 @app.delete("/api/trees/{tree_id}/drafts/{draft_id}")
 async def discard_draft(tree_id: str, draft_id: str):
     """Delete a draft node and its workspace."""
-    from services.trees import get_tree
+    from store.trees import get_tree
 
     tree = await get_tree(tree_id)
     if tree:
@@ -269,8 +261,8 @@ async def discard_draft(tree_id: str, draft_id: str):
 # ── Raw file serving for binary content (images, video, audio) ──────
 @app.get("/api/files/{node_id}/{file_path:path}")
 async def serve_node_file(node_id: str, file_path: str):
-    from services.trees import get_node, get_tree
-    from services.workspace import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
+    from store.trees import get_node, get_tree
+    from store.git import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
 
     node = await get_node(node_id)
     if not node:
@@ -316,8 +308,8 @@ async def serve_node_file(node_id: str, file_path: str):
 # ── Download file with Content-Disposition: attachment ───────────────
 @app.get("/api/download/{node_id}/{file_path:path}")
 async def download_node_file(node_id: str, file_path: str):
-    from services.trees import get_node, get_tree
-    from services.workspace import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
+    from store.trees import get_node, get_tree
+    from store.git import resolve_workspace, read_file_bytes_from_commit, read_artifact_bytes
 
     node = await get_node(node_id)
     if not node:
@@ -366,8 +358,8 @@ async def download_node_zip(node_id: str, subpath: str = ""):
     """Zip and download a subfolder (or entire workspace) for a node."""
     import io
     import re
-    from services.trees import get_node, get_tree
-    from services.workspace import resolve_workspace, _run_git
+    from store.trees import get_node, get_tree
+    from store.git import resolve_workspace, _run_git
     from config import get_project_path
 
     node = await get_node(node_id)
@@ -439,247 +431,3 @@ if FRONTEND_DIR.exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(FRONTEND_DIR / "index.html")
-
-
-# ── Server launcher helpers ──────────────────────────────────────────
-
-DATA_DIR = Path.home() / ".codefission"
-DEFAULT_PORT = 19440
-PORT_RANGE = range(19440, 19450)
-LOCK_FILE = DATA_DIR / "server.lock"
-
-
-def _check_prerequisites():
-    missing = []
-    if not shutil.which("git"):
-        missing.append(
-            "git - install from https://git-scm.com/downloads"
-            "\n      macOS: xcode-select --install"
-            "\n      Ubuntu/Debian: sudo apt install git"
-            "\n      Windows: https://git-scm.com/download/win"
-        )
-    if not shutil.which("claude"):
-        missing.append(
-            "Claude Code CLI - install with: npm install -g @anthropic-ai/claude-code"
-            "\n      Then authenticate: claude login"
-        )
-    if missing:
-        print("CodeFission requires the following:\n")
-        for m in missing:
-            print(f"  * {m}\n")
-        sys.exit(1)
-
-
-def _is_port_available(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
-            s.bind(("0.0.0.0", port))
-            return True
-        except OSError:
-            return False
-
-
-def _find_available_port(preferred: int) -> int | None:
-    if _is_port_available(preferred):
-        return preferred
-    for port in PORT_RANGE:
-        if port != preferred and _is_port_available(port):
-            return port
-    return None
-
-
-def _detect_git_root(path: Path) -> Path | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(path), capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip())
-    except Exception:
-        pass
-    return None
-
-
-def _auto_init_repo(path: Path):
-    print(f"Initializing git in {path} ...")
-    subprocess.run(["git", "init"], cwd=str(path), check=True)
-    subprocess.run(["git", "add", "-A"], cwd=str(path), check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "initial commit", "--allow-empty"],
-        cwd=str(path), check=True,
-        env={
-            **os.environ,
-            "GIT_COMMITTER_NAME": "CodeFission",
-            "GIT_COMMITTER_EMAIL": "codefission@local",
-            "GIT_AUTHOR_NAME": "CodeFission",
-            "GIT_AUTHOR_EMAIL": "codefission@local",
-        },
-    )
-
-
-def _ensure_gitignore(project_path: Path):
-    gitignore = project_path / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if ".codefission/" not in content:
-            with open(gitignore, "a") as f:
-                if not content.endswith("\n"):
-                    f.write("\n")
-                f.write(".codefission/\n")
-    else:
-        gitignore.write_text(".codefission/\n")
-
-
-def _compute_repo_id(repo_path: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"],
-        cwd=str(repo_path), capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to compute repo_id: {result.stderr}")
-    return result.stdout.strip().splitlines()[0]
-
-
-def _get_head_commit(repo_path: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(repo_path), capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get HEAD: {result.stderr}")
-    return result.stdout.strip()
-
-
-def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError):
-        return False
-
-
-def _read_lock() -> dict | None:
-    if not LOCK_FILE.exists():
-        return None
-    try:
-        data = json.loads(LOCK_FILE.read_text())
-        pid = data.get("pid")
-        if pid and _pid_alive(pid):
-            return data
-    except Exception:
-        pass
-    return None
-
-
-def _acquire_lock(port: int, repo_path: Path | None = None,
-                  repo_id: str | None = None, head_commit: str | None = None):
-    existing = _read_lock()
-    if existing:
-        existing_port = existing.get("port", "?")
-        url = f"http://localhost:{existing_port}"
-        if repo_id and head_commit and repo_path:
-            url += f"?repo_id={repo_id}&head={head_commit}&path={quote(str(repo_path), safe='/')}"
-        print(f"CodeFission is already running at http://localhost:{existing_port}")
-        webbrowser.open(url)
-        sys.exit(0)
-
-    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    LOCK_FILE.write_text(json.dumps({
-        "pid": os.getpid(),
-        "port": port,
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }) + "\n")
-    atexit.register(_release_lock)
-
-
-def _release_lock():
-    try:
-        LOCK_FILE.unlink(missing_ok=True)
-    except Exception:
-        pass
-
-
-# ── Entry point ──────────────────────────────────────────────────────
-
-
-def main():
-    """Entry point for the `fission` CLI."""
-    import uvicorn
-
-    parser = argparse.ArgumentParser(
-        prog="fission",
-        description="CodeFission -- tree-structured AI development.",
-    )
-    parser.add_argument(
-        "path", nargs="?", default=".",
-        help="Path to the project directory (default: current directory)",
-    )
-    parser.add_argument(
-        "--port", type=int, default=DEFAULT_PORT,
-        help=f"Server port (default: {DEFAULT_PORT})",
-    )
-    args = parser.parse_args()
-
-    _check_prerequisites()
-
-    target_path = Path(args.path).resolve()
-
-    if not target_path.is_dir():
-        print(f"Error: {target_path} is not a directory.", file=sys.stderr)
-        raise SystemExit(1)
-
-    repo_path = None
-    repo_id = None
-    head_commit = None
-    is_home = target_path == Path.home()
-
-    if not is_home:
-        git_root = _detect_git_root(target_path)
-        if git_root:
-            repo_path = git_root
-        else:
-            if sys.stdin.isatty():
-                answer = input("This directory is not a git repo. Initialize one? [Y/n] ")
-                if answer.strip().lower() in ("n", "no"):
-                    raise SystemExit(0)
-            else:
-                print("Error: Not a git repo and not running interactively.", file=sys.stderr)
-                raise SystemExit(1)
-            _auto_init_repo(target_path)
-            repo_path = target_path
-
-        repo_id = _compute_repo_id(repo_path)
-        head_commit = _get_head_commit(repo_path)
-        _ensure_gitignore(repo_path)
-
-    actual_port = _find_available_port(args.port)
-    if actual_port is None:
-        print(f"Error: No available port in range {PORT_RANGE.start}-{PORT_RANGE.stop - 1}.", file=sys.stderr)
-        raise SystemExit(1)
-
-    _acquire_lock(actual_port, repo_path, repo_id, head_commit)
-
-    if repo_path:
-        os.environ["CODEFISSION_REPO_PATH"] = str(repo_path)
-        os.environ["CODEFISSION_REPO_ID"] = repo_id
-        os.environ["CODEFISSION_HEAD_COMMIT"] = head_commit
-    os.environ["CODEFISSION_PORT"] = str(actual_port)
-
-    if repo_path:
-        print(f"Repo:    {repo_path}")
-    else:
-        print("No repo context (home directory mode)")
-    print(f"Server:  http://localhost:{actual_port}")
-
-    uvicorn.run(
-        "codefission.main:app",
-        host="0.0.0.0",
-        port=actual_port,
-        ws_ping_interval=30,
-        ws_ping_timeout=10,
-    )
-
-
-if __name__ == "__main__":
-    main()

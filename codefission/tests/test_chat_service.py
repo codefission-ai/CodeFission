@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from config import set_project_path
-from services.chat import (
+from store.ai import (
     TextDelta, ToolStart, ToolEnd, SessionInit, _build_system_prompt,
 )
 from models import Node, Tree
