@@ -17,7 +17,6 @@ dependencies = [
     "openai",
     "claude-agent-sdk",
     "pydantic",
-    "click",
     "agentbridge @ file:///Users/tianyu/Work/CodeFission/agentbridge",
 ]
 
@@ -26,7 +25,7 @@ Homepage = "https://github.com/codefission-ai/CodeFission"
 Repository = "https://github.com/codefission-ai/CodeFission"
 
 [project.scripts]
-fission = "codefission.cli:main"
+fission = "codefission.main:main"
 
 [dependency-groups]
 dev = [
