@@ -5,7 +5,6 @@ a tree for the given repo+commit. load_tree fetches all nodes and
 reconnects any active streams (for browser refresh during streaming).
 """
 
-import json
 import logging
 
 from events import WS
@@ -80,15 +79,10 @@ class TreesMixin:
 
         trees = await self.orch.list_trees()
         last_tree_id = await self.orch.get_setting("last_tree_id")
-        raw = await self.orch.get_setting("expanded_nodes")
-        expanded_nodes = json.loads(raw) if raw else {}
-        raw_cs = await self.orch.get_setting("collapsed_subtrees")
-        collapsed_subtrees = json.loads(raw_cs) if raw_cs else {}
         defaults = await self.orch.get_global_defaults()
         providers = await list_providers()
         await self.send(WS.TREES, trees=[t.model_dump() for t in trees],
-                        last_tree_id=last_tree_id, expanded_nodes=expanded_nodes,
-                        collapsed_subtrees=collapsed_subtrees,
+                        last_tree_id=last_tree_id,
                         global_defaults=defaults, providers=providers)
 
     async def handle_create_tree(self, data: dict):

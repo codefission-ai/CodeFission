@@ -12,7 +12,6 @@ Tests cover:
 - Sandbox removal (sandbox module no longer importable)
 """
 
-import json
 import pytest
 
 from db import get_db
@@ -29,7 +28,6 @@ from store.trees import (
     get_ancestor_chain, get_path_to_root,
     update_tree, create_child_node,
 )
-from store.settings import set_setting, get_setting
 from store.git import _run_git, _GIT_ENV
 
 
@@ -311,27 +309,6 @@ class TestDeleteNode:
         with pytest.raises(ValueError, match="not found"):
             await orch.delete_node("nonexistent")
 
-    @pytest.mark.asyncio
-    async def test_cleans_up_settings(self, orch, project):
-        """delete_node cleans expanded_nodes and collapsed_subtrees."""
-        branch = await _init_project(project)
-        _, root = await orch.create_tree("T", base_branch=branch)
-        child = await orch.branch(root.id, "child")
-
-        # Set some settings referencing the child
-        await set_setting("expanded_nodes", json.dumps({child.id: True, "other": True}))
-        await set_setting("collapsed_subtrees", json.dumps({child.id: True}))
-
-        await orch.delete_node(child.id)
-
-        raw_exp = await get_setting("expanded_nodes")
-        exp = json.loads(raw_exp)
-        assert child.id not in exp
-        assert "other" in exp
-
-        raw_cs = await get_setting("collapsed_subtrees")
-        cs = json.loads(raw_cs)
-        assert child.id not in cs
 
 
 # ── Orchestrator.update_base ─────────────────────────────────────────

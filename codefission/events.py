@@ -71,8 +71,6 @@ class WS:
     GET_NODE_DIFF = "get_node_diff"
     GET_FILE_CONTENT = "get_file_content"
     SELECT_TREE = "select_tree"
-    SET_EXPANDED = "set_expanded"
-    SET_SUBTREE_COLLAPSED = "set_subtree_collapsed"
     GET_SETTINGS = "get_settings"
     UPDATE_GLOBAL_SETTINGS = "update_global_settings"
     UPDATE_TREE_SETTINGS = "update_tree_settings"

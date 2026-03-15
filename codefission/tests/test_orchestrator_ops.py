@@ -124,24 +124,6 @@ class TestDeleteNode:
             await orch.delete_node(child.id)
 
     @pytest.mark.asyncio
-    async def test_cleans_up_settings_on_delete(self, orch, project):
-        """Expanded_nodes setting is cleaned up when a node is deleted."""
-        import json
-        branch = await _init_project(project)
-        tree, root = await orch.create_tree("T", base_branch=branch)
-        child = await orch.branch(root.id, label="tracked")
-
-        # Simulate expanded_nodes containing the child ID (dict format: {node_id: True})
-        await set_setting("expanded_nodes", json.dumps({child.id: True, root.id: True}))
-
-        await orch.delete_node(child.id)
-
-        expanded_raw = await get_setting("expanded_nodes")
-        if expanded_raw:
-            expanded = json.loads(expanded_raw)
-            assert child.id not in expanded
-
-    @pytest.mark.asyncio
     async def test_cleans_up_worktree_on_delete(self, orch, project):
         """Deleting a node removes its worktree directory."""
         branch = await _init_project(project)

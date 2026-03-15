@@ -1,13 +1,12 @@
 """Tree operations — create tree (with git ref), delete node + subtree.
 
 create_tree: resolves git HEAD, creates DB records, sets up protective ref.
-delete_node: checks for active streams, removes worktrees, cleans up
-  expanded/collapsed settings, cascades through subtree.
+delete_node: checks for active streams, removes worktrees, cascades
+through subtree.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 
 from models import Node, Tree, DeleteNodeResult
@@ -22,10 +21,6 @@ from store.trees import (
     list_trees as _list_trees,
     delete_tree as _delete_tree,
     find_tree as _find_tree,
-)
-from store.settings import (
-    get_setting,
-    set_setting,
 )
 from store.git import (
     resolve_workspace,
@@ -102,8 +97,7 @@ class TreesMixin:
     async def delete_node(self, node_id: str) -> DeleteNodeResult:
         """Delete a node and its subtree.
 
-        Checks for active streams, kills processes, removes worktrees/branches,
-        cleans up expanded_nodes and collapsed_subtrees settings.
+        Checks for active streams, kills processes, removes worktrees/branches.
 
         Raises ValueError if node not found, is root, or has active streams.
         """
@@ -136,20 +130,5 @@ class TreesMixin:
                     await remove_worktree_and_branch(tree.root_node_id, did)
                 except Exception:
                     log.debug("Cleanup failed for deleted node %s", did, exc_info=True)
-
-        # Clean up expanded_nodes and collapsed_subtrees settings
-        deleted_set = set(deleted_ids)
-        raw_exp = await get_setting("expanded_nodes")
-        if raw_exp:
-            exp_map = json.loads(raw_exp)
-            cleaned = {k: v for k, v in exp_map.items() if k not in deleted_set}
-            if len(cleaned) != len(exp_map):
-                await set_setting("expanded_nodes", json.dumps(cleaned))
-        raw_cs = await get_setting("collapsed_subtrees")
-        if raw_cs:
-            cs_map = json.loads(raw_cs)
-            cleaned = {k: v for k, v in cs_map.items() if k not in deleted_set}
-            if len(cleaned) != len(cs_map):
-                await set_setting("collapsed_subtrees", json.dumps(cleaned))
 
         return DeleteNodeResult(deleted_ids=deleted_ids, updated_nodes=updated_nodes)

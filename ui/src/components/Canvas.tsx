@@ -206,40 +206,9 @@ function getAncestorPath(nodes: Record<string, CNode>, selectedId: string | null
   return edgeIds;
 }
 
-function getDescendantCount(nodes: Record<string, CNode>, id: string): number {
-  let count = 0;
-  const stack = [...(nodes[id]?.children_ids || [])];
-  while (stack.length) {
-    const cid = stack.pop()!;
-    const child = nodes[cid];
-    if (!child) continue;
-    count++;
-    stack.push(...child.children_ids);
-  }
-  return count;
-}
-
-function getHiddenIds(nodes: Record<string, CNode>, collapsedSubtrees: Record<string, boolean>): Set<string> {
-  const hidden = new Set<string>();
-  for (const id of Object.keys(collapsedSubtrees)) {
-    if (!collapsedSubtrees[id] || !nodes[id]) continue;
-    const stack = [...(nodes[id].children_ids || [])];
-    while (stack.length) {
-      const cid = stack.pop()!;
-      if (hidden.has(cid)) continue;
-      const child = nodes[cid];
-      if (!child) continue;
-      hidden.add(cid);
-      stack.push(...child.children_ids);
-    }
-  }
-  return hidden;
-}
-
 function buildFlow(
   nodes: Record<string, CNode>,
   expandedNodes: Record<string, boolean>,
-  collapsedSubtrees: Record<string, boolean>,
   measured: Record<string, { width: number; height: number }>,
   ready: boolean,
   selectedNodeId: string | null,
@@ -261,33 +230,27 @@ function buildFlow(
   const root = list.find((n) => !n.parent_id);
   if (!root) return { flowNodes: [] as Node[], flowEdges: [] as Edge[], quoteConnections: [] as { source: string; target: string }[] };
 
-  const hiddenIds = getHiddenIds(effectiveNodes, collapsedSubtrees);
-
   const hasMeasured = Object.keys(measured).length > 0;
   const { positions } = layoutTree(
     effectiveNodes,
     expandedNodes,
     hasMeasured ? measured : undefined,
-    collapsedSubtrees,
   );
 
-  const visibleList = list.filter((n) => !hiddenIds.has(n.id));
-
-  const flowNodes: Node[] = visibleList.map((n) => ({
+  const flowNodes: Node[] = list.map((n) => ({
     id: n.id,
     type: "tree",
     position: positions[n.id] || { x: 0, y: 0 },
     data: {
       node: n,
-      descendantCount: collapsedSubtrees[n.id] ? getDescendantCount(effectiveNodes, n.id) : 0,
     },
     style: { opacity: ready ? 1 : 0 },
   }));
 
   const pathEdges = getAncestorPath(effectiveNodes, selectedNodeId);
 
-  const flowEdges: Edge[] = visibleList
-    .filter((n) => n.parent_id && !hiddenIds.has(n.parent_id!))
+  const flowEdges: Edge[] = list
+    .filter((n) => n.parent_id)
     .map((n) => {
       const edgeId = `${n.parent_id}-${n.id}`;
       const onPath = pathEdges.has(edgeId);
@@ -304,10 +267,10 @@ function buildFlow(
 
   // Quote connections: rendered by QuoteArrowOverlay (outside ReactFlow edges)
   const quoteConnections: { source: string; target: string }[] = [];
-  for (const n of visibleList) {
+  for (const n of list) {
     if (!n.quoted_node_ids || n.quoted_node_ids.length === 0) continue;
     for (const qid of n.quoted_node_ids) {
-      if (hiddenIds.has(qid) || (!effectiveNodes[qid] && !qid.startsWith("note-"))) continue;
+      if (!effectiveNodes[qid] && !qid.startsWith("note-")) continue;
       quoteConnections.push({ source: qid, target: n.id });
     }
   }
@@ -327,7 +290,6 @@ export default function Canvas() {
 function CanvasInner() {
   const nodes = useStore((s) => s.nodes);
   const expandedNodes = useStore((s) => s.expandedNodes);
-  const collapsedSubtrees = useStore((s) => s.collapsedSubtrees);
   const selectedNodeId = useStore((s) => s.selectedNodeId);
 
   const measuredRef = useRef<Record<string, { width: number; height: number }>>({});
@@ -409,9 +371,9 @@ function CanvasInner() {
   const deleteToast = useStore((s) => s.deleteToast);
 
   const { flowNodes, flowEdges, quoteConnections } = useMemo(
-    () => buildFlow(nodes, expandedNodes, collapsedSubtrees, measuredRef.current, ready, selectedNodeId, pendingDeleteNodes),
+    () => buildFlow(nodes, expandedNodes, measuredRef.current, ready, selectedNodeId, pendingDeleteNodes),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, expandedNodes, collapsedSubtrees, layoutVersion, ready, selectedNodeId, pendingDeleteNodes],
+    [nodes, expandedNodes, layoutVersion, ready, selectedNodeId, pendingDeleteNodes],
   );
 
   // Compensate viewport when layout shifts the selected node (e.g. sibling added)

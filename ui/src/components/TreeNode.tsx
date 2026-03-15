@@ -225,12 +225,11 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
-function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } }) {
-  const { node, descendantCount } = data;
+function TreeNode({ data }: { data: { node: CNode } }) {
+  const { node } = data;
   const selectedId = useStore((s) => s.selectedNodeId);
   const isStreaming = useStore((s) => s.streaming[node.id]);
   const isExpanded = useStore((s) => s.expandedNodes[node.id]);
-  const isSubtreeCollapsed = useStore((s) => s.collapsedSubtrees[node.id]);
   const isLeaf = useStore((s) => isDetachable(s.nodes, node.id, s.pendingDeleteNodes));
   const hasVisibleChildren = useStore((s) => node.children_ids.some((cid) => !s.pendingDeleteNodes.has(cid)));
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
@@ -514,12 +513,11 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
   // All nodes (including root once it has a message): collapsible
   return (
     <div
-      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${isSubtreeCollapsed ? "subtree-collapsed" : ""} ${hasCodeChange ? "has-code" : ""}`}
+      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${hasCodeChange ? "has-code" : ""}`}
       onClick={() => {
         actions.selectNode(node.id);
         if (!isExpanded) {
           actions.setExpanded(node.id, true);
-          if (isSubtreeCollapsed) actions.toggleSubtreeCollapsed(node.id);
         }
       }}
     >
@@ -539,11 +537,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
       {!isExpanded && processes.length > 0 && (
         <span className="tree-node-proc-badge" title={`${processes.length} running process${processes.length > 1 ? "es" : ""}`}>
           ⚡{processes.length}
-        </span>
-      )}
-      {!isExpanded && isSubtreeCollapsed && descendantCount! > 0 && (
-        <span className="subtree-badge subtree-badge-active" title={`${descendantCount} hidden nodes`}>
-          +{descendantCount}
         </span>
       )}
       {isExpanded && (
@@ -595,7 +588,6 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
                 onClick={(e) => {
                   e.stopPropagation();
                   actions.setExpanded(node.id, false);
-                  if (node.children_ids.length > 0 && !isSubtreeCollapsed) actions.toggleSubtreeCollapsed(node.id);
                 }}
                 title="Collapse"
               >&#x25B2;</button>
@@ -777,6 +769,5 @@ function TreeNode({ data }: { data: { node: CNode; descendantCount?: number } })
 }
 
 export default memo(TreeNode, (prev, next) =>
-  prev.data.node === next.data.node &&
-  prev.data.descendantCount === next.data.descendantCount
+  prev.data.node === next.data.node
 );

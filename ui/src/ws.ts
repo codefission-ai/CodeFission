@@ -1,12 +1,4 @@
-import { actions, setExpandedCallback, setSubtreeCollapseCallback } from "./store";
-
-setExpandedCallback((nodeId, expanded) => {
-  send({ type: WS.SET_EXPANDED, node_id: nodeId, expanded });
-});
-
-setSubtreeCollapseCallback((nodeId, collapsed) => {
-  send({ type: WS.SET_SUBTREE_COLLAPSED, node_id: nodeId, collapsed });
-});
+import { actions } from "./store";
 
 // ── Wire protocol constants (mirror backend events.WS) ─────────────────
 
@@ -25,8 +17,6 @@ export const WS = {
   GET_NODE_DIFF: "get_node_diff",
   GET_FILE_CONTENT: "get_file_content",
   SELECT_TREE: "select_tree",
-  SET_EXPANDED: "set_expanded",
-  SET_SUBTREE_COLLAPSED: "set_subtree_collapsed",
   GET_SETTINGS: "get_settings",
   UPDATE_GLOBAL_SETTINGS: "update_global_settings",
   UPDATE_TREE_SETTINGS: "update_tree_settings",
@@ -171,9 +161,9 @@ export function send(msg: Record<string, unknown>) {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
   } else {
-    // Queue messages that matter (skip ephemeral ones like expanded/collapsed state)
+    // Queue messages that matter (skip ephemeral ones like select_tree)
     const t = msg.type as string;
-    if (t !== WS.SET_EXPANDED && t !== WS.SET_SUBTREE_COLLAPSED && t !== WS.SELECT_TREE) {
+    if (t !== WS.SELECT_TREE) {
       sendQueue.push(msg);
     }
   }
@@ -205,8 +195,6 @@ function handle(data: any) {
       break;
     case WS.TREES:
       actions.setTrees(data.trees);
-      if (data.expanded_nodes) actions.loadExpandedNodes(data.expanded_nodes);
-      if (data.collapsed_subtrees) actions.loadCollapsedSubtrees(data.collapsed_subtrees);
       if (data.global_defaults) actions.setGlobalDefaults(data.global_defaults);
       if (data.providers) actions.setProviders(data.providers);
       // Auto-load last active tree on reconnect/refresh

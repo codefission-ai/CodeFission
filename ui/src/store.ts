@@ -127,7 +127,6 @@ interface Store {
   streaming: Record<string, boolean>;
   toolCalls: Record<string, ToolCall[]>;  // nodeId -> tool calls during streaming
   expandedNodes: Record<string, boolean>;
-  collapsedSubtrees: Record<string, boolean>;
   nodeFiles: Record<string, string[]>;     // nodeId -> file paths
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
@@ -148,25 +147,6 @@ interface Store {
   sidebarOpen: boolean;
 }
 
-// Callback set by ws.ts to avoid circular imports
-let _onExpandedChange: ((nodeId: string, expanded: boolean) => void) | null = null;
-export function setExpandedCallback(cb: (nodeId: string, expanded: boolean) => void) {
-  _onExpandedChange = cb;
-}
-
-let _onSubtreeCollapseChange: ((nodeId: string, collapsed: boolean) => void) | null = null;
-export function setSubtreeCollapseCallback(cb: (nodeId: string, collapsed: boolean) => void) {
-  _onSubtreeCollapseChange = cb;
-}
-
-function isDescendantOf(nodes: Record<string, CNode>, candidateId: string, ancestorId: string): boolean {
-  let cur = nodes[candidateId];
-  while (cur?.parent_id) {
-    if (cur.parent_id === ancestorId) return true;
-    cur = nodes[cur.parent_id];
-  }
-  return false;
-}
 
 /**
  * A node/note is "detachable" if removing it (and its entire subtree)
@@ -225,7 +205,6 @@ export const useStore = create<Store>(() => ({
   streaming: {},
   toolCalls: {},
   expandedNodes: {},
-  collapsedSubtrees: {},
   nodeFiles: {},
   nodeDiffs: {},
   fileContents: {},
@@ -355,34 +334,14 @@ export const actions = {
       return { nodes: { ...s.nodes, [nodeId]: { ...node, git_commit: gitCommit } } };
     }),
 
-  loadExpandedNodes: (map: Record<string, boolean>) =>
-    useStore.setState({ expandedNodes: map }),
   toggleExpand: (id: string) =>
     useStore.setState((s) => {
       const v = !s.expandedNodes[id];
-      _onExpandedChange?.(id, v);
       return { expandedNodes: { ...s.expandedNodes, [id]: v } };
     }),
   setExpanded: (id: string, v: boolean) =>
     useStore.setState((s) => {
-      _onExpandedChange?.(id, v);
       return { expandedNodes: { ...s.expandedNodes, [id]: v } };
-    }),
-
-  loadCollapsedSubtrees: (map: Record<string, boolean>) =>
-    useStore.setState({ collapsedSubtrees: map }),
-  toggleSubtreeCollapsed: (id: string) =>
-    useStore.setState((s) => {
-      const collapsed = !s.collapsedSubtrees[id];
-      _onSubtreeCollapseChange?.(id, collapsed);
-      const next: Partial<Store> = {
-        collapsedSubtrees: { ...s.collapsedSubtrees, [id]: collapsed },
-      };
-      // If collapsing and selected node is a descendant, move selection to collapsed node
-      if (collapsed && s.selectedNodeId && isDescendantOf(s.nodes, s.selectedNodeId, id)) {
-        next.selectedNodeId = id;
-      }
-      return next;
     }),
 
   // ── Tree updates ──────────────────────────────────────────────
@@ -483,7 +442,6 @@ export const actions = {
       // Clean up associated state
       const pendingDeleteNodes = new Set(s.pendingDeleteNodes);
       const expandedNodes = { ...s.expandedNodes };
-      const collapsedSubtrees = { ...s.collapsedSubtrees };
       const streaming = { ...s.streaming };
       const toolCalls = { ...s.toolCalls };
       const nodeFiles = { ...s.nodeFiles };
@@ -493,7 +451,6 @@ export const actions = {
       for (const id of ids) {
         pendingDeleteNodes.delete(id);
         delete expandedNodes[id];
-        delete collapsedSubtrees[id];
         delete streaming[id];
         delete toolCalls[id];
         delete nodeFiles[id];
@@ -509,7 +466,7 @@ export const actions = {
       const filesPanel = s.filesPanel && idSet.has(s.filesPanel.nodeId) ? null : s.filesPanel;
       const selectedNodeId = s.selectedNodeId && idSet.has(s.selectedNodeId) ? null : s.selectedNodeId;
       return {
-        nodes, pendingDeleteNodes, expandedNodes, collapsedSubtrees, streaming,
+        nodes, pendingDeleteNodes, expandedNodes, streaming,
         toolCalls, nodeFiles, nodeDiffs, nodeProcesses, fileContents, filesPanel,
         selectedNodeId, pendingQuotes, deleteToast: null,
       };

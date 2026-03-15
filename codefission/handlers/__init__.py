@@ -107,8 +107,6 @@ class ConnectionHandler(
         WS.CANCEL: ChatMixin.handle_cancel,
         WS.DUPLICATE: ChatMixin.handle_duplicate,
         WS.SELECT_TREE: SettingsMixin.handle_select_tree,
-        WS.SET_EXPANDED: SettingsMixin.handle_set_expanded,
-        WS.SET_SUBTREE_COLLAPSED: SettingsMixin.handle_set_subtree_collapsed,
         WS.GET_SETTINGS: SettingsMixin.handle_get_settings,
         WS.UPDATE_GLOBAL_SETTINGS: SettingsMixin.handle_update_global_settings,
         WS.UPDATE_TREE_SETTINGS: SettingsMixin.handle_update_tree_settings,

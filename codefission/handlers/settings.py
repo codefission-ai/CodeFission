@@ -1,11 +1,8 @@
 """Settings handlers — get/update global and tree settings, UI state.
 
-Also handles UI-only persistence: expanded nodes, collapsed subtrees,
-last selected tree. These are not business operations — just layout state
-that happens to be stored in the DB.
+Also handles UI-only persistence: last selected tree. These are not
+business operations — just layout state that happens to be stored in the DB.
 """
-
-import json
 
 from events import WS
 
@@ -62,28 +59,6 @@ class SettingsMixin:
     async def handle_select_tree(self, data: dict):
         tree_id = data.get("tree_id")
         await self.orch.set_setting("last_tree_id", tree_id)
-
-    async def handle_set_expanded(self, data: dict):
-        node_id = data["node_id"]
-        expanded = data["expanded"]
-        raw = await self.orch.get_setting("expanded_nodes")
-        nodes_map = json.loads(raw) if raw else {}
-        if expanded:
-            nodes_map[node_id] = True
-        else:
-            nodes_map.pop(node_id, None)
-        await self.orch.set_setting("expanded_nodes", json.dumps(nodes_map))
-
-    async def handle_set_subtree_collapsed(self, data: dict):
-        node_id = data["node_id"]
-        collapsed = data["collapsed"]
-        raw = await self.orch.get_setting("collapsed_subtrees")
-        subtrees_map = json.loads(raw) if raw else {}
-        if collapsed:
-            subtrees_map[node_id] = True
-        else:
-            subtrees_map.pop(node_id, None)
-        await self.orch.set_setting("collapsed_subtrees", json.dumps(subtrees_map))
 
     async def handle_get_settings(self, data: dict):  # noqa: ARG002
         defaults = await self.orch.get_global_defaults()
