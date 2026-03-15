@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 class ProviderType(str, Enum):
-    CLAUDE = "claude"
+    CLAUDE = "claude-code"
     CODEX = "codex"
 
 

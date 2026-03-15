@@ -21,7 +21,7 @@ class AuthInfo:
 @dataclass
 class ProviderInfo:
     """Everything we can detect about an installed provider."""
-    id: str              # "claude", "codex", "gemini"
+    id: str              # "claude-code", "codex"
     name: str            # Human-readable
     installed: bool
     cli_path: str = ""
@@ -60,7 +60,7 @@ async def _run(cmd: list[str], timeout: float = 5.0) -> tuple[int, str, str]:
 async def _detect_claude() -> ProviderInfo:
     cli = shutil.which("claude")
     info = ProviderInfo(
-        id="claude",
+        id="claude-code",
         name="Claude Code",
         installed=bool(cli),
         cli_path=cli or "",

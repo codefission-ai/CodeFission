@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 class BridgeEvent:
     """Base event yielded by adapter stream."""
     kind: str
-    provider: str  # "claude" | "codex" | "gemini"
+    provider: str  # "claude-code" | "codex"
     raw: dict | None = None  # original provider JSON for debugging
 
 

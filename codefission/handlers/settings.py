@@ -25,12 +25,8 @@ async def list_providers() -> list[dict]:
     from agentbridge import discover
     providers = await discover()
 
-    # Map agentbridge IDs to CodeFission IDs (frontend/DB use "claude-code", agentbridge uses "claude")
-    _ID_MAP = {"claude": "claude-code"}
-
     result = []
     for p in providers:
-        provider_id = _ID_MAP.get(p.id, p.id)
         # Build auth_modes list from agentbridge auth info
         # Simplify method names: "cli_oauth (web)" → "cli", "api_key" → "api_key"
         auth_modes = []
@@ -47,7 +43,7 @@ async def list_providers() -> list[dict]:
                 break
 
         result.append({
-            "id": provider_id,
+            "id": p.id,
             "name": p.name,
             "installed": p.installed,
             "ready": p.ready,

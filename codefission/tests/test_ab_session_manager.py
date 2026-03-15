@@ -13,7 +13,7 @@ def _make_providers() -> list[ProviderInfo]:
     """Create test provider fixtures."""
     return [
         ProviderInfo(
-            id="claude",
+            id="claude-code",
             name="Claude Code",
             installed=True,
             cli_path="/usr/bin/claude",
@@ -67,16 +67,16 @@ class TestSessionManagerInit:
 class TestSwitchProvider:
     def test_switch_to_ready_provider(self):
         mgr = SessionManager(_make_providers())
-        result = mgr.switch_provider("claude")
+        result = mgr.switch_provider("claude-code")
         assert result.success is True
-        assert result.provider_id == "claude"
+        assert result.provider_id == "claude-code"
         assert result.model == "claude-sonnet-4-6"
-        assert mgr.current_provider_id == "claude"
+        assert mgr.current_provider_id == "claude-code"
         assert mgr.effective_model == "claude-sonnet-4-6"
 
     def test_switch_resets_model(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         mgr.switch_model("claude-opus-4-6")
         assert mgr.effective_model == "claude-opus-4-6"
 
@@ -87,8 +87,8 @@ class TestSwitchProvider:
 
     def test_switch_to_same_provider(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
-        result = mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
+        result = mgr.switch_provider("claude-code")
         assert result.success is True
         assert "Already" in result.message
 
@@ -124,7 +124,7 @@ class TestSwitchProvider:
 class TestSwitchModel:
     def test_switch_model(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.switch_model("claude-opus-4-6")
         assert result.success is True
         assert result.model == "claude-opus-4-6"
@@ -133,7 +133,7 @@ class TestSwitchModel:
 
     def test_switch_to_same_model(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         mgr.switch_model("claude-opus-4-6")
         result = mgr.switch_model("claude-opus-4-6")
         assert result.success is True
@@ -141,7 +141,7 @@ class TestSwitchModel:
 
     def test_switch_to_default_is_noop(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         # Default is claude-sonnet-4-6, switching to it is a noop
         result = mgr.switch_model("claude-sonnet-4-6")
         assert result.success is True
@@ -149,7 +149,7 @@ class TestSwitchModel:
 
     def test_switch_to_unknown_model(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.switch_model("nonexistent-model")
         assert result.success is False
         assert "Unknown model" in result.message
@@ -176,7 +176,7 @@ class TestAvailableModels:
 class TestApplySettings:
     def test_apply_both(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings(provider="codex", model="o4-mini")
         assert result.success is True
         assert mgr.current_provider_id == "codex"
@@ -184,7 +184,7 @@ class TestApplySettings:
 
     def test_apply_provider_only(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings(provider="codex")
         assert result.success is True
         assert mgr.current_provider_id == "codex"
@@ -192,37 +192,37 @@ class TestApplySettings:
 
     def test_apply_model_only(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings(model="claude-opus-4-6")
         assert result.success is True
-        assert mgr.current_provider_id == "claude"
+        assert mgr.current_provider_id == "claude-code"
         assert mgr.effective_model == "claude-opus-4-6"
 
     def test_apply_empty_is_noop(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings()
         assert result.success is True
         assert "No changes" in result.message
-        assert mgr.current_provider_id == "claude"
+        assert mgr.current_provider_id == "claude-code"
 
     def test_apply_same_values_noop(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
-        result = mgr.apply_settings(provider="claude", model="claude-sonnet-4-6")
+        mgr.switch_provider("claude-code")
+        result = mgr.apply_settings(provider="claude-code", model="claude-sonnet-4-6")
         assert result.success is True
 
     def test_apply_bad_provider_fails(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings(provider="nonexistent")
         assert result.success is False
         # Should not change current provider
-        assert mgr.current_provider_id == "claude"
+        assert mgr.current_provider_id == "claude-code"
 
     def test_apply_bad_model_fails(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         result = mgr.apply_settings(model="nonexistent")
         assert result.success is False
         assert mgr.effective_model == "claude-sonnet-4-6"
@@ -231,7 +231,7 @@ class TestApplySettings:
 class TestBuildConfig:
     def test_basic_config(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         config = mgr.build_config(prompt="hello")
         assert config.provider == ProviderType.CLAUDE
         assert config.prompt == "hello"
@@ -247,7 +247,7 @@ class TestBuildConfig:
 
     def test_with_overrides(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         config = mgr.build_config(
             prompt="do stuff",
             cwd=Path("/my/project"),
@@ -270,7 +270,7 @@ class TestBuildConfig:
 
     def test_build_config_with_custom_permission(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         config = mgr.build_config(
             prompt="test",
             permission_level=PermissionLevel.CUSTOM,
@@ -288,7 +288,7 @@ class TestBuildConfig:
 class TestProviderType:
     def test_claude_type(self):
         mgr = SessionManager(_make_providers())
-        mgr.switch_provider("claude")
+        mgr.switch_provider("claude-code")
         assert mgr.current_provider_type == ProviderType.CLAUDE
 
     def test_codex_type(self):

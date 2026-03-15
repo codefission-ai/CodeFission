@@ -28,7 +28,7 @@ from .discovery import ProviderInfo, discover
 from .types import PermissionLevel, ProviderType, SessionConfig
 
 _PROVIDER_TYPE_MAP = {
-    "claude": ProviderType.CLAUDE,
+    "claude-code": ProviderType.CLAUDE,
     "codex": ProviderType.CODEX,
 }
 

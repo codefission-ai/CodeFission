@@ -14,7 +14,7 @@ from agentbridge.types import (
 
 class TestProviderType:
     def test_values(self):
-        assert ProviderType.CLAUDE.value == "claude"
+        assert ProviderType.CLAUDE.value == "claude-code"
         assert ProviderType.CODEX.value == "codex"
 
     def test_no_gemini(self):
@@ -23,7 +23,7 @@ class TestProviderType:
 
     def test_is_str_enum(self):
         assert isinstance(ProviderType.CLAUDE, str)
-        assert ProviderType.CLAUDE == "claude"
+        assert ProviderType.CLAUDE == "claude-code"
 
 
 class TestPermissionLevel:

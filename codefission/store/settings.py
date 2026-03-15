@@ -1,18 +1,31 @@
 """Settings CRUD — get/set global defaults and resolve tree settings.
 
-Fallback provider/model come from agentbridge discovery. If no provider
-is installed, falls back to "claude" / "claude-sonnet-4-6".
+Fallback provider/model come from agentbridge discovery.
 """
 
 from db import get_db
 from models import Tree
 
 
-# Hardcoded last-resort defaults. The real provider/model list comes from
-# agentbridge.discover() via handlers/settings.py list_providers().
-# These are only used when the user hasn't set a preference yet.
-_FALLBACK_PROVIDER = "claude"
-_FALLBACK_MODEL = "claude-sonnet-4-6"
+async def _get_agentbridge_defaults() -> tuple[str, str]:
+    """Ask agentbridge for the first ready provider and its default model.
+
+    Returns (provider_id, default_model). Falls back to ("claude-code", "claude-sonnet-4-6")
+    if agentbridge discovery fails or nothing is installed.
+    """
+    try:
+        from agentbridge import discover
+        providers = await discover()
+        for p in providers:
+            if p.ready:
+                return p.id, p.default_model
+        # Nothing ready — return first installed
+        for p in providers:
+            if p.installed:
+                return p.id, p.default_model
+    except Exception:
+        pass
+    return "claude-code", "claude-sonnet-4-6"
 
 
 async def get_setting(key: str) -> str | None:
@@ -36,8 +49,17 @@ async def set_setting(key: str, value: str | None):
 
 async def get_global_defaults() -> dict:
     """Return global default settings (from settings table + agentbridge discovery)."""
-    provider = await get_setting("default_provider") or _FALLBACK_PROVIDER
-    model = await get_setting("default_model") or _FALLBACK_MODEL
+    provider = await get_setting("default_provider")
+    model = await get_setting("default_model")
+
+    # If user hasn't set provider/model, ask agentbridge for the best default
+    if not provider or not model:
+        ab_provider, ab_model = await _get_agentbridge_defaults()
+        if not provider:
+            provider = ab_provider
+        if not model:
+            model = ab_model
+
     max_turns_raw = await get_setting("default_max_turns")
     max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
     auth_mode = await get_setting("auth_mode") or "cli"
