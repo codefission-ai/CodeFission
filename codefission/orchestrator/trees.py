@@ -72,21 +72,42 @@ class TreesMixin:
         repo_id: str | None = None,
         repo_path: str | None = None,
         repo_name: str | None = None,
+        from_node_id: str | None = None,
     ) -> tuple[Tree, Node]:
         """Create a tree + root node from the user's repo. Returns (tree, root_node).
 
-        No cloning or setup_repo — the repo is the project path itself.
+        If from_node_id is provided, use that node's git_commit as the base
+        commit instead of resolving from the branch HEAD. Also inherits the
+        source tree's instructions (skill).
         """
         project_path = get_project_path()
-        # Resolve HEAD of the base_branch in the user's repo
-        _, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch)
-        _, actual_branch, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", base_branch, check=False)
+
+        if from_node_id:
+            source_node = await get_node(from_node_id)
+            if not source_node or not source_node.git_commit:
+                raise ValueError(f"Source node {from_node_id} not found or has no git commit")
+            head_sha = source_node.git_commit
+            # Use branch from source node or fall back to base_branch
+            actual_branch = source_node.git_branch or base_branch
+            # Inherit instructions from source tree
+            source_tree = await get_tree(source_node.tree_id)
+            skill = source_tree.skill if source_tree else ""
+        else:
+            # Resolve HEAD of the base_branch in the user's repo
+            _, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch)
+            _, actual_branch, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", base_branch, check=False)
+            skill = ""
 
         tree, root = await _create_tree(
             name, base_branch=actual_branch, base_commit=head_sha,
             repo_id=repo_id, repo_path=repo_path, repo_name=repo_name,
         )
         await update_node(root.id, git_branch=actual_branch, git_commit=head_sha)
+
+        # Set inherited instructions
+        if skill:
+            await update_tree(tree.id, skill=skill)
+            tree = await get_tree(tree.id)
 
         # Protective ref prevents GC of the base commit
         await create_protective_ref(tree.id, head_sha)

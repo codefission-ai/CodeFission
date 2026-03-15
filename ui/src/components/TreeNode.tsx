@@ -810,6 +810,26 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                     {merging ? "Merging..." : `Merge to ${treeForMerge.base_branch || "main"}`}
                   </button>
                 )}
+                {hasCodeChange && treeForMerge && (
+                  <button
+                    className="tree-node-action-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const treeName = prompt("New tree name:", "");
+                      if (treeName === null || !treeName.trim()) return;
+                      send({
+                        type: WS.CREATE_TREE,
+                        name: treeName.trim(),
+                        from_node_id: node.id,
+                        repo_id: treeForMerge.repo_id,
+                        repo_path: treeForMerge.repo_path,
+                      });
+                    }}
+                    title="Create a new tree starting from this node's commit"
+                  >
+                    Plant new tree
+                  </button>
+                )}
               </div>
               {mergeResult && (
                 <MergeResultBanner result={mergeResult} onDismiss={() => actions.setMergeResult(null)} />

@@ -88,12 +88,24 @@ class TreesMixin:
     async def handle_create_tree(self, data: dict):
         name = data.get("name", "Untitled")
         base_branch = data.get("base_branch", "main")
+        from_node_id = data.get("from_node_id")
+
+        # Allow overriding repo context from the message (e.g. "new tree from node")
+        repo_id = data.get("repo_id") or self.repo_id
+        repo_path_str = data.get("repo_path") or (str(self.repo_path) if self.repo_path else None)
+        repo_name = None
+        if repo_path_str:
+            from pathlib import Path as _Path
+            rp = _Path(repo_path_str)
+            repo_name = self.orch.detect_repo_name(rp) if rp.is_dir() else None
+
         try:
             tree, root = await self.orch.create_tree(
                 name, base_branch=base_branch,
-                repo_id=self.repo_id,
-                repo_path=str(self.repo_path) if self.repo_path else None,
-                repo_name=self.orch.detect_repo_name(self.repo_path) if self.repo_path else None,
+                repo_id=repo_id,
+                repo_path=repo_path_str,
+                repo_name=repo_name,
+                from_node_id=from_node_id,
             )
             await self.send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
         except Exception as e:
