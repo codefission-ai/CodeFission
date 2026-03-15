@@ -7,8 +7,10 @@ mirroring the handler files that call into them.
 orchestrator/ only calls store/. Never touches handlers/ or WS directly.
 """
 
-from orchestrator.core import Orchestrator
+from __future__ import annotations
+
 from models import (
+    StreamState,
     ChatNodeCreated,
     ChatCompleted,
     ChatContext,
@@ -19,8 +21,32 @@ from models import (
     FileListResult,
     DiffResult,
     FileContentResult,
-    StreamState,
 )
+from orchestrator.chat import ChatMixin
+from orchestrator.trees import TreesMixin
+from orchestrator.nodes import NodesMixin
+from orchestrator.files import FilesMixin
+from orchestrator.settings import SettingsMixin
+from orchestrator.repo import RepoMixin
+
+
+class Orchestrator(
+    ChatMixin,
+    TreesMixin,
+    NodesMixin,
+    FilesMixin,
+    SettingsMixin,
+    RepoMixin,
+):
+    """Business-logic coordinator.
+
+    Methods perform multi-step workflows (e.g. create tree = DB + git ref).
+    Returns data; the caller (handler) decides how to deliver it.
+    """
+
+    def __init__(self):
+        self._active_streams: dict[str, StreamState] = {}
+
 
 __all__ = [
     "Orchestrator",
