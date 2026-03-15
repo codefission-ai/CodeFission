@@ -68,6 +68,23 @@ PRICING_TABLE: dict[str, ModelPricing] = {
 }
 
 
+def cheapest_model(provider_models: list[str] | None = None) -> str | None:
+    """Return the cheapest model by input cost from the pricing table.
+
+    If provider_models is given, only consider those models.
+    Returns None if no models are found in the pricing table.
+    """
+    candidates = provider_models if provider_models else list(PRICING_TABLE.keys())
+    best = None
+    best_cost = float("inf")
+    for model in candidates:
+        pricing = PRICING_TABLE.get(model)
+        if pricing and pricing.input_per_mtok < best_cost:
+            best = model
+            best_cost = pricing.input_per_mtok
+    return best
+
+
 def estimate_cost(model: str, usage: TokenUsage) -> float | None:
     """Estimate cost in USD for a given model and token usage.
 

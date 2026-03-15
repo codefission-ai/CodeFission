@@ -84,14 +84,21 @@ def _build_context_from_ancestors(ancestors: list) -> str:
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _sdk_env(auth_mode: str = "cli", api_key: str = "") -> dict[str, str]:
+def _sdk_env(auth_mode: str = "cli", api_key: str = "", provider: str = "claude-code") -> dict[str, str]:
     """Build env dict for the provider subprocess.
+
+    Sets the correct API key env var based on provider:
+    - claude-code → ANTHROPIC_API_KEY
+    - codex → OPENAI_API_KEY
 
     Kept as a public function — summary_service imports it.
     """
     env: dict[str, str] = {}
     if auth_mode == "api_key" and api_key:
-        env["ANTHROPIC_API_KEY"] = api_key
+        if provider == "codex":
+            env["OPENAI_API_KEY"] = api_key
+        else:
+            env["ANTHROPIC_API_KEY"] = api_key
     return env
 
 
@@ -183,7 +190,6 @@ def _build_system_prompt(node, tree=None, workspace: Path | None = None) -> str:
 # ── Main streaming function ──────────────────────────────────────────
 
 _PROVIDER_TYPE_MAP = {
-    "claude": ProviderType.CLAUDE,
     "claude-code": ProviderType.CLAUDE,
     "codex": ProviderType.CODEX,
 }
@@ -255,7 +261,7 @@ async def stream_chat(
         cwd=workspace,
         model=model,
         max_turns=max_turns if max_turns > 0 else None,
-        env=_sdk_env(auth_mode, api_key),
+        env=_sdk_env(auth_mode, api_key, provider),
     )
 
     # Only set system_prompt on fresh sessions (not when resuming/forking)

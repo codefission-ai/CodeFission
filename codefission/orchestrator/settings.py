@@ -10,6 +10,8 @@ from store.trees import (
 from store.settings import (
     set_setting,
     get_global_defaults,
+    set_provider_api_key,
+    get_provider_api_key,
 )
 
 
@@ -26,6 +28,11 @@ class SettingsMixin:
         if "data_dir" in data and data["data_dir"]:
             from config import save_config
             save_config({"data_dir": data["data_dir"]})
+        # Handle per-provider API keys: "provider_api_keys": {"claude-code": "sk-...", "codex": "sk-..."}
+        if "provider_api_keys" in data:
+            for provider_id, key in data["provider_api_keys"].items():
+                await set_provider_api_key(provider_id, key if key else None)
+
         return await get_global_defaults()
 
     async def update_tree_settings(self, tree_id: str, data: dict) -> Tree | None:

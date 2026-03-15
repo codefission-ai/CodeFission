@@ -1,31 +1,48 @@
 """Settings CRUD — get/set global defaults and resolve tree settings.
 
-Fallback provider/model come from agentbridge discovery.
+Fallback provider/model/summary_model come from agentbridge discovery + pricing.
+Per-provider API keys stored as "api_key:{provider_id}" in the settings table.
 """
 
 from db import get_db
 from models import Tree
 
 
-async def _get_agentbridge_defaults() -> tuple[str, str]:
-    """Ask agentbridge for the first ready provider and its default model.
+async def _get_agentbridge_defaults() -> tuple[str, str, str]:
+    """Ask agentbridge for the first ready provider, its default model, and cheapest model.
 
-    Returns (provider_id, default_model). Falls back to ("claude-code", "claude-sonnet-4-6")
-    if agentbridge discovery fails or nothing is installed.
+    Returns (provider_id, default_model, cheapest_model).
+    Falls back to ("claude-code", "claude-sonnet-4-6", "claude-haiku-4-5-20251001").
     """
     try:
-        from agentbridge import discover
+        from agentbridge import discover, cheapest_model
         providers = await discover()
+
+        # Find best provider
+        provider = None
         for p in providers:
             if p.ready:
-                return p.id, p.default_model
-        # Nothing ready — return first installed
-        for p in providers:
-            if p.installed:
-                return p.id, p.default_model
+                provider = p
+                break
+        if not provider:
+            for p in providers:
+                if p.installed:
+                    provider = p
+                    break
+
+        if provider:
+            # Cheapest model across all known models (for summary/auto-naming)
+            all_models = []
+            for p in providers:
+                all_models.extend(p.available_models)
+            cheap = cheapest_model(all_models) or provider.available_models[-1] if provider.available_models else None
+            return provider.id, provider.default_model, cheap or "claude-haiku-4-5-20251001"
     except Exception:
         pass
-    return "claude-code", "claude-sonnet-4-6"
+    return "claude-code", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"
+
+
+# ── Basic CRUD ──────────────────────────────────────────────────────
 
 
 async def get_setting(key: str) -> str | None:
@@ -47,24 +64,64 @@ async def set_setting(key: str, value: str | None):
         await db.commit()
 
 
+# ── Per-provider API keys ───────────────────────────────────────────
+
+
+async def get_provider_api_key(provider_id: str) -> str | None:
+    """Get the CodeFission-specific API key for a provider.
+
+    Stored as "api_key:{provider_id}" in the settings table.
+    This overrides any env var API key when set.
+    """
+    return await get_setting(f"api_key:{provider_id}")
+
+
+async def set_provider_api_key(provider_id: str, key: str | None):
+    """Set or clear the CodeFission-specific API key for a provider."""
+    await set_setting(f"api_key:{provider_id}", key)
+
+
+async def get_effective_api_key(provider_id: str) -> str:
+    """Get the API key to use for a provider.
+
+    Priority: CodeFission per-provider key > global api_key setting > empty string.
+    """
+    # 1. Per-provider key (set in CodeFission settings UI)
+    per_provider = await get_provider_api_key(provider_id)
+    if per_provider:
+        return per_provider
+
+    # 2. Global api_key setting (legacy, shared across providers)
+    global_key = await get_setting("api_key")
+    if global_key:
+        return global_key
+
+    return ""
+
+
+# ── Global defaults ─────────────────────────────────────────────────
+
+
 async def get_global_defaults() -> dict:
     """Return global default settings (from settings table + agentbridge discovery)."""
     provider = await get_setting("default_provider")
     model = await get_setting("default_model")
+    summary_model = await get_setting("summary_model")
 
-    # If user hasn't set provider/model, ask agentbridge for the best default
-    if not provider or not model:
-        ab_provider, ab_model = await _get_agentbridge_defaults()
+    # If user hasn't set these, ask agentbridge for the best defaults
+    if not provider or not model or not summary_model:
+        ab_provider, ab_model, ab_cheap = await _get_agentbridge_defaults()
         if not provider:
             provider = ab_provider
         if not model:
             model = ab_model
+        if not summary_model:
+            summary_model = ab_cheap
 
     max_turns_raw = await get_setting("default_max_turns")
     max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
     auth_mode = await get_setting("auth_mode") or "cli"
     api_key = await get_setting("api_key") or ""
-    summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
 
     from config import get_global_db_path
     return {

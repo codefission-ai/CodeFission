@@ -26,6 +26,7 @@ from .pricing import (
     PRICING_TABLE,
     ModelPricing,
     TokenUsage,
+    cheapest_model,
     estimate_cost,
     estimate_cost_from_raw,
 )

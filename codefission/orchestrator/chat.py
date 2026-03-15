@@ -27,6 +27,7 @@ from store.trees import (
 from store.settings import (
     resolve_tree_settings,
     get_global_defaults,
+    get_effective_api_key,
 )
 from store.git import (
     ensure_worktree,
@@ -330,7 +331,7 @@ class ChatMixin:
             model=effective["model"],
             max_turns=effective["max_turns"],
             auth_mode=global_cfg["auth_mode"],
-            api_key=global_cfg["api_key"],
+            api_key=await get_effective_api_key(effective["provider"]),
             after_id=after_id,
         )
 
