@@ -16,27 +16,52 @@ from store.settings import (
 async def list_providers() -> list[dict]:
     """Discover installed providers via agentbridge and return serializable list.
 
-    This is the single source of truth for provider info — no hardcoded lists.
-    Returns real-time install status, auth status, models, and versions.
+    Adapts agentbridge's ProviderInfo to the shape the frontend expects:
+    - id, name, models, default_model (direct from agentbridge)
+    - auth_modes: list of unique auth method strings (e.g. ["cli", "api_key"])
+    - default_auth_mode: first authenticated method, or first method
+    - installed, ready, version, auth: extra detail from agentbridge
     """
     from agentbridge import discover
     providers = await discover()
-    return [
-        {
-            "id": p.id,
+
+    # Map agentbridge IDs to CodeFission IDs (frontend/DB use "claude-code", agentbridge uses "claude")
+    _ID_MAP = {"claude": "claude-code"}
+
+    result = []
+    for p in providers:
+        provider_id = _ID_MAP.get(p.id, p.id)
+        # Build auth_modes list from agentbridge auth info
+        # Simplify method names: "cli_oauth (web)" → "cli", "api_key" → "api_key"
+        auth_modes = []
+        for a in p.auth:
+            mode = "cli" if a.method.startswith("cli_oauth") else a.method
+            if mode not in auth_modes:
+                auth_modes.append(mode)
+
+        # Default auth mode: first authenticated one, or first available
+        default_auth_mode = auth_modes[0] if auth_modes else "cli"
+        for a in p.auth:
+            if a.authenticated:
+                default_auth_mode = "cli" if a.method.startswith("cli_oauth") else a.method
+                break
+
+        result.append({
+            "id": provider_id,
             "name": p.name,
             "installed": p.installed,
             "ready": p.ready,
             "version": p.version,
             "models": p.available_models,
             "default_model": p.default_model,
+            "auth_modes": auth_modes,
+            "default_auth_mode": default_auth_mode,
             "auth": [
                 {"method": a.method, "authenticated": a.authenticated, "detail": a.detail}
                 for a in p.auth
             ],
-        }
-        for p in providers
-    ]
+        })
+    return result
 
 
 class SettingsMixin:
