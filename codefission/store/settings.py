@@ -31,12 +31,15 @@ async def _get_agentbridge_defaults() -> tuple[str, str, str]:
                     break
 
         if provider:
-            # Cheapest model across all known models (for summary/auto-naming)
-            all_models = []
+            # Cheapest model from ready providers only (for summary/auto-naming)
+            ready_models = []
             for p in providers:
-                all_models.extend(p.available_models)
-            cheap = cheapest_model(all_models) or provider.available_models[-1] if provider.available_models else None
-            return provider.id, provider.default_model, cheap or "claude-haiku-4-5-20251001"
+                if p.ready:
+                    ready_models.extend(p.available_models)
+            if not ready_models:
+                ready_models = provider.available_models
+            cheap = cheapest_model(ready_models) or (ready_models[-1] if ready_models else None)
+            return provider.id, provider.default_model, cheap or provider.default_model
     except Exception:
         pass
     return "claude-code", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"

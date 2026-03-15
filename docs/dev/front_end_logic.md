@@ -19,6 +19,10 @@ On the tool calling animation, displaying all tool calling in one list is a bit 
 
 Once a response is complete, the node should have some indicator color that disappears after the user have focused on it.
 
+For a free note (notes that have not been quoted by any nodes), we'll have the option to pin it to a node. The specifics I have not decided. You can do whatever makes sense to you and we'll see.
+
+
+
 
 
 
