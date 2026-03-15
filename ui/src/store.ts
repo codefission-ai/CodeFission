@@ -144,6 +144,7 @@ interface Store {
   repoBranches: BranchInfo[];
   mergeResult: MergeResult | null;
   treeStaleness: Record<string, StalenessInfo>;
+  seenNodes: Set<string>;
   sidebarOpen: boolean;
 }
 
@@ -222,6 +223,7 @@ export const useStore = create<Store>(() => ({
   repoBranches: [],
   mergeResult: null,
   treeStaleness: {},
+  seenNodes: new Set<string>(),
   sidebarOpen: true,
 }));
 
@@ -266,8 +268,15 @@ export const actions = {
   selectNode: (id: string | null) => useStore.setState((s) => {
     // Clear quotes when selecting a node that isn't the quotes' target
     const clear = id !== null && s.pendingQuotesFor !== null && id !== s.pendingQuotesFor;
+    // Mark node as seen when selected
+    let seenNodes = s.seenNodes;
+    if (id !== null && !seenNodes.has(id)) {
+      seenNodes = new Set(seenNodes);
+      seenNodes.add(id);
+    }
     return {
       selectedNodeId: id,
+      seenNodes,
       pendingQuotes: clear ? [] : s.pendingQuotes,
       pendingQuotesFor: clear ? null : s.pendingQuotesFor,
     };

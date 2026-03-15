@@ -308,6 +308,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const hasVisibleChildren = useStore((s) => node.children_ids.some((cid) => !s.pendingDeleteNodes.has(cid)));
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
+  const isUnread = useStore((s) => node.status === "done" && !s.seenNodes.has(node.id));
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const pendingQuotes = useStore((s) => s.pendingQuotes);
   const selectedHasInput = useStore((s) => {
@@ -587,7 +588,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   // All nodes (including root once it has a message): collapsible
   return (
     <div
-      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${hasCodeChange ? "has-code" : ""}`}
+      className={`tree-node ${selected ? "selected" : ""} ${isExpanded ? "expanded" : ""} ${hasCodeChange ? "has-code" : ""} ${isUnread ? "unread" : ""}`}
       onClick={() => {
         actions.selectNode(node.id);
         if (!isExpanded) {
@@ -603,6 +604,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
         </div>
       )}
       {!isExpanded && <span className="tree-node-dot" style={{ background: dot }} />}
+      {!isExpanded && isUnread && <span className="tree-node-unread" />}
       {!isExpanded && (
         <span className="tree-node-label">
           {isRoot ? truncate(node.user_message, 40) : (node.label || "...")}
