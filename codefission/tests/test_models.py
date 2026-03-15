@@ -1,6 +1,6 @@
 """Tests for Pydantic models — defaults, serialization, mutable defaults."""
 
-from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
+from models import Node, Tree
 
 
 # ── Node ─────────────────────────────────────────────────────────────
@@ -42,8 +42,8 @@ def test_node_serialization():
 def test_tree_defaults():
     """Tree has correct defaults."""
     t = Tree(id="t1", name="Test")
-    assert t.provider == DEFAULT_PROVIDER
-    assert t.model == DEFAULT_MODEL
+    assert t.provider == ""
+    assert t.model == ""
     assert t.repo_id is None
     assert t.repo_path is None
     assert t.repo_name is None
@@ -60,7 +60,8 @@ def test_tree_serialization():
     assert "root_node_id" in d
 
 
-def test_default_constants():
-    """DEFAULT_PROVIDER and DEFAULT_MODEL are empty (inherit from global)."""
-    assert DEFAULT_PROVIDER == ""
-    assert DEFAULT_MODEL == ""
+def test_tree_empty_provider_model():
+    """Tree provider and model default to empty string (inherit from global)."""
+    t = Tree(id="t1", name="Test")
+    assert t.provider == ""
+    assert t.model == ""

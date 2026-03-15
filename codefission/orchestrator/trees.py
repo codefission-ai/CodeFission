@@ -19,6 +19,9 @@ from store.trees import (
     update_node,
     update_tree,
     delete_subtree,
+    list_trees as _list_trees,
+    delete_tree as _delete_tree,
+    find_tree as _find_tree,
 )
 from store.settings import (
     get_setting,
@@ -38,6 +41,34 @@ log = logging.getLogger(__name__)
 
 class TreesMixin:
     """Tree CRUD and delete_node operations."""
+
+    # ── Data accessors (thin wrappers over store) ────────────────────
+
+    async def get_tree(self, tree_id: str) -> Tree | None:
+        return await get_tree(tree_id)
+
+    async def get_node(self, node_id: str) -> Node | None:
+        return await get_node(node_id)
+
+    async def get_all_nodes(self, tree_id: str) -> list[Node]:
+        return await get_all_nodes(tree_id)
+
+    async def list_trees(self, repo_id: str | None = None) -> list[Tree]:
+        return await _list_trees(repo_id)
+
+    async def remove_tree(self, tree_id: str) -> None:
+        await _delete_tree(tree_id)
+
+    async def find_tree(self, repo_id: str, base_commit: str, repo_path: str | None = None) -> Tree | None:
+        return await _find_tree(repo_id, base_commit, repo_path)
+
+    async def update_tree(self, tree_id: str, **kwargs) -> None:
+        await update_tree(tree_id, **kwargs)
+
+    async def update_node(self, node_id: str, **kwargs) -> None:
+        await update_node(node_id, **kwargs)
+
+    # ── Tree creation ────────────────────────────────────────────────
 
     async def create_tree(
         self,

@@ -33,6 +33,29 @@ from config import get_project_path, set_project_path
 class RepoMixin:
     """Repo operations — open_repo, update_base, merge_to_branch."""
 
+    # ── Data accessors (thin wrappers over store) ────────────────────
+
+    async def get_repo_info(self, repo_path=None):
+        from store.git import get_repo_info
+        return await get_repo_info(repo_path)
+
+    async def list_branches(self):
+        return await ws_list_branches()
+
+    async def check_staleness(self, base_branch: str, base_commit: str) -> dict:
+        return await check_staleness(base_branch, base_commit)
+
+    def detect_repo_name(self, repo_path) -> str:
+        return detect_repo_name(repo_path)
+
+    async def run_git(self, repo_path, *args, check=True):
+        return await _run_git(repo_path, *args, check=check)
+
+    async def create_protective_ref(self, tree_id: str, commit_sha: str):
+        return await create_protective_ref(tree_id, commit_sha)
+
+    # ── Operations ───────────────────────────────────────────────────
+
     async def open_repo(
         self,
         repo_id: str,

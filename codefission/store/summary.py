@@ -30,7 +30,6 @@ async def generate_tree_name(
     repo_info: str,
     first_message: str,
     model: str = "claude-haiku-4-5-20251001",
-    auth_mode: str = "cli",
     api_key: str | None = None,
 ) -> str | None:
     """Generate a short tree name using the Claude Agent SDK.
@@ -54,7 +53,7 @@ async def generate_tree_name(
             model=model,
             permission_mode="plan",
             cwd="/tmp",
-            env=_sdk_env(auth_mode, api_key or ""),
+            env=_sdk_env(api_key or ""),
         )
 
         text = ""

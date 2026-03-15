@@ -1,7 +1,6 @@
 """Node handlers — branch, get node details, delete node + subtree."""
 
 from events import WS
-from store.trees import get_node
 
 
 class NodesMixin:
@@ -14,7 +13,7 @@ class NodesMixin:
 
     async def handle_get_node(self, data: dict):
         node_id = data["node_id"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if node:
             await self.send(WS.NODE_DATA, node=node.model_dump())
 
@@ -22,7 +21,7 @@ class NodesMixin:
         from handlers import _active_streams
 
         node_id = data["node_id"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if node:
             await self._set_context_for_tree(node.tree_id)
 

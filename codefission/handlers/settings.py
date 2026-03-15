@@ -8,9 +8,6 @@ that happens to be stored in the DB.
 import json
 
 from events import WS
-from store.settings import (
-    get_setting, set_setting, get_global_defaults,
-)
 
 
 async def list_providers() -> list[dict]:
@@ -28,7 +25,7 @@ async def list_providers() -> list[dict]:
     result = []
     for p in providers:
         # Build auth_modes list from agentbridge auth info
-        # Simplify method names: "cli_oauth (web)" → "cli", "api_key" → "api_key"
+        # Simplify method names: "cli_oauth (web)" -> "cli", "api_key" -> "api_key"
         auth_modes = []
         for a in p.auth:
             mode = "cli" if a.method.startswith("cli_oauth") else a.method
@@ -64,32 +61,32 @@ class SettingsMixin:
 
     async def handle_select_tree(self, data: dict):
         tree_id = data.get("tree_id")
-        await set_setting("last_tree_id", tree_id)
+        await self.orch.set_setting("last_tree_id", tree_id)
 
     async def handle_set_expanded(self, data: dict):
         node_id = data["node_id"]
         expanded = data["expanded"]
-        raw = await get_setting("expanded_nodes")
+        raw = await self.orch.get_setting("expanded_nodes")
         nodes_map = json.loads(raw) if raw else {}
         if expanded:
             nodes_map[node_id] = True
         else:
             nodes_map.pop(node_id, None)
-        await set_setting("expanded_nodes", json.dumps(nodes_map))
+        await self.orch.set_setting("expanded_nodes", json.dumps(nodes_map))
 
     async def handle_set_subtree_collapsed(self, data: dict):
         node_id = data["node_id"]
         collapsed = data["collapsed"]
-        raw = await get_setting("collapsed_subtrees")
+        raw = await self.orch.get_setting("collapsed_subtrees")
         subtrees_map = json.loads(raw) if raw else {}
         if collapsed:
             subtrees_map[node_id] = True
         else:
             subtrees_map.pop(node_id, None)
-        await set_setting("collapsed_subtrees", json.dumps(subtrees_map))
+        await self.orch.set_setting("collapsed_subtrees", json.dumps(subtrees_map))
 
     async def handle_get_settings(self, data: dict):  # noqa: ARG002
-        defaults = await get_global_defaults()
+        defaults = await self.orch.get_global_defaults()
         providers = await list_providers()
         await self.send(WS.SETTINGS, global_defaults=defaults, providers=providers)
 

@@ -8,15 +8,8 @@ Also handles auto-naming untitled trees from the first message.
 import asyncio
 import logging
 
+from agentbridge import TextDelta, ToolStart, ToolEnd, SessionInit
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
-from store.trees import get_node, get_tree, update_tree, update_node
-from store.ai import TextDelta, ToolStart, ToolEnd, SessionInit
-from store.git import (
-    resolve_workspace,
-    remove_worktree, remove_worktree_and_branch,
-    _worktrees_dir,
-)
-from store.processes import list_processes, list_tree_processes, kill_process_tree
 from models import StreamState
 
 log = logging.getLogger(__name__)
@@ -32,7 +25,7 @@ class ChatMixin:
         draft_node_id = data.get("draft_node_id")
 
         # Set context for the tree this node belongs to
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if node:
             await self._set_context_for_tree(node.tree_id)
 
@@ -72,7 +65,7 @@ class ChatMixin:
                     await self.send(WS.NODE_DATA, node=event.node.model_dump())
 
                     # Auto-name tree on first message
-                    tree = await get_tree(event.node.tree_id)
+                    tree = await self.orch.get_tree(event.node.tree_id)
                     if tree and tree.name == "Untitled":
                         asyncio.create_task(self._auto_name_tree(tree.id, msg, tree))
 
@@ -123,29 +116,11 @@ class ChatMixin:
 
                     # Brief delay to let SDK/tool subprocesses fully exit
                     await asyncio.sleep(0.15)
-                    # Tree-wide process scan
-                    wt_dir = _worktrees_dir()
-                    tree_procs_raw = list_tree_processes(wt_dir) if wt_dir.exists() else {}
-                    this_node_procs = tree_procs_raw.get(nid, [])
-                    if this_node_procs:
-                        done_payload["processes"] = [
-                            {"pid": p.pid, "command": p.command, "ports": p.ports}
-                            for p in this_node_procs
-                        ]
-                    else:
-                        # No running processes — remove ephemeral worktree
-                        try:
-                            node = await get_node(nid)
-                            if node:
-                                tree = await get_tree(node.tree_id)
-                                if tree:
-                                    if event.result.files_changed == 0 and node.parent_id:
-                                        await remove_worktree_and_branch(tree.root_node_id, nid)
-                                        await update_node(nid, git_branch=None)
-                                    else:
-                                        await remove_worktree(tree.root_node_id, nid)
-                        except Exception:
-                            log.debug("Ephemeral worktree removal failed for %s", nid, exc_info=True)
+
+                    # Post-chat process scan and worktree cleanup
+                    proc_result = await self.orch.post_chat_cleanup(nid, event.result.files_changed)
+                    if proc_result:
+                        done_payload["processes"] = proc_result["processes"]
 
                     await self.send(WS.DONE, **done_payload)
                     await self._send_tree_processes()
@@ -159,15 +134,8 @@ class ChatMixin:
             await self.send(WS.ERROR, node_id=nid, error=str(e))
             # Try to remove ephemeral worktree on error
             try:
-                node = await get_node(nid)
-                if node:
-                    tree = await get_tree(node.tree_id)
-                    if tree:
-                        ws_path = resolve_workspace(tree.root_node_id, nid)
-                        procs = list_processes(ws_path) if ws_path.exists() else []
-                        if not procs:
-                            await remove_worktree(tree.root_node_id, nid)
-                        await self._send_tree_processes()
+                await self.orch.post_error_cleanup(nid)
+                await self._send_tree_processes()
             except Exception:
                 log.debug("Ephemeral worktree removal after error failed for %s", nid, exc_info=True)
 
@@ -178,30 +146,10 @@ class ChatMixin:
 
     async def _auto_name_tree(self, tree_id: str, first_message: str, tree):
         """Background task: generate a short name for a tree and push it to the client."""
-        from store.settings import get_global_defaults
-
         try:
-            from store.summary import generate_tree_name
-
-            defaults = await get_global_defaults()
-            summary_model = defaults.get("summary_model") or ""
-            if not summary_model:
-                return  # auto-naming disabled
-            api_key = defaults.get("api_key") or None
-
-            repo_info = tree.base_branch or "main"
-            auth_mode = defaults.get("auth_mode", "cli")
-            name = await generate_tree_name(
-                skill=tree.skill,
-                repo_info=repo_info,
-                first_message=first_message,
-                model=summary_model,
-                auth_mode=auth_mode,
-                api_key=api_key,
-            )
+            name = await self.orch.auto_name_tree(tree_id, first_message, tree)
             if name:
-                await update_tree(tree_id, name=name)
-                updated = await get_tree(tree_id)
+                updated = await self.orch.get_tree(tree_id)
                 if updated:
                     await self.send(WS.TREE_UPDATED, tree=updated.model_dump())
         except Exception:
@@ -216,7 +164,7 @@ class ChatMixin:
         if info:
             info.cancelled = True
             if info.sdk_pid:
-                kill_process_tree(info.sdk_pid)
+                self.orch.kill_sdk_process_tree(info.sdk_pid)
                 info.sdk_pid = None
             if info.stream_task and not info.stream_task.done():
                 info.stream_task.cancel()
@@ -230,7 +178,7 @@ class ChatMixin:
     async def handle_duplicate(self, data: dict):
         """Re-run the same user message from the same parent, creating a sibling."""
         node_id = data["node_id"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if not node or not node.user_message or not node.parent_id:
             await self.send(WS.ERROR, error="Cannot duplicate this node")
             return

@@ -5,14 +5,13 @@ which handle the worktree-or-git-commit fallback internally.
 """
 
 from events import WS
-from store.trees import get_node
 
 
 class FilesMixin:
 
     async def handle_get_node_files(self, data: dict):
         node_id = data["node_id"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return
@@ -25,7 +24,7 @@ class FilesMixin:
 
     async def handle_get_node_diff(self, data: dict):
         node_id = data["node_id"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return
@@ -39,7 +38,7 @@ class FilesMixin:
     async def handle_get_file_content(self, data: dict):
         node_id = data["node_id"]
         file_path = data["file_path"]
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if not node:
             await self.send(WS.ERROR, error="Node not found")
             return

@@ -14,11 +14,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-# Default provider/model for new trees (empty = use global default)
-DEFAULT_PROVIDER = ""
-DEFAULT_MODEL = ""
-
-
 class Node(BaseModel):
     id: str
     tree_id: str
@@ -43,8 +38,8 @@ class Tree(BaseModel):
     name: str
     created_at: str = ""
     root_node_id: str | None = None
-    provider: str = DEFAULT_PROVIDER
-    model: str = DEFAULT_MODEL
+    provider: str = ""
+    model: str = ""
     skill: str = ""
     notes: str = "[]"  # JSON array of {id, text, x, y, width, height}
     base_branch: str = "main"
@@ -100,7 +95,6 @@ class ChatContext:
     parent_session_id: str | None
     provider: str
     model: str
-    auth_mode: str
     api_key: str
     after_id: str | None = None
     quoted_node_ids: list[str] = field(default_factory=list)

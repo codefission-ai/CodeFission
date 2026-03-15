@@ -13,7 +13,6 @@ from fastapi import WebSocket
 
 from config import set_project_path
 from events import WS
-from store.trees import get_tree
 from orchestrator import Orchestrator, StreamState
 
 from handlers.trees import TreesMixin
@@ -76,7 +75,7 @@ class ConnectionHandler(
         set_project_path(repo_path)
 
     async def _set_context_for_tree(self, tree_id: str) -> bool:
-        tree = await get_tree(tree_id)
+        tree = await self.orch.get_tree(tree_id)
         if tree and tree.repo_path:
             repo_path = Path(tree.repo_path)
             if repo_path.is_dir():

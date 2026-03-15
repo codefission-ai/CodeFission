@@ -84,7 +84,7 @@ def _build_context_from_ancestors(ancestors: list) -> str:
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _sdk_env(auth_mode: str = "cli", api_key: str = "", provider: str = "claude-code") -> dict[str, str]:
+def _sdk_env(api_key: str = "", provider: str = "claude-code") -> dict[str, str]:
     """Build env dict for the provider subprocess.
 
     Sets the correct API key env var based on provider:
@@ -94,7 +94,7 @@ def _sdk_env(auth_mode: str = "cli", api_key: str = "", provider: str = "claude-
     Kept as a public function — summary_service imports it.
     """
     env: dict[str, str] = {}
-    if auth_mode == "api_key" and api_key:
+    if api_key:
         if provider == "codex":
             env["OPENAI_API_KEY"] = api_key
         else:
@@ -203,7 +203,6 @@ async def stream_chat(
     *,
     provider: str = "claude",
     model: str = "claude-opus-4-6",
-    auth_mode: str = "cli",
     api_key: str = "",
 ) -> AsyncGenerator[BridgeEvent, None]:
     """Stream a chat response for a node via AgentBridge.
@@ -259,7 +258,7 @@ async def stream_chat(
         prompt=prompt,
         cwd=workspace,
         model=model,
-        env=_sdk_env(auth_mode, api_key, provider),
+        env=_sdk_env(api_key, provider),
     )
 
     # Only set system_prompt on fresh sessions (not when resuming/forking)

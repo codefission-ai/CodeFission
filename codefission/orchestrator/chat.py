@@ -329,7 +329,6 @@ class ChatMixin:
             parent_session_id=parent_session_id,
             provider=effective["provider"],
             model=effective["model"],
-            auth_mode=global_cfg["auth_mode"],
             api_key=await get_effective_api_key(effective["provider"]),
             after_id=after_id,
         )
@@ -378,7 +377,6 @@ class ChatMixin:
                 nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
                 provider=ctx.provider,
                 model=ctx.model,
-                auth_mode=ctx.auth_mode,
                 api_key=ctx.api_key,
             ):
                 if isinstance(event, SessionInit):
@@ -524,6 +522,40 @@ class ChatMixin:
         )
 
         return await get_node(node.id)
+
+    async def auto_name_tree(self, tree_id: str, first_message: str, tree=None) -> str | None:
+        """Generate and save a short name for a tree based on its first message.
+
+        Returns the new name, or None if auto-naming failed or was disabled.
+        """
+        try:
+            from store.summary import generate_tree_name
+
+            defaults = await get_global_defaults()
+            summary_model = defaults.get("summary_model") or ""
+            if not summary_model:
+                return None  # auto-naming disabled
+            api_key = defaults.get("api_key") or None
+
+            if not tree:
+                tree = await get_tree(tree_id)
+            if not tree:
+                return None
+
+            repo_info = tree.base_branch or "main"
+            name = await generate_tree_name(
+                skill=tree.skill,
+                repo_info=repo_info,
+                first_message=first_message,
+                model=summary_model,
+                api_key=api_key,
+            )
+            if name:
+                await update_tree(tree_id, name=name)
+            return name
+        except Exception:
+            log.warning("Auto-name tree failed for %s", tree_id, exc_info=True)
+            return None
 
     async def discard_draft(self, tree_id: str, draft_node_id: str) -> None:
         """Delete a draft node and its workspace."""

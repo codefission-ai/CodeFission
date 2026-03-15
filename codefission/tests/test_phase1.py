@@ -402,7 +402,6 @@ class TestUpdateGlobalSettings:
         defaults = await orch.update_global_settings({})
         assert "provider" in defaults
         assert "model" in defaults
-        assert "auth_mode" in defaults
 
 
 # ── Orchestrator.update_tree_settings ────────────────────────────────

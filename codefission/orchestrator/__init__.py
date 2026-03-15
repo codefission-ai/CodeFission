@@ -28,6 +28,7 @@ from orchestrator.nodes import NodesMixin
 from orchestrator.files import FilesMixin
 from orchestrator.settings import SettingsMixin
 from orchestrator.repo import RepoMixin
+from orchestrator.processes import ProcessesMixin
 
 
 class Orchestrator(
@@ -37,6 +38,7 @@ class Orchestrator(
     FilesMixin,
     SettingsMixin,
     RepoMixin,
+    ProcessesMixin,
 ):
     """Business-logic coordinator.
 

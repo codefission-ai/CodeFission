@@ -18,9 +18,23 @@ from store.settings import (
 class SettingsMixin:
     """Global and tree-level settings operations."""
 
+    # ── Data accessors (thin wrappers over store) ────────────────────
+
+    async def get_setting(self, key: str) -> str | None:
+        from store.settings import get_setting
+        return await get_setting(key)
+
+    async def set_setting(self, key: str, value: str | None) -> None:
+        await set_setting(key, value)
+
+    async def get_global_defaults(self) -> dict:
+        return await get_global_defaults()
+
+    # ── Mutations ────────────────────────────────────────────────────
+
     async def update_global_settings(self, data: dict) -> dict:
         """Update global settings. Returns updated global defaults dict."""
-        for key in ("default_provider", "default_model", "auth_mode", "api_key", "summary_model"):
+        for key in ("default_provider", "default_model", "api_key", "summary_model"):
             if key in data:
                 val = data[key]
                 await set_setting(key, str(val) if val is not None and val != "" else None)

@@ -118,14 +118,12 @@ async def get_global_defaults() -> dict:
         if not summary_model:
             summary_model = ab_cheap
 
-    auth_mode = await get_setting("auth_mode") or "cli"
     api_key = await get_setting("api_key") or ""
 
     from config import get_global_db_path
     return {
         "provider": provider,
         "model": model,
-        "auth_mode": auth_mode,
         "api_key": api_key,
         "summary_model": summary_model,
         "data_dir": str(get_global_db_path().parent),

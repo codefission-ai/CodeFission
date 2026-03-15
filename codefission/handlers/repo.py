@@ -3,28 +3,23 @@
 from pathlib import Path
 
 from events import WS
-from store.trees import get_node, get_tree
-from store.git import (
-    list_branches as ws_list_branches,
-    get_repo_info as ws_get_repo_info,
-)
 
 
 class RepoMixin:
 
     async def handle_get_repo_info(self, data: dict):  # noqa: ARG002
-        info = await ws_get_repo_info()
+        info = await self.orch.get_repo_info()
         await self.send(WS.REPO_INFO, **info)
 
     async def handle_list_branches(self, data: dict):  # noqa: ARG002
-        branches = await ws_list_branches()
+        branches = await self.orch.list_branches()
         await self.send(WS.BRANCHES, branches=branches)
 
     async def handle_merge_to_branch(self, data: dict):
         node_id = data["node_id"]
         target_branch = data["target_branch"]
         # Set context for the node's tree
-        node = await get_node(node_id)
+        node = await self.orch.get_node(node_id)
         if node:
             await self._set_context_for_tree(node.tree_id)
         result = await self.orch.merge_to_branch(node_id, target_branch)
@@ -37,8 +32,12 @@ class RepoMixin:
         new_commit = data.get("base_commit")
 
         # Set context from existing tree if no new path
-        if not new_path or new_path == (await get_tree(tree_id) or object).__dict__.get("repo_path"):
+        if not new_path:
             await self._set_context_for_tree(tree_id)
+        else:
+            tree = await self.orch.get_tree(tree_id)
+            if tree and new_path == tree.repo_path:
+                await self._set_context_for_tree(tree_id)
 
         try:
             result = await self.orch.update_base(

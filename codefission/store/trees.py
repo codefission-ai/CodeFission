@@ -13,7 +13,7 @@ from pathlib import Path
 
 from config import get_project_path, get_project_dir
 from db import get_db
-from models import Node, Tree, DEFAULT_PROVIDER, DEFAULT_MODEL
+from models import Node, Tree
 from store.git import cleanup_tree_workspaces
 
 log = logging.getLogger(__name__)
