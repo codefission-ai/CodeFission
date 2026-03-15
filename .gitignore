@@ -19,3 +19,4 @@ codefission-ai/
 codefission/static/
 dist/
 .codefission/
+.pytest_cache/
