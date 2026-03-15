@@ -1,28 +1,109 @@
-On the left panel, we should have projects and trees.
-Each project revolves around one git repo. Each repo can have multiple trees.
+# Frontend UX Plan
 
-The user may create a new project, by click on the new project button on the top sector of the side bar. By default the new project is am empty folder that we assign. The user may change that folder name into another local git folder or a github link. If the local folder is not a git project, we'd warn the user that this is not a git folder and a git repo will be created. Once the folder is set, we'll default where the head is to be the branch and commit id. The user may select anther branch and commit id.
+## Sidebar: Projects & Trees
 
-the project name is automatically parsed by the folder name of that local folder or the repo name of remote repo. [backend need to be updated as well.] For empty projects, we'll auto summarize. The entry can be editted manually by the user.
+- Left panel shows **projects** (one per git repo) and **trees** under each project
+- Projects and trees ranked by recency (most recently used at top)
+- **Project creation**:
+  - Click "new project" button in sidebar → assigns an empty folder by default
+  - User can change the folder to a local git path or a GitHub URL
+  - If the folder is not a git repo, warn and offer to `git init`
+  - From CLI: `fission` in a git repo creates/finds the project and opens the most recent tree
+  - Project name auto-detected from folder name or remote repo name, editable by user
+- **Tree creation**:
+  - Click "+" next to project name in sidebar
+  - Or right-click an edit-node → "New tree from here" (inherits system instructions)
+  - User is asked to name the tree (auto-summarized later from first message)
+  - Defaults to current branch HEAD; user can change branch and commit
 
-Each tree is made from the tree node, a tree node is a specific repo+branch+commit_id, the commit id is the only id needed to define a tree node. The user may change the local dir's location, or change branch or change head, the tree node always start from a commit id.
+**Priority: high** — this is the main navigation. Backend already supports multi-project (trees have `repo_id`). Frontend sidebar needs redesign.
 
-There are two types of tree node, a chat tree node which does not changes the codebase; or a edit tree node where the code is modified and a commit is made.
+## Node Types: Chat vs Edit
 
-New tree can be created by either clicking the add button on the sidebar next to the project name, or clicking the edit-nodes and select make it a new root. The user will be asked to give it a name. The edit-node should have different color than the chat-node so that people can tell them apart.
+- **Chat node**: AI responded but didn't change files → `git_commit == parent.git_commit`
+- **Edit node**: AI modified files, a new commit was created → `git_commit != parent.git_commit`
+- Edit nodes should have a different visual color/indicator than chat nodes
+- No backend changes needed — the data is already there
 
-On the left sidebar, under each project, is each tree, default is the commit id. It will be auto summarized later.
+**Priority: high** — small frontend change, big UX improvement for scanning a tree.
 
-On the chat window on the right, I want to deprecate the chat panel. I don't care about backward comptabiliy. Just delete the chat and clean the ui code.
+## Remove Chat Panel
 
-On the tool calling animation, displaying all tool calling in one list is a bit too long, maybe just show the latest tools and collapse the history tools? (the user might still be able to uncollapse it for inspection but the default is collapsed) We don't have to remove the tool calling from response now that we are making the tool calling collapsable.
+- Delete the right-side chat panel entirely
+- All interaction happens through the canvas (tree nodes)
+- Long responses: click a node to expand in the existing NodeModal
+- No backward compatibility needed
 
-Once a response is complete, the node should have some indicator color that disappears after the user have focused on it.
+**Priority: high** — simplifies the UI, removes a redundant interaction surface.
 
-For a free note (notes that have not been quoted by any nodes), we'll have the option to pin it to a node. The specifics I have not decided. You can do whatever makes sense to you and we'll see.
+## Tool Call Display
 
+- Only show the latest 2-3 tool calls during streaming
+- Auto-collapse older tool calls
+- User can expand collapsed tools for inspection
+- Don't remove tool calls from responses — just collapse them visually
 
+**Priority: medium** — improves readability during long AI sessions.
 
+## Unread Indicator
 
+- When a chat completes, the node gets a visual indicator (glow, dot, color change)
+- The indicator disappears when the user clicks/focuses the node
+- Frontend-only state (no DB persistence) — decide later if backend tracking is needed
 
+**Priority: medium** — helpful when multiple trees are active.
 
+## Notes: Pin to Node
+
+- Free-floating notes can optionally be pinned to a specific node
+- Pinned notes stay visually near their node
+- Implementation details TBD — need to decide behavior for collapsed/deleted nodes
+- Adds `pinned_to_node_id` field to notes JSON
+
+**Priority: low** — useful but edge-case. Get core UX right first.
+
+## Remove Node Collapsing
+
+- The expand/collapse subtree feature isn't useful in practice
+- Remove it — users delete branches they don't want instead
+- Simplifies the UI and removes `expanded_nodes` / `collapsed_subtrees` settings
+
+**Priority: low** — cleanup, not urgent.
+
+## Flagging Nodes/Notes
+
+- Option to flag/bookmark important nodes or notes for later reference
+- Not designed yet
+
+**Priority: low** — nice to have, not essential.
+
+## System Instructions (was "Skill")
+
+- Rename `skill` → `instructions` throughout
+- Tree-level instructions prepended to every AI call in that tree
+- When planting a new tree from a node, inherit the parent tree's instructions
+- Pass through agentbridge's `system_prompt` parameter (not prepended to user message)
+- UI: textarea on tree settings, labeled "Instructions (applied to every AI call)"
+
+**Priority: medium** — rename and fix injection method. Keep tree-level scope for now.
+
+---
+
+## Implementation Order
+
+### Phase 1: Core UX (do now)
+1. Remove chat panel
+2. Chat vs edit node visual distinction
+3. Sidebar redesign (projects + trees, ranked by recency)
+4. Remove node collapsing feature
+
+### Phase 2: Polish (do next)
+5. Tool call auto-collapse
+6. Unread indicator
+7. Rename skill → instructions + fix injection
+8. "New tree from node" context menu
+
+### Phase 3: Nice to have (later)
+9. Pin notes to nodes
+10. Flag nodes/notes
+11. GitHub clone flow in project creation
