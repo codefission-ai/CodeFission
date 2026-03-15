@@ -43,10 +43,10 @@ def _set_context_for_tree(tree):
         set_project_path(Path(os.environ["CODEFISSION_REPO_PATH"]))
 
 # Installed mode: pre-built static files bundled in package
-FRONTEND_DIR = Path(__file__).parent / "static"
-if not FRONTEND_DIR.exists():
-    # Development mode: frontend dist built from repo root
-    FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+UI_DIR = Path(__file__).parent / "static"
+if not UI_DIR.exists():
+    # Development mode: ui dist built from repo root
+    UI_DIR = Path(__file__).parent.parent / "ui" / "dist"
 
 
 def _silence_asyncgen_gc(loop, context):
@@ -432,12 +432,12 @@ async def health():
 
 
 # Serve frontend
-if FRONTEND_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+if UI_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(UI_DIR / "assets")), name="assets")
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        file_path = FRONTEND_DIR / full_path
+        file_path = UI_DIR / full_path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIR / "index.html")
+        return FileResponse(UI_DIR / "index.html")
