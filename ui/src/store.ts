@@ -146,6 +146,7 @@ interface Store {
   treeStaleness: Record<string, StalenessInfo>;
   seenNodes: Set<string>;
   sidebarOpen: boolean;
+  creatingProject: boolean;  // show project setup screen instead of canvas
 }
 
 
@@ -225,6 +226,7 @@ export const useStore = create<Store>(() => ({
   treeStaleness: {},
   seenNodes: new Set<string>(),
   sidebarOpen: true,
+  creatingProject: false,
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -479,6 +481,10 @@ export const actions = {
     }),
   setDeleteToast: (toast: Store["deleteToast"]) =>
     useStore.setState({ deleteToast: toast }),
+
+  // ── Project creation ─────────────────────────────────────────
+  startCreatingProject: () => useStore.setState({ creatingProject: true }),
+  stopCreatingProject: () => useStore.setState({ creatingProject: false }),
 
   // ── Settings ─────────────────────────────────────────────────
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),

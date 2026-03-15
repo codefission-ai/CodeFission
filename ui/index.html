@@ -353,6 +353,62 @@
     }
     .empty-icon { color: var(--text-dim); margin-bottom: 8px; }
     .logo { font-size: 22px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); }
+
+    /* Project setup screen */
+    .project-setup {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; padding: 40px;
+    }
+    .project-setup h2 { font-size: 24px; font-weight: 600; margin: 0 0 8px; color: var(--text-primary); }
+    .project-setup-hint { color: var(--text-dim); font-size: 0.85rem; margin: 0 0 32px; }
+    .project-setup-options {
+      display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; justify-content: center;
+    }
+    .project-setup-option {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      padding: 24px 28px; border: 1px solid var(--border); border-radius: 12px;
+      cursor: pointer; min-width: 160px; transition: all 0.15s;
+      background: var(--bg-deep);
+    }
+    .project-setup-option:hover {
+      border-color: var(--accent); background: var(--bg-hover);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .project-setup-option-icon { color: var(--text-muted); }
+    .project-setup-option-label { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+    .project-setup-option-desc { font-size: 0.75rem; color: var(--text-dim); text-align: center; }
+    .project-setup-folder-input {
+      display: flex; gap: 8px; width: 100%; max-width: 500px; margin-top: 16px;
+    }
+    .project-setup-folder-input input {
+      flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+      background: var(--bg-deep); color: var(--text-primary); font-size: 0.85rem;
+      font-family: var(--font-mono, monospace);
+    }
+    .project-setup-folder-input input:focus { outline: none; border-color: var(--accent); }
+    .project-setup-btn {
+      padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
+      cursor: pointer; font-size: 0.85rem; transition: all 0.15s;
+    }
+    .project-setup-btn.primary {
+      background: var(--accent); color: white; border-color: var(--accent);
+    }
+    .project-setup-btn.primary:hover { opacity: 0.9; }
+    .project-setup-btn.primary:disabled { opacity: 0.4; cursor: default; }
+    .project-setup-btn.secondary {
+      background: transparent; color: var(--text-muted); margin-top: 12px;
+    }
+    .project-setup-btn.secondary:hover { color: var(--text-primary); }
+    .project-setup-name { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .project-setup-name-input { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 400px; }
+    .project-setup-name-input label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+    .project-setup-name-input input {
+      padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg-deep); color: var(--text-primary); font-size: 1rem;
+    }
+    .project-setup-name-input input:focus { outline: none; border-color: var(--accent); }
+    .project-setup-name-hint { font-size: 0.75rem; color: var(--text-dim); }
+    .project-setup-actions { display: flex; gap: 12px; margin-top: 16px; }
     .empty-sub { font-size: 13px; color: var(--text-muted); max-width: 280px; text-align: center; line-height: 1.5; }
 
     /* React Flow overrides for dark theme */

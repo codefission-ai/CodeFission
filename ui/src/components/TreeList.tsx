@@ -185,56 +185,19 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
   );
 }
 
-function NewProjectInput() {
-  const [adding, setAdding] = useState(false);
-  const [folderPath, setFolderPath] = useState("");
-
-  const handleSubmit = () => {
-    const path = folderPath.trim();
-    if (!path) {
-      setAdding(false);
-      return;
-    }
-    send({ type: WS.OPEN_REPO, repo_path: path });
-    setFolderPath("");
-    setAdding(false);
-  };
-
-  if (!adding) {
-    return (
-      <div className="new-project-bar">
-        <button
-          className="new-project-btn"
-          onClick={() => setAdding(true)}
-          title="Open a project folder"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="6" y1="1" x2="6" y2="11" />
-            <line x1="1" y1="6" x2="11" y2="6" />
-          </svg>
-          <span>New Project</span>
-        </button>
-      </div>
-    );
-  }
-
+function NewProjectButton() {
   return (
-    <div className="tree-list-create">
-      <input
-        autoFocus
-        placeholder="/path/to/project..."
-        value={folderPath}
-        onChange={(e) => setFolderPath(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") handleSubmit();
-          if (e.key === "Escape") { setAdding(false); setFolderPath(""); }
-        }}
-        onBlur={() => { if (!folderPath.trim()) setAdding(false); }}
-      />
-      <button onClick={handleSubmit} title="Open project">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="2 7 6 11 12 3" />
+    <div className="new-project-bar">
+      <button
+        className="new-project-btn"
+        onClick={() => actions.startCreatingProject()}
+        title="Create a new project"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <line x1="6" y1="1" x2="6" y2="11" />
+          <line x1="1" y1="6" x2="11" y2="6" />
         </svg>
+        <span>New Project</span>
       </button>
     </div>
   );
@@ -286,7 +249,7 @@ export default function TreeList() {
         <span>CodeFission</span>
       </div>
 
-      <NewProjectInput />
+      <NewProjectButton />
 
       <div className="tree-list-items">
         {projectGroups.map((group) => (

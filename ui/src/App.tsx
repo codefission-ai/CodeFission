@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import TreeList from "./components/TreeList";
 import Canvas from "./components/Canvas";
+import ProjectSetup from "./components/ProjectSetup";
 import SettingsPanel from "./components/SettingsPanel";
 import FilesPanel from "./components/FilesPanel";
 import { connectWs } from "./ws";
@@ -50,6 +51,7 @@ function SunIcon() {
 
 export default function App() {
   const hasTree = useStore((s) => !!s.currentTreeId);
+  const creatingProject = useStore((s) => s.creatingProject);
   const treeName = useStore((s) => {
     const tree = s.trees.find((t) => t.id === s.currentTreeId);
     return tree?.name || "";
@@ -165,7 +167,7 @@ export default function App() {
 
         {/* Canvas */}
         <div className="canvas">
-          {hasTree ? <Canvas /> : (
+          {creatingProject ? <ProjectSetup /> : hasTree ? <Canvas /> : (
             <div className="canvas-empty">
               <div className="empty-icon">
                 <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
