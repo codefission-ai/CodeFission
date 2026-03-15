@@ -19,7 +19,7 @@ class NodesMixin:
             await self.send(WS.NODE_DATA, node=node.model_dump())
 
     async def handle_delete_node(self, data: dict):
-        from handlers.connection import _active_streams
+        from handlers import _active_streams
 
         node_id = data["node_id"]
         node = await get_node(node_id)

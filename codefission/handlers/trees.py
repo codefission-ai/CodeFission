@@ -123,7 +123,7 @@ class TreesMixin:
             await self.send(WS.ERROR, error=f"Failed to create tree: {e}")
 
     async def handle_load_tree(self, data: dict):
-        from handlers.connection import _active_streams
+        from handlers import _active_streams
 
         tree_id = data["tree_id"]
         await self._set_context_for_tree(tree_id)

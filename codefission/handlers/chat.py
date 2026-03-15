@@ -45,7 +45,7 @@ class ChatMixin:
         Translates domain events into WebSocket messages. All business logic
         lives in the Orchestrator; this method is pure transport.
         """
-        from handlers.connection import _active_streams
+        from handlers import _active_streams
         from models import ChatNodeCreated, ChatCompleted
 
         nid = node_id
@@ -208,7 +208,7 @@ class ChatMixin:
             log.debug("Auto-name tree failed for %s", tree_id, exc_info=True)
 
     async def handle_cancel(self, data: dict):
-        from handlers.connection import _active_streams
+        from handlers import _active_streams
 
         node_id = data["node_id"]
         # Use global registry so cancel works after reconnect
