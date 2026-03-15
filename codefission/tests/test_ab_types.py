@@ -44,7 +44,6 @@ class TestSessionConfig:
         assert c.model is None
         assert c.system_prompt is None
         assert c.env == {}
-        assert c.max_turns is None
         assert c.resume_session_id is None
         assert c.fork_session is False
         assert c.permission_level is None
@@ -65,7 +64,6 @@ class TestSessionConfig:
             model="o4-mini",
             system_prompt="Be helpful",
             env={"FOO": "bar"},
-            max_turns=5,
             permission_level=PermissionLevel.CUSTOM,
             sandbox_mode="workspace-write",
             prior_context="previous context here",

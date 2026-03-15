@@ -282,20 +282,18 @@ class TestSettings:
 
     @pytest.mark.asyncio
     async def test_update_global_settings(self, orch, project):
-        """update_global_settings persists provider, model, max_turns."""
+        """update_global_settings persists provider and model."""
         branch = await _init_project(project)
 
         await orch.update_global_settings({
             "default_provider": "codex",
             "default_model": "o4-mini",
-            "default_max_turns": "10",
         })
 
         from store.settings import get_global_defaults
         defaults = await get_global_defaults()
         assert defaults["provider"] == "codex"
         assert defaults["model"] == "o4-mini"
-        assert defaults["max_turns"] == 10
 
     @pytest.mark.asyncio
     async def test_update_tree_settings(self, orch, project):

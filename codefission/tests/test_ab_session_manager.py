@@ -252,7 +252,6 @@ class TestBuildConfig:
             prompt="do stuff",
             cwd=Path("/my/project"),
             system_prompt="Be brief",
-            max_turns=5,
             prior_context="previous work",
             permission_level=PermissionLevel.AUTONOMOUS,
             env={"KEY": "val"},
@@ -260,7 +259,6 @@ class TestBuildConfig:
         )
         assert config.cwd == Path("/my/project")
         assert config.system_prompt == "Be brief"
-        assert config.max_turns == 5
         assert config.prior_context == "previous work"
         assert config.resume_session_id is None
         assert config.fork_session is False

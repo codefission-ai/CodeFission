@@ -158,7 +158,6 @@ class TestPrepareChat:
         assert "Write a hello world program" in ctx.sdk_message
         assert ctx.workspace.exists()
         assert ctx.model  # resolved from defaults
-        assert ctx.max_turns >= 0
 
     @pytest.mark.asyncio
     async def test_creates_child_node(self, orch, project):
@@ -218,12 +217,10 @@ class TestPrepareChat:
         """Settings from the DB are resolved into the ChatContext."""
         branch = await _init_project(project)
         await set_setting("default_model", "claude-opus-4-6")
-        await set_setting("default_max_turns", "10")
 
         _, root = await orch.create_tree("T", base_branch=branch)
         ctx = await orch.prepare_chat(root.id, "msg")
         assert ctx.model == "claude-opus-4-6"
-        assert ctx.max_turns == 10
 
     @pytest.mark.asyncio
     async def test_tree_overrides_global_defaults(self, orch, project):
@@ -231,14 +228,12 @@ class TestPrepareChat:
         from store.trees import update_tree
         branch = await _init_project(project)
         await set_setting("default_model", "claude-sonnet-4-6")
-        await set_setting("default_max_turns", "25")
 
         tree, root = await orch.create_tree("T", base_branch=branch)
-        await update_tree(tree.id, model="claude-opus-4-6", max_turns=5)
+        await update_tree(tree.id, model="claude-opus-4-6")
 
         ctx = await orch.prepare_chat(root.id, "msg")
         assert ctx.model == "claude-opus-4-6"
-        assert ctx.max_turns == 5
 
     @pytest.mark.asyncio
     async def test_parent_session_id_none_for_root(self, orch, project):

@@ -76,8 +76,6 @@ class SessionConfig:
     model: str | None = None
     system_prompt: str | None = None
     env: dict[str, str] = field(default_factory=dict)
-    max_turns: int | None = None
-
     # Session resume / fork
     resume_session_id: str | None = None
     fork_session: bool = False

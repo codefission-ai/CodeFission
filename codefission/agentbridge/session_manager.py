@@ -242,7 +242,6 @@ class SessionManager:
         cwd: Path | None = None,
         *,
         system_prompt: str | None = None,
-        max_turns: int | None = None,
         prior_context: str | None = None,
         resume_session_id: str | None = None,
         fork_session: bool = False,
@@ -263,7 +262,6 @@ class SessionManager:
             cwd=cwd or Path.cwd(),
             model=self._current_model,  # None = adapter uses its own default
             system_prompt=system_prompt,
-            max_turns=max_turns,
             prior_context=prior_context,
             resume_session_id=resume_session_id,
             fork_session=fork_session,

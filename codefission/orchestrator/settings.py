@@ -20,7 +20,7 @@ class SettingsMixin:
 
     async def update_global_settings(self, data: dict) -> dict:
         """Update global settings. Returns updated global defaults dict."""
-        for key in ("default_provider", "default_model", "default_max_turns", "auth_mode", "api_key", "summary_model"):
+        for key in ("default_provider", "default_model", "auth_mode", "api_key", "summary_model"):
             if key in data:
                 val = data[key]
                 await set_setting(key, str(val) if val is not None and val != "" else None)
@@ -42,8 +42,6 @@ class SettingsMixin:
             updates["provider"] = data["provider"] or ""
         if "model" in data:
             updates["model"] = data["model"] or ""
-        if "max_turns" in data:
-            updates["max_turns"] = data["max_turns"]
         if "skill" in data:
             updates["skill"] = data["skill"] or ""
         if "notes" in data:

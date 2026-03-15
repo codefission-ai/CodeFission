@@ -2,13 +2,73 @@ import { useState, useEffect } from "react";
 import { useStore, actions, type CTree, type GlobalDefaults, type ProviderInfo } from "../store";
 import { send, WS } from "../ws";
 
+function ProviderAuthStatus({ providers }: { providers: ProviderInfo[] }) {
+  return (
+    <div className="settings-auth-status">
+      {providers.map((p) => (
+        <div key={p.id} className="settings-provider-status">
+          <div className="settings-provider-header">
+            <span className="settings-provider-name">{p.name} {p.version && `v${p.version}`}</span>
+            <span className={`settings-tag ${p.installed ? "settings-tag-ok" : "settings-tag-warn"}`}>
+              {p.installed ? "\u2713 Installed" : "\u2717 Not installed"}
+            </span>
+          </div>
+          {p.auth.map((a, i) => (
+            <div key={i} className="settings-auth-row">
+              <span className={a.authenticated ? "settings-auth-ok" : "settings-auth-missing"}>
+                {a.authenticated ? "\u2713" : "\u2717"} {a.method}
+              </span>
+              <span className="settings-auth-detail">{a.detail}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProviderApiKeys({ providers }: { providers: ProviderInfo[] }) {
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [savedProvider, setSavedProvider] = useState<string | null>(null);
+
+  const handleSave = (providerId: string) => {
+    send({
+      type: WS.UPDATE_GLOBAL_SETTINGS,
+      provider_api_keys: { [providerId]: keys[providerId] || "" },
+    });
+    setSavedProvider(providerId);
+    setTimeout(() => setSavedProvider(null), 1500);
+  };
+
+  return (
+    <div className="settings-api-keys">
+      <label className="settings-label">CodeFission API Key (optional override)</label>
+      <p className="settings-hint">Per-provider API keys override environment variables.</p>
+      {providers.map((p) => (
+        <div key={p.id} className="settings-api-key-row">
+          <span className="settings-api-key-label">{p.name}:</span>
+          <input
+            className="settings-input settings-api-key-input"
+            type="password"
+            placeholder="sk-..."
+            value={keys[p.id] ?? ""}
+            onChange={(e) => setKeys({ ...keys, [p.id]: e.target.value })}
+          />
+          <button
+            className="settings-save-btn settings-save-btn-small"
+            onClick={() => handleSave(p.id)}
+          >
+            {savedProvider === p.id ? "Saved" : "Save"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; providers: ProviderInfo[] }) {
   const [provider, setProvider] = useState(defaults.provider);
   const [model, setModel] = useState(defaults.model);
-  const [maxTurns, setMaxTurns] = useState(String(defaults.max_turns));
-  const [authMode, setAuthMode] = useState(defaults.auth_mode);
-  const [apiKey, setApiKey] = useState(defaults.api_key);
-  const [sandbox, setSandbox] = useState(defaults.sandbox);
   const [summaryModel, setSummaryModel] = useState(defaults.summary_model);
   const [dataDir, setDataDir] = useState(defaults.data_dir);
   const [saved, setSaved] = useState(false);
@@ -16,17 +76,12 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
   useEffect(() => {
     setProvider(defaults.provider);
     setModel(defaults.model);
-    setMaxTurns(String(defaults.max_turns));
-    setAuthMode(defaults.auth_mode);
-    setApiKey(defaults.api_key);
-    setSandbox(defaults.sandbox);
     setSummaryModel(defaults.summary_model);
     setDataDir(defaults.data_dir);
   }, [defaults]);
 
   const currentProvider = providers.find((p) => p.id === provider);
   const models = currentProvider?.models ?? [];
-  const authModes = currentProvider?.auth_modes ?? [];
 
   // Reset model when provider changes
   const handleProviderChange = (newProvider: string) => {
@@ -34,7 +89,6 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
     const p = providers.find((x) => x.id === newProvider);
     if (p) {
       setModel(p.default_model);
-      setAuthMode(p.default_auth_mode);
     }
   };
 
@@ -43,10 +97,6 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       type: WS.UPDATE_GLOBAL_SETTINGS,
       default_provider: provider,
       default_model: model,
-      default_max_turns: maxTurns === "" ? 0 : parseInt(maxTurns) || 0,
-      auth_mode: authMode,
-      api_key: apiKey,
-      sandbox,
       summary_model: summaryModel,
       data_dir: dataDir !== defaults.data_dir ? dataDir : undefined,
     });
@@ -73,52 +123,10 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
         ))}
       </select>
 
-      <label className="settings-label">Max Turns</label>
-      <input
-        className="settings-input"
-        type="number"
-        min={0}
-        max={200}
-        value={maxTurns}
-        onChange={(e) => setMaxTurns(e.target.value)}
-      />
-      <p className="settings-hint">Set to 0 for unlimited turns.</p>
+      <label className="settings-label">Auth Status</label>
+      <ProviderAuthStatus providers={providers} />
 
-      <label className="settings-label">Auth Mode</label>
-      <select className="settings-select" value={authMode} onChange={(e) => setAuthMode(e.target.value)}>
-        {authModes.map((m) => (
-          <option key={m} value={m}>{m === "cli" ? "CLI (OAuth)" : m === "api_key" ? "API Key" : m}</option>
-        ))}
-      </select>
-
-      {authMode === "api_key" && (
-        <>
-          <label className="settings-label">API Key</label>
-          <input
-            className="settings-input"
-            type="password"
-            placeholder="sk-..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-        </>
-      )}
-
-      <label className="settings-label settings-checkbox-label">
-        <input
-          type="checkbox"
-          checked={sandbox}
-          onChange={(e) => setSandbox(e.target.checked)}
-          disabled={!defaults.sandbox_available}
-        />
-        Sandbox (restrict file writes to workspace)
-        {!defaults.sandbox_available && <span className="settings-tag">Linux only</span>}
-      </label>
-      <p className="settings-hint">
-        {defaults.sandbox_available
-          ? "When enabled, uses Landlock to prevent the agent from writing files outside its workspace directory."
-          : "Sandboxing uses Linux Landlock and is not available on this platform."}
-      </p>
+      <ProviderApiKeys providers={providers} />
 
       <label className="settings-label">Auto-name Model</label>
       <select className="settings-select" value={summaryModel} onChange={(e) => setSummaryModel(e.target.value)}>
@@ -127,7 +135,7 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
         <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
         <option value="claude-opus-4-6">Claude Opus 4.6</option>
       </select>
-      <p className="settings-hint">Small model used to auto-name new trees. "Disabled" turns off auto-naming.</p>
+      <p className="settings-hint">Small model used to auto-name new trees. Defaults to cheapest available model. "Disabled" turns off auto-naming.</p>
 
       <label className="settings-label">Data Directory</label>
       <input
@@ -148,13 +156,11 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
 function TreeSettings({ tree, defaults, providers }: { tree: CTree; defaults: GlobalDefaults; providers: ProviderInfo[] }) {
   const [provider, setProvider] = useState(tree.provider);
   const [model, setModel] = useState(tree.model);
-  const [maxTurns, setMaxTurns] = useState(tree.max_turns !== null ? String(tree.max_turns) : "");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setProvider(tree.provider);
     setModel(tree.model);
-    setMaxTurns(tree.max_turns !== null ? String(tree.max_turns) : "");
   }, [tree]);
 
   const effectiveProvider = provider || defaults.provider;
@@ -177,7 +183,6 @@ function TreeSettings({ tree, defaults, providers }: { tree: CTree; defaults: Gl
       tree_id: tree.id,
       provider,
       model,
-      max_turns: maxTurns ? parseInt(maxTurns) : null,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
@@ -204,18 +209,6 @@ function TreeSettings({ tree, defaults, providers }: { tree: CTree; defaults: Gl
         ))}
       </select>
 
-      <label className="settings-label">Max Turns</label>
-      <input
-        className="settings-input"
-        type="number"
-        min={0}
-        max={200}
-        placeholder={`Default (${defaults.max_turns === 0 ? "∞" : defaults.max_turns})`}
-        value={maxTurns}
-        onChange={(e) => setMaxTurns(e.target.value)}
-      />
-      <p className="settings-hint">Set to 0 for unlimited turns.</p>
-
       <button className="settings-save-btn" onClick={handleSave}>
         {saved ? "Saved" : "Save Tree Settings"}
       </button>
@@ -236,7 +229,7 @@ export default function SettingsPanel() {
       <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h2>Settings</h2>
-          <button className="settings-close-btn" onClick={() => actions.toggleSettings()}>×</button>
+          <button className="settings-close-btn" onClick={() => actions.toggleSettings()}>&times;</button>
         </div>
         <div className="settings-body">
           {tree && <TreeSettings tree={tree} defaults={defaults} providers={providers} />}

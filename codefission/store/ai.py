@@ -203,7 +203,6 @@ async def stream_chat(
     *,
     provider: str = "claude",
     model: str = "claude-opus-4-6",
-    max_turns: int = 0,  # 0 = unlimited
     auth_mode: str = "cli",
     api_key: str = "",
 ) -> AsyncGenerator[BridgeEvent, None]:
@@ -260,7 +259,6 @@ async def stream_chat(
         prompt=prompt,
         cwd=workspace,
         model=model,
-        max_turns=max_turns if max_turns > 0 else None,
         env=_sdk_env(auth_mode, api_key, provider),
     )
 

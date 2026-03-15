@@ -58,9 +58,6 @@ class ClaudeAdapter(BaseAdapter):
         if config.model:
             cmd.extend(["--model", config.model])
 
-        if config.max_turns:
-            cmd.extend(["--max-turns", str(config.max_turns)])
-
         pm = resolve_permission(config) or "bypassPermissions"
         cmd.extend(["--permission-mode", pm])
 

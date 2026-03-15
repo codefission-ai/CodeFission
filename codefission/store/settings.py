@@ -118,8 +118,6 @@ async def get_global_defaults() -> dict:
         if not summary_model:
             summary_model = ab_cheap
 
-    max_turns_raw = await get_setting("default_max_turns")
-    max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
     auth_mode = await get_setting("auth_mode") or "cli"
     api_key = await get_setting("api_key") or ""
 
@@ -127,7 +125,6 @@ async def get_global_defaults() -> dict:
     return {
         "provider": provider,
         "model": model,
-        "max_turns": max_turns,
         "auth_mode": auth_mode,
         "api_key": api_key,
         "summary_model": summary_model,
@@ -141,5 +138,4 @@ async def resolve_tree_settings(tree: Tree) -> dict:
     return {
         "provider": tree.provider if tree.provider else defaults["provider"],
         "model": tree.model if tree.model else defaults["model"],
-        "max_turns": tree.max_turns if tree.max_turns is not None else defaults["max_turns"],
     }

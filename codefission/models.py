@@ -45,7 +45,6 @@ class Tree(BaseModel):
     root_node_id: str | None = None
     provider: str = DEFAULT_PROVIDER
     model: str = DEFAULT_MODEL
-    max_turns: int | None = None
     skill: str = ""
     notes: str = "[]"  # JSON array of {id, text, x, y, width, height}
     base_branch: str = "main"
@@ -101,7 +100,6 @@ class ChatContext:
     parent_session_id: str | None
     provider: str
     model: str
-    max_turns: int
     auth_mode: str
     api_key: str
     after_id: str | None = None

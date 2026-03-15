@@ -22,7 +22,6 @@ export interface CTree {
   root_node_id: string | null;
   provider: string;
   model: string;
-  max_turns: number | null;
   skill: string;
   notes: string;  // JSON array of {id, text, x, y, width, height}
   base_branch: string;
@@ -58,23 +57,30 @@ export interface StalenessInfo {
   branch_head?: string;
 }
 
+export interface AuthDetail {
+  method: string;
+  authenticated: boolean;
+  detail: string;
+}
+
 export interface ProviderInfo {
   id: string;
   name: string;
+  installed: boolean;
+  ready: boolean;
+  version: string;
   models: string[];
   default_model: string;
   auth_modes: string[];
   default_auth_mode: string;
+  auth: AuthDetail[];
 }
 
 export interface GlobalDefaults {
   provider: string;
   model: string;
-  max_turns: number;
   auth_mode: string;
   api_key: string;
-  sandbox: boolean;
-  sandbox_available: boolean;
   summary_model: string;
   data_dir: string;
 }
@@ -232,7 +238,7 @@ export const useStore = create<Store>(() => ({
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", max_turns: 0, auth_mode: "cli", api_key: "", sandbox: false, sandbox_available: false, summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
+  globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", auth_mode: "cli", api_key: "", summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
   providers: [],
   repoContext: null,
   repoBranches: [],

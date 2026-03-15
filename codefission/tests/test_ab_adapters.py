@@ -120,14 +120,6 @@ class TestClaudeAdapterBuildCommand:
         assert cmd[idx + 1] == "Be concise"
 
     @patch("shutil.which", return_value="/usr/bin/claude")
-    def test_max_turns(self, _):
-        adapter = ClaudeAdapter()
-        config = _make_config(ProviderType.CLAUDE, max_turns=3)
-        cmd = adapter.build_command(config)
-        idx = cmd.index("--max-turns")
-        assert cmd[idx + 1] == "3"
-
-    @patch("shutil.which", return_value="/usr/bin/claude")
     def test_default_permission_mode(self, _):
         adapter = ClaudeAdapter()
         config = _make_config(ProviderType.CLAUDE)

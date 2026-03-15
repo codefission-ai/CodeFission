@@ -52,7 +52,6 @@ async def generate_tree_name(
 
         options = ClaudeAgentOptions(
             model=model,
-            max_turns=1,
             permission_mode="plan",
             cwd="/tmp",
             env=_sdk_env(auth_mode, api_key or ""),

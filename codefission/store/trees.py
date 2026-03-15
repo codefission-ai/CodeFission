@@ -25,7 +25,6 @@ def _tree_from_row(row, root_id: str | None = None) -> Tree:
         id=row["id"], name=row["name"], created_at=row["created_at"],
         root_node_id=root_id,
         provider=row["provider"], model=row["model"],
-        max_turns=row["max_turns"],
         skill=row["skill"], notes=row["notes"],
         base_branch=row["base_branch"], base_commit=row["base_commit"],
         repo_id=row["repo_id"], repo_path=row["repo_path"], repo_name=row["repo_name"],
@@ -296,7 +295,7 @@ async def update_tree(tree_id: str, **kwargs):
     sets = []
     vals = []
     for k, v in kwargs.items():
-        if k in ("name", "provider", "model", "max_turns", "skill", "notes",
+        if k in ("name", "provider", "model", "skill", "notes",
                   "base_branch", "base_commit", "repo_id", "repo_path", "repo_name"):
             sets.append(f"{k} = ?")
             vals.append(v)

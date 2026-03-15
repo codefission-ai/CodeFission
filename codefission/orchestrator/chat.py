@@ -329,7 +329,6 @@ class ChatMixin:
             parent_session_id=parent_session_id,
             provider=effective["provider"],
             model=effective["model"],
-            max_turns=effective["max_turns"],
             auth_mode=global_cfg["auth_mode"],
             api_key=await get_effective_api_key(effective["provider"]),
             after_id=after_id,
@@ -379,7 +378,6 @@ class ChatMixin:
                 nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
                 provider=ctx.provider,
                 model=ctx.model,
-                max_turns=ctx.max_turns,
                 auth_mode=ctx.auth_mode,
                 api_key=ctx.api_key,
             ):
