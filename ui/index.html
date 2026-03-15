@@ -328,9 +328,9 @@
     }
     .tree-node:hover { background: var(--bg-hover); border-color: var(--text-muted); box-shadow: var(--shadow-md); }
     .tree-node.selected { border-color: var(--accent); background: #e0e4ee; color: var(--text-primary); }
-    .tree-node.has-code { background: #f0f4ef; }
-    .tree-node.has-code:hover { background: #e8ece7; }
-    .tree-node.has-code.selected { background: #dce4da; }
+    .tree-node.has-code { background: #f0f4ef; border-left: 3px solid #66bb6a; }
+    .tree-node.has-code:hover { background: #e8ece7; border-left-color: #4caf50; }
+    .tree-node.has-code.selected { background: #dce4da; border-left-color: #43a047; }
     .tree-node-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
     .tree-node-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1921,9 +1921,9 @@
 
     /* Dark (Monokai): selected & coded node bg overrides */
     [data-theme="dark"] .tree-node.selected { background: #2a2b24; }
-    [data-theme="dark"] .tree-node.has-code { background: #25261f; }
-    [data-theme="dark"] .tree-node.has-code:hover { background: #2a2b23; }
-    [data-theme="dark"] .tree-node.has-code.selected { background: #2d2e26; }
+    [data-theme="dark"] .tree-node.has-code { background: #25261f; border-left: 3px solid #4caf50; }
+    [data-theme="dark"] .tree-node.has-code:hover { background: #2a2b23; border-left-color: #66bb6a; }
+    [data-theme="dark"] .tree-node.has-code.selected { background: #2d2e26; border-left-color: #66bb6a; }
     [data-theme="dark"] .tree-node.tree-node-root.selected { background: #2a2b24; }
     [data-theme="dark"] .tree-node.tree-node-root.selected:hover { background: #2a2b24; }
 
