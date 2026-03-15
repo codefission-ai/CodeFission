@@ -1,12 +1,18 @@
-"""Settings CRUD — get/set global defaults and resolve tree settings."""
+"""Settings CRUD — get/set global defaults and resolve tree settings.
+
+Fallback provider/model come from agentbridge discovery. If no provider
+is installed, falls back to "claude" / "claude-sonnet-4-6".
+"""
 
 from db import get_db
 from models import Tree
 
-# Provider defaults — no longer depend on the deleted providers/ package
-_FALLBACK_PROVIDER = "claude-code"
+
+# Hardcoded last-resort defaults. The real provider/model list comes from
+# agentbridge.discover() via handlers/settings.py list_providers().
+# These are only used when the user hasn't set a preference yet.
+_FALLBACK_PROVIDER = "claude"
 _FALLBACK_MODEL = "claude-sonnet-4-6"
-_FALLBACK_AUTH_MODE = "cli"
 
 
 async def get_setting(key: str) -> str | None:
@@ -29,15 +35,15 @@ async def set_setting(key: str, value: str | None):
 
 
 async def get_global_defaults() -> dict:
-    """Return global default settings (from settings table + provider registry)."""
+    """Return global default settings (from settings table + agentbridge discovery)."""
     provider = await get_setting("default_provider") or _FALLBACK_PROVIDER
     model = await get_setting("default_model") or _FALLBACK_MODEL
     max_turns_raw = await get_setting("default_max_turns")
     max_turns = int(max_turns_raw) if max_turns_raw else 0  # 0 = unlimited
-    auth_mode = await get_setting("auth_mode") or _FALLBACK_AUTH_MODE
+    auth_mode = await get_setting("auth_mode") or "cli"
     api_key = await get_setting("api_key") or ""
     summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
-j
+
     from config import get_global_db_path
     return {
         "provider": provider,

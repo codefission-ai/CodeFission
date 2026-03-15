@@ -13,45 +13,29 @@ from store.settings import (
 )
 
 
-def list_providers() -> list[dict]:
-    """Return serializable list of known providers for the frontend.
+async def list_providers() -> list[dict]:
+    """Discover installed providers via agentbridge and return serializable list.
 
-    This is a static registry -- runtime availability and auth status
-    come from agentbridge.discover() on the settings page.
+    This is the single source of truth for provider info — no hardcoded lists.
+    Returns real-time install status, auth status, models, and versions.
     """
+    from agentbridge import discover
+    providers = await discover()
     return [
         {
-            "id": "claude-code",
-            "name": "Claude Code",
-            "models": ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"],
-            "default_model": "claude-opus-4-6",
-            "auth_modes": ["cli", "api_key"],
-            "default_auth_mode": "cli",
-        },
-        {
-            "id": "codex",
-            "name": "Codex CLI",
-            "models": ["o4-mini", "codex-mini"],
-            "default_model": "o4-mini",
-            "auth_modes": ["api_key"],
-            "default_auth_mode": "api_key",
-        },
-        {
-            "id": "gemini-cli",
-            "name": "Gemini CLI",
-            "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
-            "default_model": "gemini-2.5-pro",
-            "auth_modes": ["api_key", "gcloud"],
-            "default_auth_mode": "api_key",
-        },
-        {
-            "id": "aider",
-            "name": "Aider",
-            "models": ["sonnet", "opus", "gpt-4o", "deepseek"],
-            "default_model": "sonnet",
-            "auth_modes": ["api_key"],
-            "default_auth_mode": "api_key",
-        },
+            "id": p.id,
+            "name": p.name,
+            "installed": p.installed,
+            "ready": p.ready,
+            "version": p.version,
+            "models": p.available_models,
+            "default_model": p.default_model,
+            "auth": [
+                {"method": a.method, "authenticated": a.authenticated, "detail": a.detail}
+                for a in p.auth
+            ],
+        }
+        for p in providers
     ]
 
 
@@ -85,12 +69,14 @@ class SettingsMixin:
 
     async def handle_get_settings(self, data: dict):  # noqa: ARG002
         defaults = await get_global_defaults()
-        await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
+        providers = await list_providers()
+        await self.send(WS.SETTINGS, global_defaults=defaults, providers=providers)
 
     async def handle_update_global_settings(self, data: dict):
         """Delegate to Orchestrator, format WS response."""
         defaults = await self.orch.update_global_settings(data)
-        await self.send(WS.SETTINGS, global_defaults=defaults, providers=list_providers())
+        providers = await list_providers()
+        await self.send(WS.SETTINGS, global_defaults=defaults, providers=providers)
 
     async def handle_update_tree_settings(self, data: dict):
         """Delegate to Orchestrator, format WS response."""

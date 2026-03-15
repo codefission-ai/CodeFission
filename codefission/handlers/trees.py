@@ -102,10 +102,11 @@ class TreesMixin:
         raw_cs = await get_setting("collapsed_subtrees")
         collapsed_subtrees = json.loads(raw_cs) if raw_cs else {}
         defaults = await get_global_defaults()
+        providers = await list_providers()
         await self.send(WS.TREES, trees=[t.model_dump() for t in trees],
                         last_tree_id=last_tree_id, expanded_nodes=expanded_nodes,
                         collapsed_subtrees=collapsed_subtrees,
-                        global_defaults=defaults, providers=list_providers())
+                        global_defaults=defaults, providers=providers)
 
     async def handle_create_tree(self, data: dict):
         name = data.get("name", "Untitled")
