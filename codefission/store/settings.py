@@ -37,7 +37,7 @@ async def get_global_defaults() -> dict:
     auth_mode = await get_setting("auth_mode") or _FALLBACK_AUTH_MODE
     api_key = await get_setting("api_key") or ""
     summary_model = await get_setting("summary_model") or "claude-haiku-4-5-20251001"
-
+j
     from config import get_global_db_path
     return {
         "provider": provider,
