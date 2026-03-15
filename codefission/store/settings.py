@@ -8,41 +8,42 @@ from db import get_db
 from models import Tree
 
 
-async def _get_agentbridge_defaults() -> tuple[str, str, str]:
-    """Ask agentbridge for the first ready provider, its default model, and cheapest model.
+async def _get_default_provider() -> tuple[str, str]:
+    """First ready provider and its default model from agentbridge.
 
-    Returns (provider_id, default_model, cheapest_model).
-    Falls back to ("claude-code", "claude-sonnet-4-6", "claude-haiku-4-5-20251001").
+    Returns (provider_id, default_model).
+    """
+    try:
+        from agentbridge import discover
+        providers = await discover()
+        for p in providers:
+            if p.ready:
+                return p.id, p.default_model
+        for p in providers:
+            if p.installed:
+                return p.id, p.default_model
+    except Exception:
+        pass
+    return "claude-code", "claude-sonnet-4-6"
+
+
+async def _get_cheapest_model_for_provider(provider_id: str) -> str:
+    """Cheapest model for a specific provider from agentbridge pricing.
+
+    Only looks at models belonging to the given provider — doesn't
+    cross provider boundaries. If the user chose Codex, they get
+    Codex's cheapest model, not Claude's.
     """
     try:
         from agentbridge import discover, cheapest_model
         providers = await discover()
-
-        # Find best provider
-        provider = None
         for p in providers:
-            if p.ready:
-                provider = p
-                break
-        if not provider:
-            for p in providers:
-                if p.installed:
-                    provider = p
-                    break
-
-        if provider:
-            # Cheapest model from ready providers only (for summary/auto-naming)
-            ready_models = []
-            for p in providers:
-                if p.ready:
-                    ready_models.extend(p.available_models)
-            if not ready_models:
-                ready_models = provider.available_models
-            cheap = cheapest_model(ready_models) or (ready_models[-1] if ready_models else None)
-            return provider.id, provider.default_model, cheap or provider.default_model
+            if p.id == provider_id and p.available_models:
+                cheap = cheapest_model(p.available_models)
+                return cheap or p.available_models[-1]
     except Exception:
         pass
-    return "claude-code", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"
+    return "claude-sonnet-4-6"
 
 
 # ── Basic CRUD ──────────────────────────────────────────────────────
@@ -111,15 +112,17 @@ async def get_global_defaults() -> dict:
     model = await get_setting("default_model")
     summary_model = await get_setting("summary_model")
 
-    # If user hasn't set these, ask agentbridge for the best defaults
-    if not provider or not model or not summary_model:
-        ab_provider, ab_model, ab_cheap = await _get_agentbridge_defaults()
+    # If user hasn't set provider/model, discover from agentbridge
+    if not provider or not model:
+        ab_provider, ab_model = await _get_default_provider()
         if not provider:
             provider = ab_provider
         if not model:
             model = ab_model
-        if not summary_model:
-            summary_model = ab_cheap
+
+    # Summary model defaults to cheapest for the SELECTED provider
+    if not summary_model:
+        summary_model = await _get_cheapest_model_for_provider(provider)
 
     api_key = await get_setting("api_key") or ""
 

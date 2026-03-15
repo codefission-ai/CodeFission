@@ -131,11 +131,11 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       <label className="settings-label">Auto-name Model</label>
       <select className="settings-select" value={summaryModel} onChange={(e) => setSummaryModel(e.target.value)}>
         <option value="">Disabled</option>
-        {providers.filter(p => p.ready).flatMap(p => p.models.map(m => (
-          <option key={m} value={m}>{m} ({p.name})</option>
-        )))}
+        {(currentProvider?.models ?? []).map(m => (
+          <option key={m} value={m}>{m}</option>
+        ))}
       </select>
-      <p className="settings-hint">Small model used to auto-name new trees. Defaults to cheapest available model. "Disabled" turns off auto-naming.</p>
+      <p className="settings-hint">Uses the selected provider's models. Defaults to cheapest. "Disabled" turns off auto-naming.</p>
 
       <label className="settings-label">Data Directory</label>
       <input
