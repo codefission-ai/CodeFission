@@ -1,4 +1,8 @@
-"""File operation handler methods — mixin for ConnectionHandler."""
+"""File handlers — list files, get diff, read file content.
+
+Delegates to orchestrator.list_node_files/get_node_diff/read_node_file
+which handle the worktree-or-git-commit fallback internally.
+"""
 
 from events import WS
 from store.trees import get_node

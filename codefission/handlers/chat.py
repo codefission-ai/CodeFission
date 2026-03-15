@@ -1,4 +1,9 @@
-"""Chat streaming handler methods — mixin for ConnectionHandler."""
+"""Chat handlers — send message, stream AI response, cancel, duplicate.
+
+Consumes orchestrator.chat() async generator and forwards each domain event
+(TextDelta, ToolStart, ToolEnd, ChatCompleted) as a WS message to the browser.
+Also handles auto-naming untitled trees from the first message.
+"""
 
 import asyncio
 import logging

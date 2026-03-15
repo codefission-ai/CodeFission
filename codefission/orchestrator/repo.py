@@ -1,4 +1,9 @@
-"""Repo operations mixin for the Orchestrator."""
+"""Repo operations — open repo (find/create tree), update base, merge.
+
+open_repo: finds an existing tree for a repo+commit, or creates one.
+update_base: changes a tree's base branch/commit (only before children exist).
+merge_to_branch: squash-merges a node's changes into a real git branch.
+"""
 
 from __future__ import annotations
 

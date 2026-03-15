@@ -1,8 +1,9 @@
-"""Workspace service — git worktree management for per-node isolation.
+"""Git operations — worktree management, commits, diffs, file access.
 
-Works directly with the user's project repo.
-Root nodes resolve to the project path; child nodes get git worktrees
-in {project}/.codefission/worktrees/{node_id}.
+Each node gets an isolated git worktree under {project}/.codefission/worktrees/{node_id}.
+Root nodes resolve to the project path itself. Handles: create/remove worktrees,
+auto-commit after AI edits, list files, get diffs, read file content, merge to branch,
+copy session files between worktrees for AI session forking.
 """
 
 from __future__ import annotations

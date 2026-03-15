@@ -1,7 +1,8 @@
-"""Orchestrator — the business-logic coordinator.
+"""Orchestrator class — assembles all workflow mixins.
 
-Both the WebSocket handler and future headless agents (shadow, CI) call into
-this class instead of scattering logic across the transport layer.
+The Orchestrator inherits from ChatMixin, TreesMixin, NodesMixin,
+FilesMixin, SettingsMixin, RepoMixin. Each mixin is in a sibling file.
+Handlers call Orchestrator methods; the Orchestrator calls store/ modules.
 """
 
 from __future__ import annotations

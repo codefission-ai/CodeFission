@@ -1,4 +1,9 @@
-"""Tree CRUD handler methods — mixin for ConnectionHandler."""
+"""Tree handlers — open repo, list/create/load/delete trees.
+
+open_repo is the first message the browser sends — it finds or creates
+a tree for the given repo+commit. load_tree fetches all nodes and
+reconnects any active streams (for browser refresh during streaming).
+"""
 
 import json
 import logging

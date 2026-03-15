@@ -1,4 +1,4 @@
-"""Node operation handler methods — mixin for ConnectionHandler."""
+"""Node handlers — branch, get node details, delete node + subtree."""
 
 from events import WS
 from store.trees import get_node

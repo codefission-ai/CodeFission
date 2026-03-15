@@ -1,3 +1,10 @@
+"""Tree and node CRUD — SQL operations for the trees and nodes tables.
+
+create, get, list, update, delete for both trees and nodes.
+Also: find_tree (by repo+commit), get_ancestor_chain (walk to root),
+delete_subtree (cascade), get_drafts_for_parent.
+"""
+
 import json
 import logging
 import uuid

@@ -1,4 +1,9 @@
-"""Tree operations mixin for the Orchestrator."""
+"""Tree operations — create tree (with git ref), delete node + subtree.
+
+create_tree: resolves git HEAD, creates DB records, sets up protective ref.
+delete_node: checks for active streams, removes worktrees, cleans up
+  expanded/collapsed settings, cascades through subtree.
+"""
 
 from __future__ import annotations
 

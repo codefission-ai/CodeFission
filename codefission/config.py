@@ -1,3 +1,9 @@
+"""Project configuration — working directory context and data paths.
+
+Tracks which git repo is active via a context variable (set per-request).
+Resolves the global data directory (~/.codefission/) and DB path.
+"""
+
 import contextvars
 import json
 import os

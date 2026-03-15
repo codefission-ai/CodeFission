@@ -1,4 +1,4 @@
-"""Settings mixin for the Orchestrator."""
+"""Settings operations — update global defaults and per-tree overrides."""
 
 from __future__ import annotations
 

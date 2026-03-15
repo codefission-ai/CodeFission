@@ -1,4 +1,8 @@
-"""Process management handler methods — mixin for ConnectionHandler."""
+"""Process handlers — list running processes, kill by PID, kill all.
+
+Also handles worktree cleanup after processes exit (removes ephemeral
+worktrees that are no longer needed).
+"""
 
 import logging
 

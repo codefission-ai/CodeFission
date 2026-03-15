@@ -1,4 +1,4 @@
-"""Repo and branch operation handler methods — mixin for ConnectionHandler."""
+"""Repo handlers — repo info, list branches, merge to branch, update base."""
 
 from pathlib import Path
 

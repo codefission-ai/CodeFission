@@ -1,4 +1,12 @@
-"""Chat lifecycle mixin for the Orchestrator."""
+"""Chat lifecycle — prepare, stream, complete, cancel.
+
+prepare_chat: creates a child node, resolves workspace, builds the AI prompt
+  (including file quotes, session forking context, cancelled-parent context).
+chat: async generator that streams AI events (TextDelta, ToolStart, etc.)
+  and handles PID tracking, timeout, cancellation, worktree cleanup.
+complete_chat: saves the AI response, auto-commits file changes.
+cancel_chat: saves partial response with cancellation marker.
+"""
 
 from __future__ import annotations
 

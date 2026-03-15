@@ -1,3 +1,13 @@
+"""FastAPI application — WebSocket endpoint, file serving, health check.
+
+This is the HTTP/WS server. The WebSocket endpoint at /ws handles all
+browser communication via ConnectionHandler. File upload/download/serving
+routes support the GUI's file browser. The /health endpoint is used for
+server discovery.
+
+Started by server.py (the launcher).
+"""
+
 import asyncio
 import os
 import sys

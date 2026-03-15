@@ -1,4 +1,9 @@
-"""Settings and state handler methods — mixin for ConnectionHandler."""
+"""Settings handlers — get/update global and tree settings, UI state.
+
+Also handles UI-only persistence: expanded nodes, collapsed subtrees,
+last selected tree. These are not business operations — just layout state
+that happens to be stored in the DB.
+"""
 
 import json
 

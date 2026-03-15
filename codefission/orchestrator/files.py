@@ -1,4 +1,8 @@
-"""File operations mixin for the Orchestrator."""
+"""File operations — list files, get diff, read content for a node.
+
+Resolves the node's worktree path (if alive) or falls back to reading
+from the git commit (worktree already removed). Includes persisted artifacts.
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,9 @@
-"""ConnectionHandler — per-connection state and WebSocket dispatch.
+"""ConnectionHandler — per-connection state and WebSocket message dispatch.
 
-Inherits handler methods from mixin classes defined in sibling modules.
+Holds the WebSocket reference, repo context, and orchestrator instance.
+dispatch() routes incoming WS messages to the correct handler method via
+a dispatch table. Inherits all handler methods from mixin classes in
+sibling modules (chat, trees, nodes, files, settings, repo, processes).
 """
 
 import asyncio

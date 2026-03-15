@@ -1,8 +1,8 @@
-"""Chat service — uses AgentBridge for provider-agnostic streaming.
+"""AI bridge — spawns coding AI tools (Claude, Codex) via agentbridge.
 
-Each node gets its own session_id. Child nodes fork from their parent's session,
-reusing the prompt cache. Re-exports agentbridge event types so handlers.py
-can import them from here without changes.
+stream_chat() builds a SessionConfig and streams events from the AI subprocess.
+resolve_session_continuity() decides fork (same provider) vs context transfer
+(different provider). Builds the system prompt injected into every AI call.
 """
 
 from __future__ import annotations

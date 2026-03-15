@@ -1,3 +1,9 @@
+"""SQLite database — connection management and schema migrations.
+
+Tables: trees, nodes, settings, actions.
+Uses aiosqlite for async access. Migrations run on startup (additive ALTER TABLE).
+"""
+
 import aiosqlite
 import logging
 from pathlib import Path

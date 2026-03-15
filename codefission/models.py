@@ -1,3 +1,11 @@
+"""Data models — all types shared across the application.
+
+Pydantic models: Node, Tree (DB-backed entities).
+Dataclasses: ChatContext, ChatResult, ChatNodeCreated, ChatCompleted,
+  CancelResult, DeleteNodeResult, UpdateBaseResult, StreamState,
+  FileListResult, DiffResult, FileContentResult.
+"""
+
 from __future__ import annotations
 
 import asyncio

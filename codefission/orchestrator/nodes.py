@@ -1,4 +1,4 @@
-"""Node operations mixin for the Orchestrator."""
+"""Node operations — create branches (child nodes) from a parent."""
 
 from __future__ import annotations
 
