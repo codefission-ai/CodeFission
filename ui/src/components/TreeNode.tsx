@@ -225,6 +225,80 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
+/** Collapsible tool calls block.
+ *  During streaming: shows last 3 tool calls, collapses older into a summary.
+ *  After streaming: all collapsed into a summary line, expandable on click. */
+function ToolCallsBlock({ toolCalls, isStreaming }: { toolCalls: ToolCall[]; isStreaming: boolean }) {
+  const [expandAll, setExpandAll] = useState(false);
+  const VISIBLE_COUNT = 3;
+
+  if (toolCalls.length === 0) return null;
+
+  // After streaming: everything collapsed by default
+  if (!isStreaming && !expandAll) {
+    return (
+      <div className="tool-calls-block">
+        <button
+          className="tool-calls-summary"
+          onClick={(e) => { e.stopPropagation(); setExpandAll(true); }}
+        >
+          {toolCalls.length} tool call{toolCalls.length !== 1 ? "s" : ""}
+        </button>
+      </div>
+    );
+  }
+
+  // After streaming, expanded: show all with option to collapse
+  if (!isStreaming && expandAll) {
+    return (
+      <div className="tool-calls-block">
+        <button
+          className="tool-calls-summary"
+          onClick={(e) => { e.stopPropagation(); setExpandAll(false); }}
+        >
+          {toolCalls.length} tool call{toolCalls.length !== 1 ? "s" : ""} (click to hide)
+        </button>
+        {toolCalls.map((tc) => (
+          <ToolCallLine key={tc.tool_call_id} tc={tc} />
+        ))}
+      </div>
+    );
+  }
+
+  // During streaming: show summary of older + last VISIBLE_COUNT
+  const hiddenCount = Math.max(0, toolCalls.length - VISIBLE_COUNT);
+  const visibleCalls = hiddenCount > 0 ? toolCalls.slice(-VISIBLE_COUNT) : toolCalls;
+
+  return (
+    <div className="tool-calls-block">
+      {hiddenCount > 0 && !expandAll && (
+        <button
+          className="tool-calls-summary"
+          onClick={(e) => { e.stopPropagation(); setExpandAll(true); }}
+        >
+          {hiddenCount} earlier tool call{hiddenCount !== 1 ? "s" : ""}
+        </button>
+      )}
+      {hiddenCount > 0 && expandAll && (
+        <>
+          <button
+            className="tool-calls-summary"
+            onClick={(e) => { e.stopPropagation(); setExpandAll(false); }}
+          >
+            {hiddenCount} earlier tool call{hiddenCount !== 1 ? "s" : ""} (click to hide)
+          </button>
+          {toolCalls.slice(0, hiddenCount).map((tc) => (
+            <ToolCallLine key={tc.tool_call_id} tc={tc} />
+          ))}
+        </>
+      )}
+      {visibleCalls.map((tc) => (
+        <ToolCallLine key={tc.tool_call_id} tc={tc} />
+      ))}
+    </div>
+  );
+}
+
 function TreeNode({ data }: { data: { node: CNode } }) {
   const { node } = data;
   const selectedId = useStore((s) => s.selectedNodeId);
@@ -613,14 +687,8 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             </div>
           )}
 
-          {/* Tool calls during streaming */}
-          {isStreaming && activeToolCalls.length > 0 && (
-            <div className="tool-calls-block">
-              {activeToolCalls.map((tc) => (
-                <ToolCallLine key={tc.tool_call_id} tc={tc} />
-              ))}
-            </div>
-          )}
+          {/* Tool calls — auto-collapse older calls */}
+          {activeToolCalls.length > 0 && <ToolCallsBlock toolCalls={activeToolCalls} isStreaming={isStreaming} />}
 
           {/* Streaming dots - waiting state */}
           {isStreaming && !node.assistant_response && activeToolCalls.length === 0 && (

@@ -293,10 +293,7 @@ export const actions = {
   setStreaming: (nodeId: string, on: boolean) =>
     useStore.setState((s) => {
       const streaming = { ...s.streaming, [nodeId]: on };
-      // Clear tool calls when streaming ends
-      if (!on) {
-        return { streaming, toolCalls: { ...s.toolCalls, [nodeId]: [] } };
-      }
+      // Keep tool calls after streaming ends — they display as a collapsed summary
       return { streaming };
     }),
 
