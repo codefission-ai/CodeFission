@@ -79,7 +79,6 @@ export interface ProviderInfo {
 export interface GlobalDefaults {
   provider: string;
   model: string;
-  auth_mode: string;
   api_key: string;
   summary_model: string;
   data_dir: string;
@@ -238,7 +237,7 @@ export const useStore = create<Store>(() => ({
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
-  globalDefaults: { provider: "claude-code", model: "claude-opus-4-6", auth_mode: "cli", api_key: "", summary_model: "claude-haiku-4-5-20251001", data_dir: "" },
+  globalDefaults: { provider: "", model: "", api_key: "", summary_model: "", data_dir: "" },
   providers: [],
   repoContext: null,
   repoBranches: [],

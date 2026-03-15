@@ -131,9 +131,9 @@ function GlobalSettings({ defaults, providers }: { defaults: GlobalDefaults; pro
       <label className="settings-label">Auto-name Model</label>
       <select className="settings-select" value={summaryModel} onChange={(e) => setSummaryModel(e.target.value)}>
         <option value="">Disabled</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
-        <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
-        <option value="claude-opus-4-6">Claude Opus 4.6</option>
+        {providers.filter(p => p.ready).flatMap(p => p.models.map(m => (
+          <option key={m} value={m}>{m} ({p.name})</option>
+        )))}
       </select>
       <p className="settings-hint">Small model used to auto-name new trees. Defaults to cheapest available model. "Disabled" turns off auto-naming.</p>
 
