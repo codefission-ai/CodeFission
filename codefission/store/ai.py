@@ -204,6 +204,7 @@ async def stream_chat(
     provider: str = "claude",
     model: str = "claude-opus-4-6",
     api_key: str = "",
+    tree_instructions: str = "",
 ) -> AsyncGenerator[BridgeEvent, None]:
     """Stream a chat response for a node via AgentBridge.
 
@@ -222,6 +223,15 @@ async def stream_chat(
     provider_type = _PROVIDER_TYPE_MAP.get(provider, ProviderType.CLAUDE)
 
     system_prompt = _build_system_prompt(node, tree=tree, workspace=workspace)
+
+    # Append tree-level instructions to system prompt if set
+    if tree_instructions:
+        system_prompt += (
+            "\n\n## Tree Instructions\n"
+            "The user has set the following instructions for this entire tree. "
+            "Follow them for all responses:\n\n"
+            + tree_instructions
+        )
 
     # Resolve session continuity (fork vs context transfer)
     resume_sid = None

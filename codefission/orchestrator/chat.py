@@ -301,14 +301,7 @@ class ChatMixin:
                 + sdk_msg
             )
 
-        # Prepend tree-level skill/system prompt if set
-        if tree.skill:
-            sdk_msg = (
-                f"[System: The user has set the following skill/instructions for this entire tree:\n"
-                f"{tree.skill}\n"
-                f"Follow these instructions for all responses.]\n\n"
-                + sdk_msg
-            )
+        # Tree-level instructions are passed via system_prompt (not prepended to user message)
 
         # If file quotes, prepend their context (actual file contents, folder listings, diff)
         if file_quotes:
@@ -331,6 +324,7 @@ class ChatMixin:
             model=effective["model"],
             api_key=await get_effective_api_key(effective["provider"]),
             after_id=after_id,
+            tree_instructions=tree.skill or "",
         )
 
     # ── Chat async generator ────────────────────────────────────────
@@ -378,6 +372,7 @@ class ChatMixin:
                 provider=ctx.provider,
                 model=ctx.model,
                 api_key=ctx.api_key,
+                tree_instructions=ctx.tree_instructions,
             ):
                 if isinstance(event, SessionInit):
                     await update_node(nid, session_id=event.session_id)

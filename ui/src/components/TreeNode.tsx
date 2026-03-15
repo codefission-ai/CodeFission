@@ -488,10 +488,10 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
         {hasVisibleChildren && <Handle type="source" position={Position.Bottom} />}
 
-        {/* Section 1: Skill */}
+        {/* Section 1: Instructions */}
         <div className={`root-section ${hasChildren ? "root-section-locked" : ""}`}>
           <label className="root-section-label">
-            Skill
+            Instructions
             {hasChildren && skillInput && <CopyBtn text={skillInput} />}
           </label>
           <textarea

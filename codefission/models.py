@@ -98,6 +98,7 @@ class ChatContext:
     api_key: str
     after_id: str | None = None
     quoted_node_ids: list[str] = field(default_factory=list)
+    tree_instructions: str = ""
 
 
 @dataclass
