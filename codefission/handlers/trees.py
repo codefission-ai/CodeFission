@@ -15,22 +15,46 @@ log = logging.getLogger(__name__)
 class TreesMixin:
 
     async def handle_open_repo(self, data: dict):
-        """Open a repo: find or create tree for the given repo_id + head_commit."""
+        """Open a repo: find or create tree for the given repo_id + head_commit.
+
+        If repo_id / head_commit are not provided, they are auto-detected from
+        the git repo at repo_path — this supports the "New Project" sidebar flow.
+        """
         from pathlib import Path
         from config import set_project_path
 
         repo_path_str = data.get("repo_path") or (str(self.repo_path) if self.repo_path else None)
-        repo_id = data.get("repo_id") or self.repo_id
-        head_commit = data.get("head_commit") or self.head_commit
-
-        if not repo_path_str or not repo_id or not head_commit:
-            await self.send(WS.ERROR, error="Missing repo context")
+        if not repo_path_str:
+            await self.send(WS.ERROR, error="Missing repo path")
             return
 
         repo_path = Path(repo_path_str)
         if not repo_path.is_dir():
             await self.send(WS.ERROR, error=f"Not a directory: {repo_path}")
             return
+
+        repo_id = data.get("repo_id") or self.repo_id
+        head_commit = data.get("head_commit") or self.head_commit
+
+        # Auto-detect repo_id and head_commit from the git repo if not provided
+        if not repo_id or not head_commit:
+            try:
+                set_project_path(repo_path)
+                # repo_id = SHA of the initial commit (repo identity)
+                rc, first_sha, _ = await self.orch.run_git(
+                    repo_path, "rev-list", "--max-parents=0", "HEAD", check=False,
+                )
+                if rc != 0 or not first_sha.strip():
+                    await self.send(WS.ERROR, error=f"Not a git repository: {repo_path}")
+                    return
+                repo_id = repo_id or first_sha.strip().split("\n")[0]
+                # head_commit = current HEAD
+                _, head_sha, _ = await self.orch.run_git(repo_path, "rev-parse", "HEAD")
+                head_commit = head_commit or head_sha.strip()
+            except Exception as e:
+                log.warning("Failed to detect repo context: %s", e)
+                await self.send(WS.ERROR, error=f"Failed to read git repo: {e}")
+                return
 
         # Update connection state
         self.repo_path = repo_path

@@ -109,10 +109,12 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
 
   const handleCreate = () => {
     if (!group.repoPath) return;
+    // Use the first tree's base_branch as default (handles repos where default is "master" etc.)
+    const defaultBranch = group.trees[0]?.base_branch || "main";
     send({
       type: WS.CREATE_TREE,
       name: newName.trim() || "Untitled",
-      base_branch: "main",
+      base_branch: defaultBranch,
       repo_id: group.repoId,
       repo_path: group.repoPath,
     });
@@ -183,6 +185,61 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
   );
 }
 
+function NewProjectInput() {
+  const [adding, setAdding] = useState(false);
+  const [folderPath, setFolderPath] = useState("");
+
+  const handleSubmit = () => {
+    const path = folderPath.trim();
+    if (!path) {
+      setAdding(false);
+      return;
+    }
+    send({ type: WS.OPEN_REPO, repo_path: path });
+    setFolderPath("");
+    setAdding(false);
+  };
+
+  if (!adding) {
+    return (
+      <div className="new-project-bar">
+        <button
+          className="new-project-btn"
+          onClick={() => setAdding(true)}
+          title="Open a project folder"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <line x1="6" y1="1" x2="6" y2="11" />
+            <line x1="1" y1="6" x2="11" y2="6" />
+          </svg>
+          <span>New Project</span>
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tree-list-create">
+      <input
+        autoFocus
+        placeholder="/path/to/project..."
+        value={folderPath}
+        onChange={(e) => setFolderPath(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSubmit();
+          if (e.key === "Escape") { setAdding(false); setFolderPath(""); }
+        }}
+        onBlur={() => { if (!folderPath.trim()) setAdding(false); }}
+      />
+      <button onClick={handleSubmit} title="Open project">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="2 7 6 11 12 3" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function TreeList() {
   const trees = useStore((s) => s.trees);
   const currentTreeId = useStore((s) => s.currentTreeId);
@@ -228,6 +285,8 @@ export default function TreeList() {
       <div className="tree-list-header">
         <span>CodeFission</span>
       </div>
+
+      <NewProjectInput />
 
       <div className="tree-list-items">
         {projectGroups.map((group) => (

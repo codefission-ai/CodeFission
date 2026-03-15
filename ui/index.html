@@ -203,6 +203,19 @@
       align-items: center;
       justify-content: space-between;
     }
+    .new-project-bar { padding: 6px 8px; }
+    .new-project-btn {
+      display: flex; align-items: center; gap: 6px;
+      width: 100%; padding: 6px 10px;
+      background: none; border: 1px dashed var(--border-dim);
+      border-radius: var(--radius-sm); cursor: pointer;
+      color: var(--text-muted); font-size: 12px;
+      font-family: var(--font-sans);
+      transition: color 0.1s, border-color 0.1s;
+    }
+    .new-project-btn:hover {
+      color: var(--text-primary); border-color: var(--text-muted);
+    }
     .tree-list-create { display: flex; padding: 8px; gap: 4px; }
     .tree-list-create input {
       flex: 1; padding: 6px 10px;
