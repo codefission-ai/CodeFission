@@ -409,6 +409,63 @@
     .project-setup-name-input input:focus { outline: none; border-color: var(--accent); }
     .project-setup-name-hint { font-size: 0.75rem; color: var(--text-dim); }
     .project-setup-actions { display: flex; gap: 12px; margin-top: 16px; }
+    .project-setup-error {
+      color: #e55; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px;
+      background: rgba(238,85,85,0.1); border: 1px solid rgba(238,85,85,0.3);
+      margin-bottom: 12px; max-width: 500px; width: 100%; text-align: center;
+    }
+    .project-setup-local,
+    .project-setup-github,
+    .project-setup-empty {
+      display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; max-width: 600px;
+    }
+
+    /* Folder browser */
+    .folder-browser {
+      width: 100%; max-width: 500px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg-deep); overflow: hidden; margin-top: 8px;
+    }
+    .folder-browser-header {
+      padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--bg-hover);
+    }
+    .folder-browser-path {
+      font-family: var(--font-mono, monospace); font-size: 0.75rem; color: var(--text-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+    }
+    .folder-browser-toolbar {
+      display: flex; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border);
+    }
+    .folder-browser-up {
+      display: flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--border);
+      border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer;
+      font-size: 0.75rem; transition: all 0.15s;
+    }
+    .folder-browser-up:hover { color: var(--text-primary); border-color: var(--accent); }
+    .folder-browser-list {
+      max-height: 240px; overflow-y: auto; padding: 4px 0;
+    }
+    .folder-browser-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer;
+      transition: background 0.1s; font-size: 0.8rem; color: var(--text-primary);
+    }
+    .folder-browser-item:hover { background: var(--bg-hover); }
+    .folder-browser-icon { display: flex; flex-shrink: 0; }
+    .folder-browser-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .folder-browser-git-badge {
+      font-size: 0.65rem; padding: 1px 5px; border-radius: 3px; margin-left: auto; flex-shrink: 0;
+      background: rgba(var(--accent-rgb, 59,130,246), 0.15); color: var(--accent);
+      font-weight: 600;
+    }
+    .folder-browser-loading,
+    .folder-browser-empty {
+      padding: 16px; text-align: center; color: var(--text-dim); font-size: 0.8rem;
+    }
+    .folder-browser-error {
+      padding: 8px 12px; color: #e55; font-size: 0.8rem;
+    }
+    .folder-browser-select {
+      margin: 8px 12px 12px; width: calc(100% - 24px); text-align: center;
+    }
     .empty-sub { font-size: 13px; color: var(--text-muted); max-width: 280px; text-align: center; line-height: 1.5; }
 
     /* React Flow overrides for dark theme */

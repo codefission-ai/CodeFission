@@ -45,8 +45,17 @@ class TreesMixin:
                     repo_path, "rev-list", "--max-parents=0", "HEAD", check=False,
                 )
                 if rc != 0 or not first_sha.strip():
-                    await self.send(WS.ERROR, error=f"Not a git repository: {repo_path}")
-                    return
+                    # Not a git repo — auto-initialize
+                    log.info("Auto-initializing git repo at %s", repo_path)
+                    from store.git import init_git_repo
+                    await init_git_repo(repo_path)
+                    # Re-detect after init
+                    rc, first_sha, _ = await self.orch.run_git(
+                        repo_path, "rev-list", "--max-parents=0", "HEAD", check=False,
+                    )
+                    if rc != 0 or not first_sha.strip():
+                        await self.send(WS.ERROR, error=f"Failed to initialize git repo: {repo_path}")
+                        return
                 repo_id = repo_id or first_sha.strip().split("\n")[0]
                 # head_commit = current HEAD
                 _, head_sha, _ = await self.orch.run_git(repo_path, "rev-parse", "HEAD")

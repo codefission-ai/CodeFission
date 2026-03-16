@@ -10,6 +10,7 @@ Started by server.py (the launcher).
 
 import asyncio
 import os
+import re
 import sys
 import webbrowser
 from pathlib import Path
@@ -17,7 +18,7 @@ from pathlib import Path
 # Allow running inside a Claude Code session
 os.environ.pop("CLAUDECODE", None)
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -120,6 +121,77 @@ async def websocket_endpoint(ws: WebSocket):
             await handler.dispatch(data)
     except (WebSocketDisconnect, RuntimeError):
         handler.cleanup()
+
+
+@app.get("/api/browse")
+async def browse_directory(path: str = "~"):
+    """List subdirectories for a given path. Used by the folder browser."""
+    target = Path(path).expanduser().resolve()
+    if not target.is_dir():
+        raise HTTPException(400, "Not a directory")
+
+    entries = []
+    try:
+        for item in sorted(target.iterdir()):
+            if item.name.startswith("."):
+                continue  # skip hidden
+            if item.is_dir():
+                is_git = (item / ".git").is_dir()
+                entries.append({
+                    "name": item.name,
+                    "path": str(item),
+                    "is_git": is_git,
+                })
+    except PermissionError:
+        pass
+
+    return {
+        "current": str(target),
+        "parent": str(target.parent) if target != target.parent else None,
+        "entries": entries,
+    }
+
+
+@app.post("/api/create-empty-project")
+async def create_empty_project(name: str):
+    """Create an empty git repo in ~/.codefission/projects/{name}."""
+    projects_dir = Path.home() / ".codefission" / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+    project_path = projects_dir / name
+    if project_path.exists():
+        raise HTTPException(400, f"Project '{name}' already exists")
+    project_path.mkdir()
+    from store.git import init_git_repo
+    await init_git_repo(project_path)
+    return {"path": str(project_path)}
+
+
+@app.post("/api/clone")
+async def clone_github_repo(url: str, name: str | None = None):
+    """Clone a GitHub repo into ~/.codefission/projects/{name}."""
+    projects_dir = Path.home() / ".codefission" / "projects"
+    projects_dir.mkdir(parents=True, exist_ok=True)
+
+    # Derive name from URL if not provided
+    if not name:
+        match = re.search(r"/([^/]+?)(?:\.git)?$", url)
+        name = match.group(1) if match else "cloned-repo"
+
+    project_path = projects_dir / name
+    if project_path.exists():
+        raise HTTPException(400, f"Project '{name}' already exists")
+
+    # Clone
+    proc = await asyncio.create_subprocess_exec(
+        "git", "clone", url, str(project_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise HTTPException(400, f"Clone failed: {stderr.decode()}")
+
+    return {"path": str(project_path), "name": name}
 
 
 @app.get("/health")

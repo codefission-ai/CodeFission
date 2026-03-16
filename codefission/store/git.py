@@ -83,6 +83,24 @@ def resolve_workspace(root_id: str, node_id: str) -> Path:
     return _worktrees_dir() / node_id
 
 
+# ── Repo initialization ───────────────────────────────────────────────
+
+async def init_git_repo(path: Path):
+    """Initialize a git repo in an existing directory.
+
+    Creates a .gitignore, stages all files, and makes an initial commit.
+    Used when opening a non-git folder or creating an empty project.
+    """
+    await _run_git(path, "init")
+    # Create .gitignore if it doesn't exist
+    gitignore = path / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(".codefission/\n.claude/\n_artifacts/\n")
+    await _run_git(path, "add", "-A")
+    await _run_git(path, "commit", "-m", "initial commit", "--allow-empty",
+                   env={**_GIT_ENV})
+
+
 # ── Worktree management ──────────────────────────────────────────────
 
 async def create_worktree(node_id: str, from_commit: str) -> Path:
