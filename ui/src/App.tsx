@@ -69,13 +69,13 @@ function WindowControls() {
   return (
     <div className="window-controls pywebview-no-drag">
       <button className="wc-dot wc-close" onClick={() => api.close_window()}>
-        <svg viewBox="0 0 12 12"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+        <svg viewBox="0 0 10 10"><path d="M2.2 2.2l5.6 5.6M7.8 2.2l-5.6 5.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
       </button>
       <button className="wc-dot wc-minimize" onClick={() => api.minimize_window()}>
-        <svg viewBox="0 0 12 12"><path d="M2.5 6h7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+        <svg viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
       </button>
       <button className="wc-dot wc-fullscreen" onClick={() => api.toggle_fullscreen()}>
-        <svg viewBox="0 0 12 12"><path d="M3 9l2.5-2.5M6.5 3H9v2.5M3 6.5V9h2.5M9 6.5V9H6.5M6.5 3L9 5.5" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <svg viewBox="0 0 10 10"><path d="M1.5 6.5L3.5 8.5M6.5 1.5L8.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><path d="M1.5 8.5h2v-2M8.5 1.5h-2v2" fill="currentColor" stroke="currentColor" strokeWidth="0.5" strokeLinejoin="round"/></svg>
       </button>
     </div>
   );

@@ -95,39 +95,48 @@
       background: var(--accent);
     }
 
-    /* ── Window controls (pywebview traffic lights) ────────────── */
+    /* ── Window controls (macOS traffic lights) ────────────────── */
     .window-controls {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-left: 4px;
-      margin-right: 8px;
+      margin-left: 6px;
+      margin-right: 10px;
     }
     .wc-dot {
-      width: 12px;
-      height: 12px;
+      width: 13px;
+      height: 13px;
       border-radius: 50%;
       border: none;
       padding: 0;
-      cursor: pointer;
+      cursor: default;
       outline: none;
       position: relative;
       display: flex;
       align-items: center;
       justify-content: center;
+      box-shadow: inset 0 0 0 0.5px rgba(0,0,0,0.12);
     }
     .wc-dot svg {
-      width: 10px;
-      height: 10px;
+      width: 8px;
+      height: 8px;
       opacity: 0;
-      color: rgba(0,0,0,0.5);
-      transition: opacity 0.1s;
+      transition: opacity 0.08s;
     }
     .window-controls:hover .wc-dot svg { opacity: 1; }
-    .wc-close { background: #ff5f57; }
-    .wc-minimize { background: #febc2e; }
-    .wc-fullscreen { background: #28c840; }
-    .wc-dot:active { filter: brightness(0.85); }
+    .wc-close {
+      background: linear-gradient(180deg, #ff6058 0%, #e2473f 100%);
+    }
+    .wc-close svg { color: #4a0002; }
+    .wc-minimize {
+      background: linear-gradient(180deg, #ffc02f 0%, #dea123 100%);
+    }
+    .wc-minimize svg { color: #9a5d00; }
+    .wc-fullscreen {
+      background: linear-gradient(180deg, #2aca3e 0%, #1aab29 100%);
+    }
+    .wc-fullscreen svg { color: #0a5600; }
+    .wc-dot:active { filter: brightness(0.82); }
 
     /* ── Toolbar ──────────────────────────────────────────────────── */
     .toolbar {
