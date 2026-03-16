@@ -214,7 +214,10 @@ function handle(data: any) {
       if (data.tree && data.staleness) {
         actions.setTreeStaleness(data.tree.id, data.staleness);
       }
-      // Don't auto-select any node — let user click to focus
+      // Update branches for this project (so switching projects refreshes)
+      if (data.branches) {
+        actions.setRepoBranches(data.branches);
+      }
       break;
     case WS.NODE_CREATED:
       actions.upsertNode(data.node, data.after_id);

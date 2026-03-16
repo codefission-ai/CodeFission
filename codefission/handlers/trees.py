@@ -166,12 +166,16 @@ class TreesMixin:
         if tree and tree.base_commit:
             staleness = await self.orch.check_staleness(tree.base_branch, tree.base_commit)
 
+        # Include branches for this tree's repo (so switching projects refreshes branches)
+        branches = await self.orch.list_branches()
+
         await self.send(
             WS.TREE_LOADED,
             tree=tree.model_dump() if tree else None,
             nodes=[n.model_dump() for n in nodes],
             node_processes=node_processes,
             staleness=staleness,
+            branches=branches,
         )
 
         # Reconnect any active streams for this tree to the new connection.
