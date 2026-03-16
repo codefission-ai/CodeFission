@@ -417,8 +417,32 @@ function DiffViewer({ diff, nodeId, nodeLabel, isSelfQuote }: { diff: string | u
     let selectedText = "";
     const hideBtn = () => { btn.style.display = "none"; };
 
+    const scrollParent = el.closest(".filebrowser-content") || el.parentElement;
+
+    const positionBtn = () => {
+      const sel = window.getSelection();
+      if (!sel?.rangeCount || !sel.toString().trim()) { hideBtn(); return; }
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+      const rects = range.getClientRects();
+      const firstRect = rects.length ? rects[0] : range.getBoundingClientRect();
+      const fullRect = range.getBoundingClientRect();
+      // Clamp to scroll container bounds
+      if (scrollParent) {
+        const bounds = scrollParent.getBoundingClientRect();
+        if (fullRect.bottom > bounds.bottom) { btn.style.visibility = "hidden"; return; }
+      }
+      // Clamp to sticky diff-file-header
+      const fileSection = range.startContainer.parentElement?.closest(".diff-file");
+      const header = fileSection?.querySelector(".diff-file-header");
+      const minTop = header ? header.getBoundingClientRect().bottom : (scrollParent?.getBoundingClientRect().top ?? 0);
+      if (firstRect.top - 28 < minTop) { btn.style.visibility = "hidden"; return; }
+      btn.style.visibility = "";
+      btn.style.left = `${firstRect.left + firstRect.width / 2}px`;
+      btn.style.top = `${firstRect.top - 4}px`;
+    };
+
     const onMouseUp = () => {
-      // Defer so the browser can collapse the selection first (e.g. click-to-deselect)
       requestAnimationFrame(() => {
         const sel = window.getSelection();
         const text = sel?.toString().trim();
@@ -426,11 +450,14 @@ function DiffViewer({ diff, nodeId, nodeLabel, isSelfQuote }: { diff: string | u
         const range = sel.getRangeAt(0);
         if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
         selectedText = text;
-        const rect = range.getBoundingClientRect();
-        btn.style.left = `${rect.left + rect.width / 2}px`;
-        btn.style.top = `${rect.top - 4}px`;
+        positionBtn();
         btn.style.display = "";
       });
+    };
+
+    const onScroll = () => {
+      if (btn.style.display === "none") return;
+      positionBtn();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -464,12 +491,14 @@ function DiffViewer({ diff, nodeId, nodeLabel, isSelfQuote }: { diff: string | u
 
     el.addEventListener("mouseup", onMouseUp);
     el.addEventListener("mousedown", onMouseDown);
+    scrollParent?.addEventListener("scroll", onScroll, true);
     btn.addEventListener("mousedown", onBtnMouseDown);
     btn.addEventListener("click", onBtnClick);
 
     return () => {
       el.removeEventListener("mouseup", onMouseUp);
       el.removeEventListener("mousedown", onMouseDown);
+      scrollParent?.removeEventListener("scroll", onScroll, true);
       btn.removeEventListener("mousedown", onBtnMouseDown);
       btn.removeEventListener("click", onBtnClick);
       btn.remove();
@@ -530,8 +559,31 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel, isSelfQuote }: {
     let selectedText = "";
     const hideBtn = () => { btn.style.display = "none"; };
 
+    const scrollParent = el.closest(".filebrowser-content") || el.parentElement;
+    const filePathBar = scrollParent?.querySelector(".filebrowser-filepath");
+
+    const positionBtn = () => {
+      const sel = window.getSelection();
+      if (!sel?.rangeCount || !sel.toString().trim()) { hideBtn(); return; }
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+      const rects = range.getClientRects();
+      const firstRect = rects.length ? rects[0] : range.getBoundingClientRect();
+      const fullRect = range.getBoundingClientRect();
+      // Clamp to scroll container bottom
+      if (scrollParent) {
+        const bounds = scrollParent.getBoundingClientRect();
+        if (fullRect.bottom > bounds.bottom) { btn.style.visibility = "hidden"; return; }
+      }
+      // Clamp to filepath header
+      const minTop = filePathBar ? filePathBar.getBoundingClientRect().bottom : (scrollParent?.getBoundingClientRect().top ?? 0);
+      if (firstRect.top - 28 < minTop) { btn.style.visibility = "hidden"; return; }
+      btn.style.visibility = "";
+      btn.style.left = `${firstRect.left + firstRect.width / 2}px`;
+      btn.style.top = `${firstRect.top - 4}px`;
+    };
+
     const onMouseUp = () => {
-      // Defer so the browser can collapse the selection first (e.g. click-to-deselect)
       requestAnimationFrame(() => {
         const sel = window.getSelection();
         const text = sel?.toString().trim();
@@ -539,11 +591,14 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel, isSelfQuote }: {
         const range = sel.getRangeAt(0);
         if (!el.contains(range.commonAncestorContainer)) { hideBtn(); return; }
         selectedText = text;
-        const rect = range.getBoundingClientRect();
-        btn.style.left = `${rect.left + rect.width / 2}px`;
-        btn.style.top = `${rect.top - 4}px`;
+        positionBtn();
         btn.style.display = "";
       });
+    };
+
+    const onScroll = () => {
+      if (btn.style.display === "none") return;
+      positionBtn();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -578,12 +633,14 @@ function ContentViewer({ nodeId, filePath, content, nodeLabel, isSelfQuote }: {
 
     el.addEventListener("mouseup", onMouseUp);
     el.addEventListener("mousedown", onMouseDown);
+    scrollParent?.addEventListener("scroll", onScroll, true);
     btn.addEventListener("mousedown", onBtnMouseDown);
     btn.addEventListener("click", onBtnClick);
 
     return () => {
       el.removeEventListener("mouseup", onMouseUp);
       el.removeEventListener("mousedown", onMouseDown);
+      scrollParent?.removeEventListener("scroll", onScroll, true);
       btn.removeEventListener("mousedown", onBtnMouseDown);
       btn.removeEventListener("click", onBtnClick);
       btn.remove();

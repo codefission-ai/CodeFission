@@ -76,7 +76,8 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(220);
   const sidebarCollapsed = !sidebarOpen;
   const setSidebarCollapsed = (v: boolean | ((prev: boolean) => boolean)) => {
-    const collapsed = typeof v === "function" ? v(!sidebarOpen) : v;
+    const currentOpen = useStore.getState().sidebarOpen;
+    const collapsed = typeof v === "function" ? v(!currentOpen) : v;
     actions.setSidebarOpen(!collapsed);
   };
   const sidebarRef = useRef<HTMLDivElement>(null);
