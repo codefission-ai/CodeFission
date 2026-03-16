@@ -33,10 +33,14 @@ class TreesMixin:
             await self.send(WS.ERROR, error=f"Not a directory: {repo_path}")
             return
 
-        repo_id = data.get("repo_id") or self.repo_id
-        head_commit = data.get("head_commit") or self.head_commit
+        # Only reuse connection state if the repo_path hasn't changed.
+        # If this is a NEW repo_path, we must auto-detect fresh repo_id/head_commit
+        # — never reuse stale values from the previous repo.
+        same_repo = self.repo_path and repo_path == self.repo_path
+        repo_id = data.get("repo_id") or (self.repo_id if same_repo else None)
+        head_commit = data.get("head_commit") or (self.head_commit if same_repo else None)
 
-        # Auto-detect repo_id and head_commit from the git repo if not provided
+        # Auto-detect repo_id and head_commit from the git repo
         if not repo_id or not head_commit:
             try:
                 set_project_path(repo_path)
