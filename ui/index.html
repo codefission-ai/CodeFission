@@ -2081,6 +2081,71 @@
       cursor: pointer; align-self: flex-start; transition: all 0.15s;
     }
     .settings-save-btn:hover { filter: brightness(1.1); }
+    .settings-save-btn-small {
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      background: var(--accent); color: white; border: none; border-radius: 4px;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .settings-save-btn-small:hover { filter: brightness(1.1); }
+
+    /* ── Auth status cards ─────────────────────────────────────── */
+    .settings-auth-status {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .settings-provider-status {
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--bg-surface);
+    }
+    .settings-provider-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .settings-provider-name {
+      font-size: 12px; font-weight: 600; color: var(--text-primary);
+    }
+    .settings-tag-ok {
+      background: rgba(40, 167, 69, 0.12); color: #28a745;
+    }
+    .settings-tag-warn {
+      background: rgba(220, 53, 69, 0.12); color: #dc3545;
+    }
+    .settings-auth-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 0;
+      font-size: 11px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .settings-auth-row:first-of-type { border-top: none; }
+    .settings-auth-ok {
+      color: #28a745; font-weight: 500;
+    }
+    .settings-auth-missing {
+      color: var(--text-muted); font-weight: 500;
+    }
+    .settings-auth-detail {
+      color: var(--text-muted); font-size: 11px;
+      font-family: monospace; letter-spacing: 0.3px;
+      max-width: 200px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── API key rows ──────────────────────────────────────────── */
+    .settings-api-keys {
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 2px;
+    }
+    .settings-api-key-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .settings-api-key-label {
+      font-size: 11px; font-weight: 500; color: var(--text-secondary);
+      min-width: 80px; flex-shrink: 0;
+    }
+    .settings-api-key-input {
+      flex: 1; min-width: 0;
+    }
 
     /* ── Dark theme (Monokai) ────────────────────────────────────── */
     [data-theme="dark"] {
