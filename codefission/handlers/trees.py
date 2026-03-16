@@ -85,7 +85,7 @@ class TreesMixin:
             try:
                 _, actual_branch, _ = await self.orch.run_git(repo_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
                 tree, _root = await self.orch.create_tree(
-                    repo_name, base_branch=actual_branch,
+                    "Untitled", base_branch=actual_branch,
                     repo_id=repo_id, repo_path=str(repo_path), repo_name=repo_name,
                 )
                 if tree.base_commit:
