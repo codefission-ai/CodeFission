@@ -69,15 +69,30 @@ class ChatMixin:
                     if tree and tree.name == "Untitled":
                         asyncio.create_task(self._auto_name_tree(tree.id, msg, tree))
 
-                    # Init streaming state for reconnect support
+                    # Init streaming state for reconnect + cancel support
                     state = StreamState(node_id=nid, tree_id=event.node.tree_id, send_fn=self.send)
+                    state.stream_task = self.tasks.get(nid)  # the _run_chat task
                     self.streams[nid] = state
                     _active_streams[nid] = state
                     await bus.emit(STREAM_START, node_id=nid)
                     await self.send(WS.STATUS, node_id=nid, status="active")
 
                 elif isinstance(event, SessionInit):
-                    pass  # Orchestrator handles session_id saving
+                    # Track SDK subprocess PID for cancel support
+                    if nid in self.streams and not self.streams[nid].sdk_pid:
+                        await asyncio.sleep(0.3)  # give subprocess time to start
+                        from store.processes import find_child_by_cwd
+                        from store.git import resolve_workspace
+                        try:
+                            tree_id = self.streams[nid].tree_id
+                            tree = await self.orch.get_tree(tree_id)
+                            if tree:
+                                ws_path = resolve_workspace(tree.root_node_id, nid)
+                                pid = find_child_by_cwd(ws_path)
+                                if pid:
+                                    self.streams[nid].sdk_pid = pid
+                        except Exception:
+                            pass
 
                 elif isinstance(event, TextDelta):
                     if nid in self.streams:
