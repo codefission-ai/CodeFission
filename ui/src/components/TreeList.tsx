@@ -95,12 +95,29 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
   currentTreeId: string | null;
 }) {
   const [collapsed, setCollapsed] = useState(!isActiveProject);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
 
   // Auto-expand when this project becomes active
   const wasActive = useState(isActiveProject)[0];
   if (isActiveProject && !wasActive && collapsed) {
     setCollapsed(false);
   }
+
+  const handleCreate = () => {
+    if (!group.repoPath) return;
+    // Use the first tree's base_branch as default (handles repos where default is "master" etc.)
+    const defaultBranch = group.trees[0]?.base_branch || "main";
+    send({
+      type: WS.CREATE_TREE,
+      name: newName.trim() || "Untitled",
+      base_branch: defaultBranch,
+      repo_id: group.repoId,
+      repo_path: group.repoPath,
+    });
+    setNewName("");
+    setCreating(false);
+  };
 
   return (
     <div className="project-section">
@@ -134,14 +151,8 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
             className="project-add-btn"
             onClick={(e) => {
               e.stopPropagation();
-              // Create immediately with "Untitled" — auto-named after first message
-              send({
-                type: WS.CREATE_TREE,
-                name: "Untitled",
-                base_branch: group.trees[0]?.base_branch || "main",
-                repo_id: group.repoId,
-                repo_path: group.repoPath,
-              });
+              setCollapsed(false);
+              setCreating(true);
             }}
             title="New tree in this project"
           >
@@ -154,6 +165,27 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
       </div>
       {!collapsed && (
         <div className="project-trees">
+          {creating && (
+            <div className="project-create-inline">
+              <input
+                autoFocus
+                placeholder="New tree..."
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") setCreating(false);
+                }}
+                onBlur={() => { if (!newName.trim()) setCreating(false); }}
+              />
+              <button onClick={handleCreate} title="Create">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="6" y1="1" x2="6" y2="11" />
+                  <line x1="1" y1="6" x2="11" y2="6" />
+                </svg>
+              </button>
+            </div>
+          )}
           {group.trees.map((t) => (
             <TreeItem
               key={t.id}
