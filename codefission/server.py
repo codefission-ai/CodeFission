@@ -128,6 +128,7 @@ def main():
         port=actual_port,
         ws_ping_interval=30,
         ws_ping_timeout=10,
+        loop="asyncio",  # avoid uvloop signal handling issues on macOS
     )
 
 
