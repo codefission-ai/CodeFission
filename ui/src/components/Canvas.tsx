@@ -17,7 +17,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
-
 import { useStore, actions, type CNode, type FileQuote, isDetachable } from "../store";
 import { send, WS } from "../ws";
 import { layoutTree } from "../layout";

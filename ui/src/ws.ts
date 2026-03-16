@@ -319,9 +319,9 @@ function handle(data: any) {
         current_branch: data.current_branch,
         is_dirty: data.is_dirty,
       });
-      // Load tree + nodes directly from the response
+      // Add/update this tree without wiping the others
       if (data.tree) {
-        actions.setTrees([data.tree]);
+        actions.addTree(data.tree);
         actions.selectTree(data.tree.id);
         if (data.nodes) actions.setNodes(data.nodes);
         if (data.staleness) actions.setTreeStaleness(data.tree.id, data.staleness);

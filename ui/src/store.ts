@@ -234,7 +234,10 @@ export const actions = {
   setConnected: (c: boolean) => useStore.setState({ connected: c }),
 
   setTrees: (trees: CTree[]) => useStore.setState({ trees }),
-  addTree: (t: CTree) => useStore.setState((s) => ({ trees: [t, ...s.trees] })),
+  addTree: (t: CTree) => useStore.setState((s) => {
+    const exists = s.trees.some((x) => x.id === t.id);
+    return { trees: exists ? s.trees.map((x) => x.id === t.id ? t : x) : [t, ...s.trees] };
+  }),
   removeTree: (id: string) =>
     useStore.setState((s) => ({
       trees: s.trees.filter((t) => t.id !== id),

@@ -502,7 +502,8 @@ def detect_repo_name(repo_path: Path) -> str:
                     path = url[len(prefix):]
                     if path.endswith(".git"):
                         path = path[:-4]
-                    return path
+                    # Return just the repo name, not owner/repo
+                    return path.split("/")[-1] if "/" in path else path
     except Exception:
         pass
     return repo_path.name
