@@ -2338,37 +2338,36 @@
     .git-graph-close-btn:hover {
       background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-visible);
     }
-    .git-graph-list {
-      flex: 1; overflow-y: auto; padding: 8px 20px 20px;
+    .git-graph-body {
+      flex: 1; overflow-y: auto; overflow-x: auto;
+      display: flex; flex-direction: row;
+      padding: 8px 0 20px;
     }
+    .git-graph-svg {
+      flex-shrink: 0;
+      margin-left: 12px;
+    }
+    .git-graph-info {
+      flex: 1; min-width: 0;
+      padding-left: 8px; padding-right: 20px;
+    }
+    .git-graph-info-row {
+      display: flex; flex-direction: column; justify-content: center;
+      cursor: pointer; padding: 0 8px;
+      border-radius: var(--radius-sm);
+      transition: background 0.12s;
+      overflow: hidden;
+    }
+    .git-graph-info-row:hover { background: var(--bg-hover); }
     .git-graph-status {
       text-align: center; padding: 40px 20px;
       color: var(--text-muted); font-size: 13px;
+      width: 100%;
     }
     .git-graph-error { color: var(--red); }
-    .git-graph-commit {
-      display: flex; gap: 12px; cursor: pointer;
-      transition: background 0.12s;
-      padding: 2px 8px; border-radius: var(--radius-sm);
-    }
-    .git-graph-commit:hover { background: var(--bg-hover); }
-    .git-graph-art {
-      font-family: var(--font-mono, monospace); font-size: 12px;
-      line-height: 1.4; white-space: pre; flex-shrink: 0;
-      color: var(--text-dim); margin: 0; padding: 0;
-      min-width: 20px; user-select: none;
-    }
-    .git-graph-art.has-tree { color: #3b82f6; }
-    .git-graph-art.has-node { color: var(--green); }
-    .git-graph-line {
-      width: 2px; flex: 1; min-height: 8px;
-      background: var(--border-dim);
-    }
-    .git-graph-content {
-      flex: 1; min-width: 0; padding: 4px 0 8px;
-    }
     .git-graph-row-main {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+      min-width: 0;
     }
     .git-graph-sha {
       font-family: var(--font-mono); font-size: 11px; font-weight: 600;
@@ -2400,16 +2399,12 @@
     .git-graph-cf-badge.nodes {
       background: var(--green-dim); color: var(--green);
     }
-    .git-graph-meta {
-      font-size: 11px; color: var(--text-muted); margin-top: 2px;
-    }
-    .git-graph-merge-badge {
-      font-size: 9px; font-weight: 600; padding: 0 4px; border-radius: 3px;
-      background: var(--amber-dim, rgba(217,119,6,0.08)); color: var(--amber);
-      margin-left: 6px;
+    .git-graph-time {
+      font-size: 11px; color: var(--text-muted); flex-shrink: 0;
+      margin-left: auto;
     }
     .git-graph-expanded {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;
     }
     .git-graph-entity-btn {
       font-size: 11px; padding: 3px 10px; border-radius: var(--radius-sm);
@@ -2437,9 +2432,6 @@
     .git-graph-entity-btn.plant:hover {
       background: var(--accent-dim); color: var(--text-primary);
       border-color: var(--accent);
-    }
-    [data-theme="dark"] .git-graph-dot {
-      border-color: var(--bg-deep);
     }
     [data-theme="dark"] .git-graph-cf-badge.trees {
       background: rgba(59,130,246,0.15); color: #60a5fa;

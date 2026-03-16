@@ -173,6 +173,77 @@ async def clone_github_repo(url: str, name: str | None = None):
     return {"path": str(project_path), "name": name}
 
 
+def _compute_lanes(commits: list[dict]) -> tuple[list[dict], int]:
+    """Assign each commit a lane (column index) and compute connection paths.
+
+    Returns (commits_with_lanes, max_lanes).
+    Each commit gets:
+    - lane: int (column index, 0-based)
+    - connections: list of {from_lane, to_lane, type}
+    - pass_through: list of lane indices that have active lines passing through this row
+    """
+    active_lanes: list[str | None] = []  # SHA that "owns" each lane position
+
+    for commit in commits:
+        sha = commit["sha"]
+        parents = commit["parents"]
+
+        # Find if this commit is already reserved in a lane (as a parent of a previous commit)
+        lane = None
+        for i, lane_sha in enumerate(active_lanes):
+            if lane_sha == sha:
+                lane = i
+                break
+
+        # If not found, allocate a new lane
+        if lane is None:
+            try:
+                lane = active_lanes.index(None)
+                active_lanes[lane] = sha
+            except ValueError:
+                lane = len(active_lanes)
+                active_lanes.append(sha)
+
+        commit["lane"] = lane
+        commit["connections"] = []
+
+        # Process parents
+        if len(parents) == 0:
+            # Root commit -- lane ends here
+            active_lanes[lane] = None
+        elif len(parents) >= 1:
+            # First parent keeps this lane (straight line down)
+            active_lanes[lane] = parents[0]
+            commit["connections"].append({
+                "from_lane": lane, "to_lane": lane, "type": "straight",
+            })
+            # Additional parents (merge sources) get their own lanes
+            for extra_parent in parents[1:]:
+                parent_lane = None
+                for i, ls in enumerate(active_lanes):
+                    if ls == extra_parent:
+                        parent_lane = i
+                        break
+                if parent_lane is None:
+                    try:
+                        parent_lane = active_lanes.index(None)
+                        active_lanes[parent_lane] = extra_parent
+                    except ValueError:
+                        parent_lane = len(active_lanes)
+                        active_lanes.append(extra_parent)
+                commit["connections"].append({
+                    "from_lane": lane, "to_lane": parent_lane, "type": "merge",
+                })
+
+        # Record which lanes are active pass-throughs on this row (excluding this commit's own lane)
+        commit["pass_through"] = [
+            i for i, ls in enumerate(active_lanes) if ls is not None and i != lane
+        ]
+
+    max_lanes = len(active_lanes) if active_lanes else 1
+    return commits, max_lanes
+
+
 @app.get("/api/git-graph/{repo_path:path}")
 async def git_graph(repo_path: str, limit: int = 100):
     """Return git commit graph for a repository, annotated with CodeFission entities."""
@@ -196,34 +267,6 @@ async def git_graph(repo_path: str, limit: int = 100):
     if proc.returncode != 0:
         raise HTTPException(400, f"git log failed: {stderr.decode()}")
 
-    # Also run git log --graph to get the ASCII branch art
-    proc2 = await asyncio.create_subprocess_exec(
-        "git", "log", "--all", "--graph",
-        "--format=%H",
-        "--topo-order", f"-n{limit}",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=str(repo),
-    )
-    graph_stdout, _ = await proc2.communicate()
-
-    # Parse graph output: extract the graph chars (everything before the SHA)
-    # Lines look like: "* abc123", "| * def456", "|/  ", "|\  ", etc.
-    graph_lines: dict[str, str] = {}  # sha -> graph prefix
-    pending_graph = ""
-    for gline in graph_stdout.decode().splitlines():
-        gline_stripped = gline.rstrip()
-        # Try to find a 40-char SHA at the end
-        parts = gline_stripped.rsplit(" ", 1)
-        if len(parts) == 2 and len(parts[1]) == 40:
-            sha = parts[1]
-            graph_prefix = pending_graph + parts[0]
-            graph_lines[sha] = graph_prefix
-            pending_graph = ""
-        else:
-            # Continuation line (branch lines between commits)
-            pending_graph += gline_stripped + "\n"
-
     # Parse commits
     commits = []
     for line in stdout.decode().strip().splitlines():
@@ -243,10 +286,12 @@ async def git_graph(repo_path: str, limit: int = 100):
             "author": author,
             "date": date,
             "refs": refs,
-            "graph": graph_lines.get(sha, "*"),
             "trees": [],
             "nodes": [],
         })
+
+    # Compute lane assignments for SVG graph rendering
+    commits, max_lanes = _compute_lanes(commits)
 
     # Query DB for CodeFission trees and nodes in this repo
     repo_path_str = str(repo)
@@ -305,6 +350,7 @@ async def git_graph(repo_path: str, limit: int = 100):
         "commits": commits,
         "branches": sorted(branches),
         "repo_name": repo_name,
+        "max_lanes": max_lanes,
     }
 
 
