@@ -148,6 +148,7 @@ async def browse_directory(path: str = "~"):
     return {
         "current": str(target),
         "parent": str(target.parent) if target != target.parent else None,
+        "is_git": (target / ".git").is_dir(),
         "entries": entries,
     }
 

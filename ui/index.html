@@ -409,6 +409,27 @@
     .project-setup-name-input input:focus { outline: none; border-color: var(--accent); }
     .project-setup-name-hint { font-size: 0.75rem; color: var(--text-dim); }
     .project-setup-actions { display: flex; gap: 12px; margin-top: 16px; }
+    .project-setup-folder-actions { margin-top: 12px; }
+    .project-setup-git-warning {
+      margin-top: 12px; padding: 12px 16px; border-radius: 8px;
+      background: #fff3e0; border: 1px solid #ffb74d; max-width: 500px; width: 100%;
+    }
+    .git-warning-text { font-size: 0.85rem; color: #e65100; margin-bottom: 8px; }
+    .git-warning-checkbox {
+      display: flex; align-items: center; gap: 8px; font-size: 0.85rem;
+      color: var(--text-primary); cursor: pointer;
+    }
+    .git-warning-checkbox input { cursor: pointer; }
+    .git-warning-checkbox code { font-size: 0.8rem; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; }
+    .project-setup-git-ok {
+      margin-top: 12px; padding: 8px 16px; border-radius: 8px;
+      background: #e8f5e9; border: 1px solid #66bb6a; font-size: 0.85rem; color: #2e7d32;
+      max-width: 500px; width: 100%;
+    }
+    [data-theme="dark"] .project-setup-git-warning { background: #3e2723; border-color: #8d6e63; }
+    [data-theme="dark"] .git-warning-text { color: #ffab91; }
+    [data-theme="dark"] .git-warning-checkbox code { background: rgba(255,255,255,0.1); }
+    [data-theme="dark"] .project-setup-git-ok { background: #1b3a1b; border-color: #4caf50; color: #81c784; }
     .project-setup-error {
       color: #e55; font-size: 0.8rem; padding: 6px 12px; border-radius: 6px;
       background: rgba(238,85,85,0.1); border: 1px solid rgba(238,85,85,0.3);

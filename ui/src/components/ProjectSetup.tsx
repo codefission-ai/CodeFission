@@ -11,13 +11,15 @@ interface BrowseEntry {
 interface BrowseResult {
   current: string;
   parent: string | null;
+  is_git: boolean;
   entries: BrowseEntry[];
 }
 
-function FolderBrowser({ onSelect }: { onSelect: (path: string) => void }) {
+function FolderBrowser({ onSelect }: { onSelect: (path: string, isGit: boolean) => void }) {
   const [currentPath, setCurrentPath] = useState("~");
   const [resolvedPath, setResolvedPath] = useState("");
   const [parentPath, setParentPath] = useState<string | null>(null);
+  const [currentIsGit, setCurrentIsGit] = useState(false);
   const [entries, setEntries] = useState<BrowseEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,6 +36,7 @@ function FolderBrowser({ onSelect }: { onSelect: (path: string) => void }) {
         setEntries(data.entries);
         setResolvedPath(data.current);
         setParentPath(data.parent);
+        setCurrentIsGit(data.is_git);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -92,9 +95,9 @@ function FolderBrowser({ onSelect }: { onSelect: (path: string) => void }) {
       </div>
       <button
         className="project-setup-btn primary folder-browser-select"
-        onClick={() => onSelect(resolvedPath || currentPath)}
+        onClick={() => onSelect(resolvedPath || currentPath, currentIsGit)}
       >
-        Select This Folder
+        Select This Folder{currentIsGit ? "" : " (not a git repo)"}
       </button>
     </div>
   );
@@ -105,6 +108,8 @@ type Source = "local" | "github" | "empty";
 export default function ProjectSetup() {
   const [source, setSource] = useState<Source | null>(null);
   const [folderPath, setFolderPath] = useState("");
+  const [folderIsGit, setFolderIsGit] = useState<boolean | null>(null); // null = unknown
+  const [acceptGitInit, setAcceptGitInit] = useState(false);
   const [githubUrl, setGithubUrl] = useState("");
   const [cloneName, setCloneName] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -121,13 +126,29 @@ export default function ProjectSetup() {
     setLoading(false);
   };
 
-  // Flow 1 & 2: Open local folder (auto-inits git if needed)
+  // Flow 1 & 2: Open local folder
+  const canOpenLocal = folderPath.trim() && (folderIsGit === true || acceptGitInit);
+
   const handleOpenLocal = () => {
-    const path = folderPath.trim();
-    if (!path) return;
-    send({ type: WS.OPEN_REPO, repo_path: path });
+    if (!canOpenLocal) return;
+    send({ type: WS.OPEN_REPO, repo_path: folderPath.trim() });
     actions.stopCreatingProject();
   };
+
+  // Check git status when path changes (debounced)
+  useEffect(() => {
+    if (!folderPath.trim()) { setFolderIsGit(null); setAcceptGitInit(false); return; }
+    const timer = setTimeout(() => {
+      fetch(`/api/browse?path=${encodeURIComponent(folderPath.trim())}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data) { setFolderIsGit(data.is_git); setAcceptGitInit(false); }
+          else setFolderIsGit(null);
+        })
+        .catch(() => setFolderIsGit(null));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [folderPath]);
 
   // Flow 3: Empty project
   const handleCreateEmpty = async () => {
@@ -245,8 +266,7 @@ export default function ProjectSetup() {
         <div className="project-setup-local">
           <h2>Open Local Folder</h2>
           <p className="project-setup-hint">
-            Type a path directly or browse to select a folder.
-            Non-git folders will be automatically initialized.
+            Type a path or browse to select a folder on this machine.
           </p>
 
           <div className="project-setup-folder-input">
@@ -257,21 +277,49 @@ export default function ProjectSetup() {
               value={folderPath}
               onChange={(e) => setFolderPath(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && folderPath.trim()) handleOpenLocal();
+                if (e.key === "Enter" && canOpenLocal) handleOpenLocal();
                 if (e.key === "Escape") handleBack();
               }}
             />
+          </div>
+
+          {/* Git status warning */}
+          {folderPath.trim() && folderIsGit === false && (
+            <div className="project-setup-git-warning">
+              <div className="git-warning-text">
+                This folder is not a git repository. CodeFission requires git to track changes.
+              </div>
+              <label className="git-warning-checkbox">
+                <input
+                  type="checkbox"
+                  checked={acceptGitInit}
+                  onChange={(e) => setAcceptGitInit(e.target.checked)}
+                />
+                Initialize as a git repository (runs <code>git init</code>)
+              </label>
+            </div>
+          )}
+
+          {folderPath.trim() && folderIsGit === true && (
+            <div className="project-setup-git-ok">
+              Git repository detected
+            </div>
+          )}
+
+          <div className="project-setup-folder-actions">
             <button
               className="project-setup-btn primary"
-              disabled={!folderPath.trim()}
+              disabled={!canOpenLocal}
               onClick={handleOpenLocal}
             >
-              Open
+              Open Project
             </button>
           </div>
 
-          <FolderBrowser onSelect={(path) => {
+          <FolderBrowser onSelect={(path, isGit) => {
             setFolderPath(path);
+            setFolderIsGit(isGit);
+            setAcceptGitInit(false);
           }} />
 
           <div className="project-setup-actions">
