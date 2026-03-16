@@ -167,17 +167,29 @@ function CommitDot({ commit, rowIndex }: { commit: GitCommit; rowIndex: number }
   const y = rowY(rowIndex);
   const color = laneColor(commit.branch_id);
   const hasTrees = commit.trees.length > 0;
-  const r = hasTrees ? DOT_RADIUS + 2 : DOT_RADIUS;
 
   return (
-    <circle
-      cx={x}
-      cy={y}
-      r={r}
-      fill={color}
-      stroke="var(--bg-deep, #1a1a2e)"
-      strokeWidth={2}
-    />
+    <>
+      <circle
+        cx={x}
+        cy={y}
+        r={DOT_RADIUS}
+        fill={color}
+        stroke="var(--bg-deep, #1a1a2e)"
+        strokeWidth={2}
+      />
+      {hasTrees && (
+        <circle
+          cx={x}
+          cy={y}
+          r={DOT_RADIUS + 3}
+          fill="none"
+          stroke={color}
+          strokeWidth={1.5}
+          opacity={0.6}
+        />
+      )}
+    </>
   );
 }
 

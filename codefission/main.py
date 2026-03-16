@@ -213,6 +213,10 @@ def _compute_lanes(commits: list[dict]) -> tuple[list[dict], int]:
                     next_branch += 1
 
     # ── Phase 2: compute branch row-ranges ──────────────────────────────
+    # A branch's range extends from its first commit to the row of the
+    # PARENT of its last commit — so pass-through lines reach the merge point.
+    sha_to_row = {c["sha"]: i for i, c in enumerate(commits)}
+
     branch_ranges: dict[int, list[int]] = {}  # branch_id -> [first_row, last_row]
     for i, commit in enumerate(commits):
         bid = branch_of[commit["sha"]]
@@ -220,6 +224,17 @@ def _compute_lanes(commits: list[dict]) -> tuple[list[dict], int]:
             branch_ranges[bid] = [i, i]
         else:
             branch_ranges[bid][1] = i
+
+    # Extend each branch's range to the parent row (so lines connect to the fork point)
+    for commit in commits:
+        bid = branch_of[commit["sha"]]
+        for parent_sha in commit["parents"]:
+            if parent_sha in sha_to_row and parent_sha in branch_of:
+                parent_bid = branch_of[parent_sha]
+                if parent_bid != bid:
+                    # This branch connects to a different branch — extend range to parent row
+                    parent_row = sha_to_row[parent_sha]
+                    branch_ranges[bid][1] = max(branch_ranges[bid][1], parent_row)
 
     # ── Phase 3: greedily pack branches into columns ────────────────────
     sorted_branches = sorted(branch_ranges.items(), key=lambda x: x[1][0])
