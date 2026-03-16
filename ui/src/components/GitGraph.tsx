@@ -167,29 +167,17 @@ function CommitDot({ commit, rowIndex }: { commit: GitCommit; rowIndex: number }
   const y = rowY(rowIndex);
   const color = laneColor(commit.branch_id);
   const hasTrees = commit.trees.length > 0;
+  const r = hasTrees ? DOT_RADIUS + 2 : DOT_RADIUS;
 
   return (
-    <>
-      <circle
-        cx={x}
-        cy={y}
-        r={DOT_RADIUS}
-        fill={color}
-        stroke="var(--bg-deep, #1a1a2e)"
-        strokeWidth={2}
-      />
-      {hasTrees && (
-        <circle
-          cx={x}
-          cy={y}
-          r={DOT_RADIUS + 3}
-          fill="none"
-          stroke={color}
-          strokeWidth={1.5}
-          opacity={0.6}
-        />
-      )}
-    </>
+    <circle
+      cx={x}
+      cy={y}
+      r={r}
+      fill={color}
+      stroke="var(--bg-deep, #1a1a2e)"
+      strokeWidth={2}
+    />
   );
 }
 
@@ -213,7 +201,7 @@ function CommitInfoRow({
 
   return (
     <div
-      className="git-graph-info-row"
+      className={`git-graph-info-row ${expanded ? "expanded" : ""}`}
       style={{ height: ROW_HEIGHT }}
       onClick={() => setExpanded((e) => !e)}
     >
@@ -244,31 +232,38 @@ function CommitInfoRow({
         <span className="git-graph-time">{timeAgo(commit.date)}</span>
       </div>
       {expanded && (
-        <div className="git-graph-expanded">
-          {commit.trees.map((t) => (
+        <div className="git-graph-popover" onClick={(e) => e.stopPropagation()}>
+          <div className="git-graph-popover-header">
+            <span className="git-graph-popover-sha">{commit.sha.slice(0, 12)}</span>
+            <span className="git-graph-popover-author">{commit.author} · {timeAgo(commit.date)}</span>
+          </div>
+          <div className="git-graph-popover-message">{commit.message}</div>
+          <div className="git-graph-popover-actions">
+            {commit.trees.map((t) => (
+              <button
+                key={t.tree_id}
+                className="git-graph-entity-btn tree"
+                onClick={() => onClickTree(t.tree_id)}
+              >
+                Open tree: {t.tree_name}
+              </button>
+            ))}
+            {commit.nodes.map((n) => (
+              <button
+                key={n.node_id}
+                className="git-graph-entity-btn node"
+                onClick={() => onClickNode(n.node_id, n.tree_id)}
+              >
+                Go to node: {n.label || n.node_id.slice(0, 7)}
+              </button>
+            ))}
             <button
-              key={t.tree_id}
-              className="git-graph-entity-btn tree"
-              onClick={(e) => { e.stopPropagation(); onClickTree(t.tree_id); }}
+              className="git-graph-entity-btn plant"
+              onClick={() => onPlantTree(commit.sha)}
             >
-              Tree: {t.tree_name}
+              Plant new tree here
             </button>
-          ))}
-          {commit.nodes.map((n) => (
-            <button
-              key={n.node_id}
-              className="git-graph-entity-btn node"
-              onClick={(e) => { e.stopPropagation(); onClickNode(n.node_id, n.tree_id); }}
-            >
-              Node: {n.label || n.node_id.slice(0, 7)}
-            </button>
-          ))}
-          <button
-            className="git-graph-entity-btn plant"
-            onClick={(e) => { e.stopPropagation(); onPlantTree(commit.sha); }}
-          >
-            Plant new tree
-          </button>
+          </div>
         </div>
       )}
     </div>
