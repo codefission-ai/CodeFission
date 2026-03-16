@@ -185,16 +185,19 @@ function CommitDot({ commit, rowIndex }: { commit: GitCommit; rowIndex: number }
 
 function CommitInfoRow({
   commit,
+  expanded,
+  onToggle,
   onClickTree,
   onClickNode,
   onPlantTree,
 }: {
   commit: GitCommit;
+  expanded: boolean;
+  onToggle: () => void;
   onClickTree: (treeId: string) => void;
   onClickNode: (nodeId: string, treeId: string) => void;
   onPlantTree: (sha: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const hasTrees = commit.trees.length > 0;
   const hasNodes = commit.nodes.length > 0;
   const hasCF = hasTrees || hasNodes;
@@ -203,7 +206,7 @@ function CommitInfoRow({
     <div
       className={`git-graph-info-row ${expanded ? "expanded" : ""}`}
       style={{ height: ROW_HEIGHT }}
-      onClick={() => setExpanded((e) => !e)}
+      onClick={onToggle}
     >
       <div className="git-graph-row-main">
         <span className="git-graph-sha">{commit.short_sha}</span>
@@ -281,6 +284,7 @@ export default function GitGraph({
   const [maxLanes, setMaxLanes] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedSha, setExpandedSha] = useState<string | null>(null);
   const trees = useStore((s) => s.trees);
 
   useEffect(() => {
@@ -379,6 +383,8 @@ export default function GitGraph({
                 <CommitInfoRow
                   key={commit.sha}
                   commit={commit}
+                  expanded={expandedSha === commit.sha}
+                  onToggle={() => setExpandedSha(expandedSha === commit.sha ? null : commit.sha)}
                   onClickTree={handleClickTree}
                   onClickNode={handleClickNode}
                   onPlantTree={handlePlantTree}
