@@ -1,4 +1,4 @@
-import { actions } from "./store";
+import { actions, useStore } from "./store";
 
 // ── Wire protocol constants (mirror backend events.WS) ─────────────────
 
@@ -131,9 +131,15 @@ export function connectWs() {
     }
     sendQueue = [];
 
-    // Always start with sidebar open, list all trees across all projects
+    // Always list all trees
     actions.setSidebarOpen(true);
     send({ type: WS.LIST_TREES });
+
+    // Re-attach to current tree (reconnects active streams after WS drop)
+    const currentTreeId = useStore.getState().currentTreeId;
+    if (currentTreeId) {
+      send({ type: WS.LOAD_TREE, tree_id: currentTreeId });
+    }
   };
   ws.onclose = () => {
     actions.setConnected(false);

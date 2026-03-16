@@ -238,15 +238,16 @@
     .tree-list-items { flex: 1; overflow-y: auto; padding: 4px 0; }
 
     /* ── Project sections ──────────────────────────────────────── */
-    .project-section { margin-bottom: 2px; }
+    .project-section { margin-bottom: 4px; }
     .project-header {
       display: flex; align-items: center; gap: 6px;
-      padding: 6px 12px; cursor: pointer; font-size: 12px;
-      font-weight: 600; color: var(--text-secondary);
+      padding: 6px 12px; cursor: pointer; font-size: 11px;
+      font-weight: 700; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.04em;
       user-select: none; transition: background 0.1s;
     }
     .project-header:hover { background: var(--bg-hover); }
-    .project-header.active { color: var(--text-primary); }
+    .project-header.active { color: var(--text-secondary); }
     .project-chevron { font-size: 8px; width: 10px; text-align: center; flex-shrink: 0; color: var(--text-muted); }
     .project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
     .project-count {
@@ -272,7 +273,7 @@
       cursor: pointer; border-radius: 4px; opacity: 0;
       transition: opacity 0.1s, color 0.1s;
     }
-    .project-trees { padding-left: 8px; }
+    .project-trees { padding-left: 4px; }
     .project-create-inline {
       display: flex; padding: 4px 8px; gap: 4px;
     }
@@ -297,8 +298,9 @@
 
     .tree-item {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 16px; cursor: pointer; font-size: 12px;
+      padding: 5px 12px 5px 20px; cursor: pointer; font-size: 12px;
       color: var(--text-secondary);
+      border-radius: 4px; margin: 1px 6px;
       transition: background 0.1s;
     }
     .tree-item:hover { background: var(--bg-hover); }
@@ -306,7 +308,6 @@
       background: var(--bg-active);
       color: var(--text-primary);
       font-weight: 500;
-      border-left: 2px solid var(--accent);
     }
     .delete-btn {
       width: 20px; height: 20px;
