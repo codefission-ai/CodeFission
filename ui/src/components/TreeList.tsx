@@ -34,6 +34,7 @@ function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; is
     <div
       className={`tree-item ${isActive ? "active" : ""}`}
       onClick={() => {
+        actions.closeProjectView();
         useStore.setState({ currentTreeId: treeId });
         send({ type: WS.LOAD_TREE, tree_id: treeId });
         send({ type: WS.SELECT_TREE, tree_id: treeId });
@@ -125,17 +126,26 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
         onClick={() => setCollapsed((c) => !c)}
       >
         <span className="project-chevron">{collapsed ? "\u25B6" : "\u25BC"}</span>
-        <span
-          className="project-name"
-          title={group.repoPath || undefined}
-          onClick={(e) => {
-            if (group.repoPath) {
-              e.stopPropagation();
-              actions.viewProject(group.repoPath, group.repoName);
-            }
-          }}
-        >{group.repoName}</span>
+        <span className="project-name" title={group.repoPath || undefined}>{group.repoName}</span>
         <span className="project-count">{group.trees.length}</span>
+        {group.repoPath && (
+          <button
+            className="project-graph-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              actions.viewProject(group.repoPath!, group.repoName);
+            }}
+            title="View git graph"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <circle cx="3" cy="3" r="1.5" />
+              <circle cx="9" cy="3" r="1.5" />
+              <circle cx="6" cy="9" r="1.5" />
+              <line x1="3" y1="4.5" x2="6" y2="7.5" />
+              <line x1="9" y1="4.5" x2="6" y2="7.5" />
+            </svg>
+          </button>
+        )}
         {group.repoPath && (
           <button
             className="project-add-btn"

@@ -262,8 +262,16 @@
       transition: opacity 0.1s, color 0.1s;
       flex-shrink: 0;
     }
-    .project-header:hover .project-add-btn { opacity: 1; }
-    .project-add-btn:hover { color: var(--text-primary); }
+    .project-header:hover .project-add-btn,
+    .project-header:hover .project-graph-btn { opacity: 1; }
+    .project-add-btn:hover, .project-graph-btn:hover { color: var(--text-primary); }
+    .project-graph-btn {
+      width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; border-radius: 4px; opacity: 0;
+      transition: opacity 0.1s, color 0.1s;
+    }
     .project-trees { padding-left: 8px; }
     .project-create-inline {
       display: flex; padding: 4px 8px; gap: 4px;
