@@ -151,8 +151,13 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
             className="project-add-btn"
             onClick={(e) => {
               e.stopPropagation();
-              setCollapsed(false);
-              setCreating(true);
+              send({
+                type: WS.CREATE_TREE,
+                name: "Untitled",
+                base_branch: group.trees[0]?.base_branch || "main",
+                repo_id: group.repoId,
+                repo_path: group.repoPath,
+              });
             }}
             title="New tree in this project"
           >
