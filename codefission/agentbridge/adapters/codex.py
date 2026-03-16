@@ -59,11 +59,16 @@ class CodexAdapter(BaseAdapter):
 
             cmd.extend(config.extra_args)
 
-            # Prepend prior context for cross-provider transfer
-            prompt = config.prompt
+            # Build the prompt:
+            # Codex has no --system-prompt flag, so we prepend system instructions
+            # to the user prompt. This is the standard approach for Codex.
+            parts = []
+            if config.system_prompt:
+                parts.append(config.system_prompt)
             if config.prior_context:
-                prompt = config.prior_context + "\n\n" + prompt
-            cmd.append(prompt)
+                parts.append(config.prior_context)
+            parts.append(config.prompt)
+            cmd.append("\n\n".join(parts))
 
         return cmd
 

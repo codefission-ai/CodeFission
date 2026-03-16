@@ -263,16 +263,19 @@ async def stream_chat(
         cwd=workspace,
         model=model,
         env=_sdk_env(api_key, provider),
+        permission_mode="bypassPermissions",
     )
 
-    # System prompt: sent on fresh sessions only.
-    # On forked sessions, Claude already has it from the parent — don't resend.
     if resume_sid:
         config_kwargs["resume_session_id"] = resume_sid
         config_kwargs["fork_session"] = fork
+        # For Claude forks: don't resend system_prompt (already in session history).
+        # For Codex: resume barely works, but if it does, system_prompt should be included
+        # since Codex prepends it to the prompt (no separate system channel).
+        if provider_type != ProviderType.CLAUDE:
+            config_kwargs["system_prompt"] = system_prompt
     else:
         config_kwargs["system_prompt"] = system_prompt
-        config_kwargs["permission_mode"] = "bypassPermissions"
 
     config = SessionConfig(**config_kwargs)
 
