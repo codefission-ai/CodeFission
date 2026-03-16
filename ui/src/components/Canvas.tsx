@@ -17,6 +17,10 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import TreeNode from "./TreeNode";
+
+// Safari renders text blurry inside CSS transform:scale() containers.
+// Lock zoom to 1.0 on Safari to keep text crisp.
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 import { useStore, actions, type CNode, type FileQuote, isDetachable } from "../store";
 import { send, WS } from "../ws";
 import { layoutTree } from "../layout";
@@ -548,8 +552,8 @@ function CanvasInner() {
         onNodesChange={onNodesChange}
         onPaneClick={() => actions.selectNode(null)}
         fitView={!ready}
-        minZoom={0.3}
-        maxZoom={2}
+        minZoom={isSafari ? 1 : 0.3}
+        maxZoom={isSafari ? 1 : 2}
         zoomOnScroll={true}
         zoomOnPinch={true}
         panOnScroll={true}

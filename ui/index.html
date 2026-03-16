@@ -531,16 +531,8 @@
 
     /* React Flow overrides for dark theme */
     .react-flow__background { background: var(--bg-deep) !important; }
-    /* Safari: force crisp text inside the scaled viewport */
-    .react-flow__viewport {
-      -webkit-font-smoothing: subpixel-antialiased;
-      -webkit-transform: translateZ(0);
-    }
     .react-flow__node {
       transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-      -webkit-transform: translateZ(0);
-      -webkit-filter: blur(0);
-      filter: blur(0);
     }
     .react-flow__node.dragging,
     .react-flow__node[data-id^="note-"] { transition: none; }
