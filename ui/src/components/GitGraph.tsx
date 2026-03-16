@@ -10,6 +10,7 @@ interface GitCommit {
   author: string;
   date: string;
   refs: string[];
+  graph: string;  // ASCII art from git log --graph (branch lines)
   trees: { tree_id: string; tree_name: string }[];
   nodes: { node_id: string; tree_id: string; label: string }[];
 }
@@ -32,13 +33,11 @@ function timeAgo(dateStr: string): string {
 
 function GitCommitRow({
   commit,
-  isLast,
   onClickTree,
   onClickNode,
   onPlantTree,
 }: {
   commit: GitCommit;
-  isLast: boolean;
   onClickTree: (treeId: string) => void;
   onClickNode: (nodeId: string, treeId: string) => void;
   onPlantTree: (sha: string) => void;
@@ -48,20 +47,12 @@ function GitCommitRow({
   const hasNodes = commit.nodes.length > 0;
   const hasCF = hasTrees || hasNodes;
 
-  const dotClass = [
-    "git-graph-dot",
-    hasTrees ? "has-tree" : "",
-    hasNodes && !hasTrees ? "has-node" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Colorize the graph art: replace * with colored dot based on CF entities
+  const graphArt = commit.graph || "*";
 
   return (
     <div className="git-graph-commit" onClick={() => setExpanded((e) => !e)}>
-      <div className="git-graph-line-col">
-        <span className={dotClass} />
-        {!isLast && <span className="git-graph-line" />}
-      </div>
+      <pre className={`git-graph-art ${hasTrees ? "has-tree" : hasNodes ? "has-node" : ""}`}>{graphArt}</pre>
       <div className="git-graph-content">
         <div className="git-graph-row-main">
           <span className="git-graph-sha">{commit.short_sha}</span>
@@ -227,11 +218,10 @@ export default function GitGraph({
         {!loading && !error && commits.length === 0 && (
           <div className="git-graph-status">No commits found.</div>
         )}
-        {commits.map((commit, i) => (
+        {commits.map((commit) => (
           <GitCommitRow
             key={commit.sha}
             commit={commit}
-            isLast={i === commits.length - 1}
             onClickTree={handleClickTree}
             onClickNode={handleClickNode}
             onPlantTree={handlePlantTree}

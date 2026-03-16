@@ -183,7 +183,7 @@ async def git_graph(repo_path: str, limit: int = 100):
     if not (repo / ".git").is_dir():
         raise HTTPException(400, f"Not a git repo: {repo}")
 
-    # Run git log
+    # Run git log with structured data
     proc = await asyncio.create_subprocess_exec(
         "git", "log", "--all",
         "--format=%H|%P|%s|%an|%aI|%D",
@@ -195,6 +195,34 @@ async def git_graph(repo_path: str, limit: int = 100):
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise HTTPException(400, f"git log failed: {stderr.decode()}")
+
+    # Also run git log --graph to get the ASCII branch art
+    proc2 = await asyncio.create_subprocess_exec(
+        "git", "log", "--all", "--graph",
+        "--format=%H",
+        "--topo-order", f"-n{limit}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(repo),
+    )
+    graph_stdout, _ = await proc2.communicate()
+
+    # Parse graph output: extract the graph chars (everything before the SHA)
+    # Lines look like: "* abc123", "| * def456", "|/  ", "|\  ", etc.
+    graph_lines: dict[str, str] = {}  # sha -> graph prefix
+    pending_graph = ""
+    for gline in graph_stdout.decode().splitlines():
+        gline_stripped = gline.rstrip()
+        # Try to find a 40-char SHA at the end
+        parts = gline_stripped.rsplit(" ", 1)
+        if len(parts) == 2 and len(parts[1]) == 40:
+            sha = parts[1]
+            graph_prefix = pending_graph + parts[0]
+            graph_lines[sha] = graph_prefix
+            pending_graph = ""
+        else:
+            # Continuation line (branch lines between commits)
+            pending_graph += gline_stripped + "\n"
 
     # Parse commits
     commits = []
@@ -215,6 +243,7 @@ async def git_graph(repo_path: str, limit: int = 100):
             "author": author,
             "date": date,
             "refs": refs,
+            "graph": graph_lines.get(sha, "*"),
             "trees": [],
             "nodes": [],
         })
