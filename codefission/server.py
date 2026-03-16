@@ -75,12 +75,8 @@ def _acquire_lock(port: int):
     existing = _read_lock()
     if existing:
         existing_port = existing.get("port", "?")
-        url = f"http://localhost:{existing_port}"
-        print(f"CodeFission is already running at {url}")
-        if os.environ.get("CODEFISSION_PYWEBVIEW"):
-            _open_webview_window(url)
-        else:
-            webbrowser.open(url)
+        print(f"CodeFission is already running at http://localhost:{existing_port}")
+        webbrowser.open(f"http://localhost:{existing_port}")
         sys.exit(0)
 
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -111,10 +107,6 @@ def main():
         "--port", type=int, default=DEFAULT_PORT,
         help=f"Server port (default: {DEFAULT_PORT})",
     )
-    parser.add_argument(
-        "--pywebview", action="store_true",
-        help="Open in a native desktop window instead of the browser",
-    )
     args = parser.parse_args()
 
     _check_prerequisites()
@@ -124,119 +116,19 @@ def main():
         print(f"Error: No available port in range {PORT_RANGE.start}-{PORT_RANGE.stop - 1}.", file=sys.stderr)
         raise SystemExit(1)
 
-    if args.pywebview:
-        os.environ["CODEFISSION_PYWEBVIEW"] = "1"
-
     _acquire_lock(actual_port)
 
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
     print(f"Server:  http://localhost:{actual_port}")
 
-    if args.pywebview:
-        _run_with_pywebview(actual_port)
-    else:
-        uvicorn.run(
-            "codefission.main:app",
-            host="0.0.0.0",
-            port=actual_port,
-            ws_ping_interval=30,
-            ws_ping_timeout=10,
-        )
-
-
-class _WebViewApi:
-    """JS-callable API for pywebview window controls."""
-
-    def __init__(self):
-        self._window = None
-
-    def set_window(self, window):
-        self._window = window
-
-    def close_window(self):
-        if self._window:
-            import threading
-            threading.Timer(0.15, self._window.destroy).start()
-
-    def minimize_window(self):
-        if self._window:
-            self._window.minimize()
-
-    def toggle_fullscreen(self):
-        if self._window:
-            self._window.toggle_fullscreen()
-
-
-def _open_webview_window(url: str):
-    """Create and show a pywebview native window."""
-    webview = _import_webview()
-    api = _WebViewApi()
-    window = webview.create_window(
-        "CodeFission",
-        url=url,
-        js_api=api,
-        width=1280,
-        height=850,
-        min_size=(600, 400),
-        background_color="#000000",
-        frameless=True,
-        easy_drag=True,
-    )
-    api.set_window(window)
-    webview.start()
-
-
-def _webview_path() -> str:
-    """Return path to the bundled pywebview source."""
-    return str(Path(__file__).resolve().parent.parent / "ui" / "pywebview")
-
-
-def _import_webview():
-    """Import webview from the bundled pywebview source."""
-    wv_path = _webview_path()
-    if wv_path not in sys.path:
-        sys.path.insert(0, wv_path)
-    try:
-        import webview
-        return webview
-    except ImportError:
-        print(
-            "Error: pywebview not found.\n"
-            f"  Expected at: {wv_path}",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
-
-
-def _run_with_pywebview(port: int):
-    """Run uvicorn in a background thread and open a pywebview native window."""
-    import threading
-    import uvicorn
-
-    server = uvicorn.Server(uvicorn.Config(
+    uvicorn.run(
         "codefission.main:app",
         host="0.0.0.0",
-        port=port,
+        port=actual_port,
         ws_ping_interval=30,
         ws_ping_timeout=10,
-    ))
-
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-
-    # Wait for uvicorn to be ready
-    import time
-    for _ in range(50):
-        if server.started:
-            break
-        time.sleep(0.1)
-
-    _open_webview_window(f"http://localhost:{port}")
-
-    # Window closed — shut down the server
-    server.should_exit = True
-    thread.join(timeout=3)
+    )
 
 
 if __name__ == "__main__":

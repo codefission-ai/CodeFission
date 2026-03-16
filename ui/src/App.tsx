@@ -49,38 +49,6 @@ function SunIcon() {
   );
 }
 
-// Detect pywebview environment
-const isPyWebView = () => !!(window as any).pywebview;
-
-function WindowControls() {
-  const [ready, setReady] = useState(isPyWebView());
-  useEffect(() => {
-    if (!ready) {
-      const handler = () => setReady(true);
-      window.addEventListener("pywebviewready", handler);
-      return () => window.removeEventListener("pywebviewready", handler);
-    }
-  }, [ready]);
-
-  if (!ready) return null;
-  const api = (window as any).pywebview?.api;
-  if (!api) return null;
-
-  return (
-    <div className="window-controls pywebview-no-drag">
-      <button className="wc-dot wc-close" onClick={() => api.close_window()}>
-        <svg viewBox="0 0 10 10"><path d="M2.2 2.2l5.6 5.6M7.8 2.2l-5.6 5.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-      </button>
-      <button className="wc-dot wc-minimize" onClick={() => api.minimize_window()}>
-        <svg viewBox="0 0 10 10"><path d="M2 5h6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-      </button>
-      <button className="wc-dot wc-fullscreen" onClick={() => api.toggle_fullscreen()}>
-        <svg viewBox="0 0 10 10"><path d="M1.5 6.5L3.5 8.5M6.5 1.5L8.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><path d="M1.5 8.5h2v-2M8.5 1.5h-2v2" fill="currentColor" stroke="currentColor" strokeWidth="0.5" strokeLinejoin="round"/></svg>
-      </button>
-    </div>
-  );
-}
-
 export default function App() {
   const hasTree = useStore((s) => !!s.currentTreeId);
   const creatingProject = useStore((s) => s.creatingProject);
@@ -148,60 +116,57 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Top bar — full width, draggable in pywebview */}
-      <div className="toolbar pywebview-drag">
-        <div className="toolbar-left pywebview-no-drag">
-          <WindowControls />
-          <button
-            className="icon-btn has-tooltip"
-            onClick={() => setSidebarCollapsed((c) => !c)}
-          >
-            <SidebarIcon />
-            <span className="tooltip">Sidebar <kbd>{"\u2318"}B</kbd></span>
-          </button>
-        </div>
-        <div className="toolbar-center">
-          <span className="toolbar-tree-name">{treeName}</span>
-        </div>
-        <div className="toolbar-right pywebview-no-drag">
-          <button
-            className="theme-toggle has-tooltip"
-            onClick={() => setDarkMode((d) => !d)}
-            aria-label="Toggle dark mode"
-          >
-            {darkMode ? <SunIcon /> : <MoonIcon />}
-            <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
-          </button>
-          <button
-            className="icon-btn has-tooltip"
-            onClick={() => actions.toggleSettings()}
-          >
-            <GearIcon />
-            <span className="tooltip">Settings</span>
-          </button>
-        </div>
+      {/* Sidebar */}
+      <div
+        ref={sidebarRef}
+        className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
+        style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
+      >
+        <TreeList />
       </div>
 
-      {/* Body — sidebar + canvas side by side */}
-      <div className="app-body pywebview-no-drag">
-        {/* Sidebar */}
-        <div
-          ref={sidebarRef}
-          className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
-          style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
-        >
-          <TreeList />
+      {/* Sidebar resize handle */}
+      {!sidebarCollapsed && (
+        <div className="resize-handle" onMouseDown={startDrag} />
+      )}
+
+      {/* Main area: toolbar + canvas */}
+      <div className="main-area">
+        {/* Toolbar */}
+        <div className="toolbar">
+          <div className="toolbar-left">
+            <button
+              className="icon-btn has-tooltip"
+              onClick={() => setSidebarCollapsed((c) => !c)}
+            >
+              <SidebarIcon />
+              <span className="tooltip">Sidebar <kbd>{"\u2318"}B</kbd></span>
+            </button>
+          </div>
+          <div className="toolbar-center">
+            <span className="toolbar-tree-name">{treeName}</span>
+          </div>
+          <div className="toolbar-right">
+            <button
+              className="theme-toggle has-tooltip"
+              onClick={() => setDarkMode((d) => !d)}
+              aria-label="Toggle dark mode"
+            >
+              {darkMode ? <SunIcon /> : <MoonIcon />}
+              <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
+            </button>
+            <button
+              className="icon-btn has-tooltip"
+              onClick={() => actions.toggleSettings()}
+            >
+              <GearIcon />
+              <span className="tooltip">Settings</span>
+            </button>
+          </div>
         </div>
 
-        {/* Sidebar resize handle */}
-        {!sidebarCollapsed && (
-          <div className="resize-handle" onMouseDown={startDrag} />
-        )}
-
-        {/* Main area */}
-        <div className="main-area">
-          {/* Canvas */}
-          <div className="canvas">
+        {/* Canvas */}
+        <div className="canvas">
           {creatingProject ? <ProjectSetup /> : hasTree ? <Canvas /> : (
             <div className="canvas-empty">
               <div className="empty-icon">
@@ -217,7 +182,6 @@ export default function App() {
               <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
             </div>
           )}
-          </div>
         </div>
       </div>
 

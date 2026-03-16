@@ -17,15 +17,6 @@ dependencies = [
     "openai",
     "claude-agent-sdk",
     "pydantic",
-    # pywebview runtime deps (source bundled at ui/pywebview)
-    "pyobjc-core>=9.0;sys_platform=='darwin'",
-    "pyobjc-framework-Cocoa>=9.0;sys_platform=='darwin'",
-    "pyobjc-framework-Quartz>=9.0;sys_platform=='darwin'",
-    "pyobjc-framework-WebKit>=9.0;sys_platform=='darwin'",
-    "pyobjc-framework-security>=9.0;sys_platform=='darwin'",
-    "pyobjc-framework-UniformTypeIdentifiers>=9.0;sys_platform=='darwin'",
-    "proxy_tools",
-    "bottle",
 ]
 
 [project.urls]
