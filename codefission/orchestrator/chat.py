@@ -278,32 +278,8 @@ class ChatMixin:
             parent_ws = resolve_workspace(tree.root_node_id, parent_node.id)
             copy_session(parent_ws, workspace, parent_session_id)
 
-            # Tell the model its workspace has changed
-            sdk_msg = (
-                f"[System: This conversation was forked into a new git worktree. "
-                f"Your working directory is now: {workspace}\n"
-                f"All file paths from your previous conversation history refer to a different directory "
-                f"that no longer exists. Do NOT reuse any file paths from earlier messages.\n"
-                f"Use ONLY your current working directory for all file operations. "
-                f"When in doubt, run `pwd` to confirm your location.]\n\n"
-                + sdk_msg
-            )
-
-        # If parent was cancelled, prepend context (stacks on top of workspace notice)
-        if parent_node and parent_node.status == "error" and "[Cancelled by user" in (parent_node.assistant_response or ""):
-            partial = parent_node.assistant_response or ""
-            sdk_msg = (
-                "[System: Your previous response was cancelled by the user. "
-                "The session was interrupted mid-execution. Here is your "
-                "partial response up to the point of cancellation:\n\n"
-                f"{partial}\n\n"
-                "Resume from this context. The user's new message follows.]\n\n"
-                + sdk_msg
-            )
-
-        # Tree-level instructions are passed via system_prompt (not prepended to user message)
-
-        # If file quotes, prepend their context (actual file contents, folder listings, diff)
+        # File quotes: prepend actual file contents to user message
+        # (This is user-initiated context — goes in the message, not system prompt)
         if file_quotes:
             quote_ctx = await self._build_file_quote_context(file_quotes, tree, tree.root_node_id)
             sdk_msg = quote_ctx + sdk_msg

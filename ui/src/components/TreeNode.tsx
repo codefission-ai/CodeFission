@@ -512,6 +512,13 @@ function TreeNode({ data }: { data: { node: CNode } }) {
         {/* Staleness banner */}
         <StalenessBanner treeId={node.tree_id} />
 
+        {/* Files button */}
+        {node.git_commit && (
+          <button className="tree-node-action-btn files-btn root-files-btn nopan nodrag" onClick={handleOpenFiles}>
+            Files
+          </button>
+        )}
+
         {/* Section 2: Message */}
         <div className="root-section">
           <label className="root-section-label">Message</label>

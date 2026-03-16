@@ -245,7 +245,8 @@ class TestPrepareChat:
 
     @pytest.mark.asyncio
     async def test_cancelled_parent_prepends_context(self, orch, project):
-        """If parent was cancelled, sdk_message includes the partial response."""
+        """Cancelled parent context is handled by session fork or context transfer,
+        not by prepending to sdk_message. The user message stays clean."""
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
 
@@ -258,9 +259,10 @@ class TestPrepareChat:
         )
 
         second_ctx = await orch.prepare_chat(first_ctx.node_id, "continue please")
-        assert "[Cancelled by user" in second_ctx.sdk_message
-        assert "I was working on..." in second_ctx.sdk_message
+        # User message is clean — no [System: ...] prepended
         assert "continue please" in second_ctx.sdk_message
+        # Parent session is set for forking (cancelled parent still has a session)
+        # Context from cancellation is in the session history, not the message
 
 
 # ── complete_chat ────────────────────────────────────────────────────
@@ -513,8 +515,6 @@ class TestFullLifecycle:
         ctx2 = await orch.prepare_chat(ctx1.node_id, "please continue")
 
         assert ctx2.node_id != ctx1.node_id
-        assert "[Cancelled by user" in ctx2.sdk_message
-        assert "I was starting to..." in ctx2.sdk_message
         assert "please continue" in ctx2.sdk_message
 
         child = await get_node(ctx2.node_id)
