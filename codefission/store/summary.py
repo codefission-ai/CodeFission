@@ -32,11 +32,7 @@ async def generate_tree_name(
     model: str = "claude-haiku-4-5-20251001",
     api_key: str | None = None,
 ) -> str | None:
-    """Generate a short tree name using the Claude Agent SDK.
-
-    Reuses the same auth infrastructure as chat (CLI OAuth or API key).
-    No tools, no file access, single turn.
-    """
+    """Generate a short tree name using the Claude Agent SDK."""
     try:
         from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, AssistantMessage, query
         from claude_agent_sdk.types import TextBlock
@@ -44,8 +40,6 @@ async def generate_tree_name(
 
         prompt = _format_prompt(skill, repo_info, first_message)
 
-        # Skip the CLI version check — it spawns a subprocess and adds latency
-        # while the main chat stream is already running.
         saved = os.environ.get("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK")
         os.environ["CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK"] = "1"
 
@@ -58,19 +52,21 @@ async def generate_tree_name(
 
         text = ""
         gen = query(prompt=prompt, options=options)
+
+        async def _stream():
+            nonlocal text
+            async for msg in gen:
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            text += block.text
+                elif isinstance(msg, ResultMessage):
+                    break
+
         try:
-            async with asyncio.timeout(90):
-                async for msg in gen:
-                    if isinstance(msg, AssistantMessage):
-                        for block in msg.content:
-                            if isinstance(block, TextBlock):
-                                text += block.text
-                    elif isinstance(msg, ResultMessage):
-                        break
+            await asyncio.wait_for(_stream(), timeout=90)
         finally:
-            # Ensure the SDK subprocess is cleaned up even on timeout/cancel.
             await gen.aclose()
-            # Restore env
             if saved is None:
                 os.environ.pop("CLAUDE_AGENT_SDK_SKIP_VERSION_CHECK", None)
             else:

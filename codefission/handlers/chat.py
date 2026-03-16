@@ -78,21 +78,7 @@ class ChatMixin:
                     await self.send(WS.STATUS, node_id=nid, status="active")
 
                 elif isinstance(event, SessionInit):
-                    # Track SDK subprocess PID for cancel support
-                    if nid in self.streams and not self.streams[nid].sdk_pid:
-                        await asyncio.sleep(0.3)  # give subprocess time to start
-                        from store.processes import find_child_by_cwd
-                        from store.git import resolve_workspace
-                        try:
-                            tree_id = self.streams[nid].tree_id
-                            tree = await self.orch.get_tree(tree_id)
-                            if tree:
-                                ws_path = resolve_workspace(tree.root_node_id, nid)
-                                pid = find_child_by_cwd(ws_path)
-                                if pid:
-                                    self.streams[nid].sdk_pid = pid
-                        except Exception:
-                            pass
+                    pass  # Orchestrator handles session_id saving
 
                 elif isinstance(event, TextDelta):
                     if nid in self.streams:
@@ -140,6 +126,24 @@ class ChatMixin:
                     await self.send(WS.DONE, **done_payload)
                     await self._send_tree_processes()
 
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            # Cancelled by user — save partial response
+            if nid in self.streams:
+                self.streams[nid].status = "error"
+            partial = self.streams.get(nid)
+            partial_text = partial.text if partial else ""
+            active_tools = list(tool_names.values())
+            try:
+                from store.git import resolve_workspace
+                tree = await self.orch.get_tree(self.streams[nid].tree_id if nid in self.streams else "")
+                workspace = resolve_workspace(tree.root_node_id, nid) if tree else None
+                result = await self.orch.cancel_chat(nid, partial_text, active_tools, workspace)
+                await self.send(WS.CHUNK, node_id=nid, text=result.saved_text)
+            except Exception:
+                log.debug("Cancel cleanup failed for %s", nid, exc_info=True)
+            await self.send(WS.ERROR, node_id=nid, error="Cancelled")
+            await self._send_tree_processes()
+
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -147,7 +151,6 @@ class ChatMixin:
                 self.streams[nid].status = "error"
             await bus.emit(STREAM_ERROR, node_id=nid, error=str(e))
             await self.send(WS.ERROR, node_id=nid, error=str(e))
-            # Try to remove ephemeral worktree on error
             try:
                 await self.orch.post_error_cleanup(nid)
                 await self._send_tree_processes()
@@ -174,21 +177,19 @@ class ChatMixin:
         from handlers import _active_streams
 
         node_id = data["node_id"]
-        # Use global registry so cancel works after reconnect
+
+        # Mark as cancelled in the stream registry
         info = _active_streams.get(node_id)
         if info:
             info.cancelled = True
-            if info.sdk_pid:
-                self.orch.kill_sdk_process_tree(info.sdk_pid)
-                info.sdk_pid = None
-            if info.stream_task and not info.stream_task.done():
-                info.stream_task.cancel()
-        else:
-            # Fallback: cancel the task directly
-            self.cancelled.add(node_id)
-            task = self.tasks.get(node_id)
-            if task and not task.done():
-                task.cancel()
+
+        # Cancel the task — this propagates through:
+        # _run_chat → orch.chat() → stream_chat() → create_session() → SubprocessRunner.close() → kill process
+        task = self.tasks.get(node_id)
+        if task and not task.done():
+            task.cancel()
+        elif info and info.stream_task and not info.stream_task.done():
+            info.stream_task.cancel()
 
     async def handle_duplicate(self, data: dict):
         """Re-run the same user message from the same parent, creating a sibling."""
