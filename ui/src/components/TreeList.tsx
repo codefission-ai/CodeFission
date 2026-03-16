@@ -34,10 +34,6 @@ function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; is
     <div
       className={`tree-item ${isActive ? "active" : ""}`}
       onClick={() => {
-        if (tree?.repo_path) {
-          send({ type: WS.OPEN_REPO, repo_id: tree.repo_id, head_commit: tree.base_commit, repo_path: tree.repo_path });
-          actions.setSidebarOpen(false);
-        }
         useStore.setState({ currentTreeId: treeId });
         send({ type: WS.LOAD_TREE, tree_id: treeId });
         send({ type: WS.SELECT_TREE, tree_id: treeId });

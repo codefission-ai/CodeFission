@@ -60,15 +60,16 @@ async def startup():
 
     await init_db()
 
-    # Auto-open browser
-    async def _open_browser():
-        await asyncio.sleep(0.5)
-        try:
-            port = int(os.environ.get("CODEFISSION_PORT", "8080"))
-            webbrowser.open(f"http://localhost:{port}")
-        except Exception:
-            pass
-    asyncio.create_task(_open_browser())
+    # Auto-open browser (skip when pywebview manages the window)
+    if not os.environ.get("CODEFISSION_PYWEBVIEW"):
+        async def _open_browser():
+            await asyncio.sleep(0.5)
+            try:
+                port = int(os.environ.get("CODEFISSION_PORT", "8080"))
+                webbrowser.open(f"http://localhost:{port}")
+            except Exception:
+                pass
+        asyncio.create_task(_open_browser())
 
 
 @app.on_event("shutdown")

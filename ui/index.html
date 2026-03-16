@@ -63,10 +63,16 @@
     /* ── Layout ─────────────────────────────────────────────────── */
     .app {
       display: flex;
+      flex-direction: column;
       width: 100vw;
       height: 100vh;
       background: var(--bg-deep);
       color: var(--text-secondary);
+    }
+    .app-body {
+      display: flex;
+      flex: 1;
+      min-height: 0;
     }
     .main-area {
       flex: 1;
@@ -88,6 +94,40 @@
     .resize-handle.dragging {
       background: var(--accent);
     }
+
+    /* ── Window controls (pywebview traffic lights) ────────────── */
+    .window-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 4px;
+      margin-right: 8px;
+    }
+    .wc-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .wc-dot svg {
+      width: 10px;
+      height: 10px;
+      opacity: 0;
+      color: rgba(0,0,0,0.5);
+      transition: opacity 0.1s;
+    }
+    .window-controls:hover .wc-dot svg { opacity: 1; }
+    .wc-close { background: #ff5f57; }
+    .wc-minimize { background: #febc2e; }
+    .wc-fullscreen { background: #28c840; }
+    .wc-dot:active { filter: brightness(0.85); }
 
     /* ── Toolbar ──────────────────────────────────────────────────── */
     .toolbar {
