@@ -131,22 +131,9 @@ export function connectWs() {
     }
     sendQueue = [];
 
-    // Check URL for ?repo_id= + ?head= + ?path= params
-    const params = new URLSearchParams(window.location.search);
-    const repoId = params.get("repo_id");
-    const headCommit = params.get("head");
-    const repoPath = params.get("path");
-
-    if (repoId && headCommit && repoPath) {
-      // Canvas-first: sidebar starts closed when opening from a repo
-      actions.setSidebarOpen(false);
-      send({ type: WS.OPEN_REPO, repo_id: repoId, head_commit: headCommit, repo_path: repoPath });
-    } else {
-      // No repo specified — sidebar open, list all trees
-      actions.setSidebarOpen(true);
-      send({ type: WS.LIST_TREES });
-      send({ type: WS.LIST_BRANCHES });
-    }
+    // Always start with sidebar open, list all trees across all projects
+    actions.setSidebarOpen(true);
+    send({ type: WS.LIST_TREES });
   };
   ws.onclose = () => {
     actions.setConnected(false);

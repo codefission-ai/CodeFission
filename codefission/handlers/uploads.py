@@ -28,12 +28,9 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB total
 
 
 def _set_context_for_tree(tree):
-    """Set project path context from a tree's repo_path, falling back to env var."""
-    import os
+    """Set project path context from a tree's repo_path."""
     if tree.repo_path:
         set_project_path(Path(tree.repo_path))
-    elif os.environ.get("CODEFISSION_REPO_PATH"):
-        set_project_path(Path(os.environ["CODEFISSION_REPO_PATH"]))
 
 
 # ── Upload files into a node's workspace ──────────────────────────────

@@ -1,4 +1,4 @@
-"""Server launcher — port discovery, lock file, git detection, uvicorn.run."""
+"""Server launcher — finds a port, acquires lock, starts uvicorn."""
 
 import argparse
 import atexit
@@ -6,12 +6,10 @@ import json
 import os
 import shutil
 import socket
-import subprocess
 import sys
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
 
 DATA_DIR = Path.home() / ".codefission"
 DEFAULT_PORT = 19440
@@ -26,12 +24,6 @@ def _check_prerequisites():
             "git - install from https://git-scm.com/downloads"
             "\n      macOS: xcode-select --install"
             "\n      Ubuntu/Debian: sudo apt install git"
-            "\n      Windows: https://git-scm.com/download/win"
-        )
-    if not shutil.which("claude"):
-        missing.append(
-            "Claude Code CLI - install with: npm install -g @anthropic-ai/claude-code"
-            "\n      Then authenticate: claude login"
         )
     if missing:
         print("CodeFission requires the following:\n")
@@ -58,69 +50,6 @@ def _find_available_port(preferred: int) -> int | None:
     return None
 
 
-def _detect_git_root(path: Path) -> Path | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            cwd=str(path), capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            return Path(result.stdout.strip())
-    except Exception:
-        pass
-    return None
-
-
-def _auto_init_repo(path: Path):
-    print(f"Initializing git in {path} ...")
-    subprocess.run(["git", "init"], cwd=str(path), check=True)
-    subprocess.run(["git", "add", "-A"], cwd=str(path), check=True)
-    subprocess.run(
-        ["git", "commit", "-m", "initial commit", "--allow-empty"],
-        cwd=str(path), check=True,
-        env={
-            **os.environ,
-            "GIT_COMMITTER_NAME": "CodeFission",
-            "GIT_COMMITTER_EMAIL": "codefission@local",
-            "GIT_AUTHOR_NAME": "CodeFission",
-            "GIT_AUTHOR_EMAIL": "codefission@local",
-        },
-    )
-
-
-def _ensure_gitignore(project_path: Path):
-    gitignore = project_path / ".gitignore"
-    if gitignore.exists():
-        content = gitignore.read_text()
-        if ".codefission/" not in content:
-            with open(gitignore, "a") as f:
-                if not content.endswith("\n"):
-                    f.write("\n")
-                f.write(".codefission/\n")
-    else:
-        gitignore.write_text(".codefission/\n")
-
-
-def _compute_repo_id(repo_path: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-list", "--max-parents=0", "HEAD"],
-        cwd=str(repo_path), capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to compute repo_id: {result.stderr}")
-    return result.stdout.strip().splitlines()[0]
-
-
-def _get_head_commit(repo_path: Path) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=str(repo_path), capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get HEAD: {result.stderr}")
-    return result.stdout.strip()
-
-
 def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -142,16 +71,12 @@ def _read_lock() -> dict | None:
     return None
 
 
-def _acquire_lock(port: int, repo_path: Path | None = None,
-                  repo_id: str | None = None, head_commit: str | None = None):
+def _acquire_lock(port: int):
     existing = _read_lock()
     if existing:
         existing_port = existing.get("port", "?")
-        url = f"http://localhost:{existing_port}"
-        if repo_id and head_commit and repo_path:
-            url += f"?repo_id={repo_id}&head={head_commit}&path={quote(str(repo_path), safe='/')}"
         print(f"CodeFission is already running at http://localhost:{existing_port}")
-        webbrowser.open(url)
+        webbrowser.open(f"http://localhost:{existing_port}")
         sys.exit(0)
 
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -170,20 +95,13 @@ def _release_lock():
         pass
 
 
-# ── Entry point ──────────────────────────────────────────────────────
-
-
 def main():
-    """Entry point for the `fission` CLI."""
+    """Entry point for `fission`. Just starts the server — no repo binding."""
     import uvicorn
 
     parser = argparse.ArgumentParser(
         prog="fission",
-        description="CodeFission -- tree-structured AI development.",
-    )
-    parser.add_argument(
-        "path", nargs="?", default=".",
-        help="Path to the project directory (default: current directory)",
+        description="CodeFission — tree-structured AI development.",
     )
     parser.add_argument(
         "--port", type=int, default=DEFAULT_PORT,
@@ -193,53 +111,15 @@ def main():
 
     _check_prerequisites()
 
-    target_path = Path(args.path).resolve()
-
-    if not target_path.is_dir():
-        print(f"Error: {target_path} is not a directory.", file=sys.stderr)
-        raise SystemExit(1)
-
-    repo_path = None
-    repo_id = None
-    head_commit = None
-    is_home = target_path == Path.home()
-
-    if not is_home:
-        git_root = _detect_git_root(target_path)
-        if git_root:
-            repo_path = git_root
-        else:
-            if sys.stdin.isatty():
-                answer = input("This directory is not a git repo. Initialize one? [Y/n] ")
-                if answer.strip().lower() in ("n", "no"):
-                    raise SystemExit(0)
-            else:
-                print("Error: Not a git repo and not running interactively.", file=sys.stderr)
-                raise SystemExit(1)
-            _auto_init_repo(target_path)
-            repo_path = target_path
-
-        repo_id = _compute_repo_id(repo_path)
-        head_commit = _get_head_commit(repo_path)
-        _ensure_gitignore(repo_path)
-
     actual_port = _find_available_port(args.port)
     if actual_port is None:
         print(f"Error: No available port in range {PORT_RANGE.start}-{PORT_RANGE.stop - 1}.", file=sys.stderr)
         raise SystemExit(1)
 
-    _acquire_lock(actual_port, repo_path, repo_id, head_commit)
+    _acquire_lock(actual_port)
 
-    if repo_path:
-        os.environ["CODEFISSION_REPO_PATH"] = str(repo_path)
-        os.environ["CODEFISSION_REPO_ID"] = repo_id
-        os.environ["CODEFISSION_HEAD_COMMIT"] = head_commit
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
-    if repo_path:
-        print(f"Repo:    {repo_path}")
-    else:
-        print("No repo context (home directory mode)")
     print(f"Server:  http://localhost:{actual_port}")
 
     uvicorn.run(

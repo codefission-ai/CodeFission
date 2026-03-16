@@ -25,7 +25,6 @@ from fastapi.responses import FileResponse
 # Add package dir to path so bare imports (db, handlers, etc.) resolve
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import set_project_path
 from db import init_db, close_db
 from handlers import ConnectionHandler
 from handlers.uploads import router as uploads_router
@@ -59,26 +58,14 @@ async def startup():
     loop = asyncio.get_running_loop()
     loop.set_exception_handler(_silence_asyncgen_gc)
 
-    # Init global DB unconditionally
     await init_db()
 
-    # If launched from a repo, set project context and run lazy migration
-    repo_path_str = os.environ.get("CODEFISSION_REPO_PATH")
-    repo_id = os.environ.get("CODEFISSION_REPO_ID")
-    if repo_path_str:
-        set_project_path(Path(repo_path_str))
-
-    # Auto-open browser after server is listening
+    # Auto-open browser
     async def _open_browser():
         await asyncio.sleep(0.5)
         try:
             port = int(os.environ.get("CODEFISSION_PORT", "8080"))
-            url = f"http://localhost:{port}"
-            if repo_path_str and repo_id:
-                from urllib.parse import quote
-                head_commit = os.environ.get("CODEFISSION_HEAD_COMMIT", "")
-                url += f"?repo_id={repo_id}&head={head_commit}&path={quote(repo_path_str, safe='/')}"
-            webbrowser.open(url)
+            webbrowser.open(f"http://localhost:{port}")
         except Exception:
             pass
     asyncio.create_task(_open_browser())
@@ -99,19 +86,9 @@ async def shutdown():
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
 
-    # Set project context for this connection from env var
-    repo_path_str = os.environ.get("CODEFISSION_REPO_PATH")
-    repo_id = os.environ.get("CODEFISSION_REPO_ID")
-    head_commit = os.environ.get("CODEFISSION_HEAD_COMMIT")
-
-    if repo_path_str:
-        set_project_path(Path(repo_path_str))
-
+    # No repo context on connect — the frontend sends open_repo to set it
     handler = ConnectionHandler(
         ws,
-        repo_path=repo_path_str,
-        repo_id=repo_id,
-        head_commit=head_commit,
         orchestrator=_orchestrator,
     )
 
