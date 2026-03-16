@@ -174,73 +174,98 @@ async def clone_github_repo(url: str, name: str | None = None):
 
 
 def _compute_lanes(commits: list[dict]) -> tuple[list[dict], int]:
-    """Assign each commit a lane (column index) and compute connection paths.
+    """Assign each commit a lane using branch-based lane assignment.
+
+    Like GitExtensions/Sourcetree, each *branch* (continuous first-parent path)
+    gets its own column.  All commits on the same branch share that column,
+    producing the familiar forking / merging railroad-track visual.
 
     Returns (commits_with_lanes, max_lanes).
     Each commit gets:
     - lane: int (column index, 0-based)
+    - branch_id: int (which branch this commit belongs to)
     - connections: list of {from_lane, to_lane, type}
-    - pass_through: list of lane indices that have active lines passing through this row
+    - pass_through: list of lane indices with active lines passing through this row
     """
-    active_lanes: list[str | None] = []  # SHA that "owns" each lane position
+    if not commits:
+        return commits, 1
+
+    # ── Phase 1: assign branch IDs ──────────────────────────────────────
+    # Walk commits in topo order (the order git gave us).  First-parent
+    # links continue the same branch; secondary parents start new branches.
+    branch_of: dict[str, int] = {}  # sha -> branch_id
+    next_branch = 0
 
     for commit in commits:
         sha = commit["sha"]
+        if sha not in branch_of:
+            branch_of[sha] = next_branch
+            next_branch += 1
+
         parents = commit["parents"]
+        if parents:
+            first_parent = parents[0]
+            if first_parent not in branch_of:
+                branch_of[first_parent] = branch_of[sha]
+            for p in parents[1:]:
+                if p not in branch_of:
+                    branch_of[p] = next_branch
+                    next_branch += 1
 
-        # Find if this commit is already reserved in a lane (as a parent of a previous commit)
-        lane = None
-        for i, lane_sha in enumerate(active_lanes):
-            if lane_sha == sha:
-                lane = i
+    # ── Phase 2: compute branch row-ranges ──────────────────────────────
+    branch_ranges: dict[int, list[int]] = {}  # branch_id -> [first_row, last_row]
+    for i, commit in enumerate(commits):
+        bid = branch_of[commit["sha"]]
+        if bid not in branch_ranges:
+            branch_ranges[bid] = [i, i]
+        else:
+            branch_ranges[bid][1] = i
+
+    # ── Phase 3: greedily pack branches into columns ────────────────────
+    sorted_branches = sorted(branch_ranges.items(), key=lambda x: x[1][0])
+    branch_column: dict[int, int] = {}
+    column_end: list[int] = []  # for each column, last row it is occupied until
+
+    for bid, (start, end) in sorted_branches:
+        assigned = False
+        for col in range(len(column_end)):
+            if column_end[col] < start:
+                branch_column[bid] = col
+                column_end[col] = end
+                assigned = True
                 break
+        if not assigned:
+            branch_column[bid] = len(column_end)
+            column_end.append(end)
 
-        # If not found, allocate a new lane
-        if lane is None:
-            try:
-                lane = active_lanes.index(None)
-                active_lanes[lane] = sha
-            except ValueError:
-                lane = len(active_lanes)
-                active_lanes.append(sha)
+    max_lanes = len(column_end) if column_end else 1
 
-        commit["lane"] = lane
+    # ── Phase 4: per-commit lane, connections, pass-through ─────────────
+    for i, commit in enumerate(commits):
+        sha = commit["sha"]
+        bid = branch_of[sha]
+        commit["lane"] = branch_column[bid]
+        commit["branch_id"] = bid
         commit["connections"] = []
 
-        # Process parents
-        if len(parents) == 0:
-            # Root commit -- lane ends here
-            active_lanes[lane] = None
-        elif len(parents) >= 1:
-            # First parent keeps this lane (straight line down)
-            active_lanes[lane] = parents[0]
-            commit["connections"].append({
-                "from_lane": lane, "to_lane": lane, "type": "straight",
-            })
-            # Additional parents (merge sources) get their own lanes
-            for extra_parent in parents[1:]:
-                parent_lane = None
-                for i, ls in enumerate(active_lanes):
-                    if ls == extra_parent:
-                        parent_lane = i
-                        break
-                if parent_lane is None:
-                    try:
-                        parent_lane = active_lanes.index(None)
-                        active_lanes[parent_lane] = extra_parent
-                    except ValueError:
-                        parent_lane = len(active_lanes)
-                        active_lanes.append(extra_parent)
+        for parent_sha in commit["parents"]:
+            if parent_sha in branch_of:
+                parent_bid = branch_of[parent_sha]
+                parent_lane = branch_column[parent_bid]
+                conn_type = "straight" if parent_lane == commit["lane"] else "merge"
                 commit["connections"].append({
-                    "from_lane": lane, "to_lane": parent_lane, "type": "merge",
+                    "from_lane": commit["lane"],
+                    "to_lane": parent_lane,
+                    "type": conn_type,
                 })
 
-        # Record which lanes are active pass-throughs on this row (excluding this commit's own lane)
-        commit["pass_through"] = [
-            i for i, ls in enumerate(active_lanes) if ls is not None and i != lane
-        ]
+        # Pass-through: branches active on this row that are not this commit's branch
+        active = set()
+        for bid2, (start, end) in branch_ranges.items():
+            if start <= i <= end and bid2 != bid:
+                active.add(branch_column[bid2])
+        commit["pass_through"] = sorted(active)
 
-    max_lanes = len(active_lanes) if active_lanes else 1
     return commits, max_lanes
 
 

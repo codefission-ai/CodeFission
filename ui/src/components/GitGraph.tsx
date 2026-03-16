@@ -20,6 +20,7 @@ interface GitCommit {
   date: string;
   refs: string[];
   lane: number;
+  branch_id: number;
   connections: Connection[];
   pass_through: number[];
   trees: { tree_id: string; tree_name: string }[];
@@ -36,8 +37,34 @@ const LANE_COLORS = [
   "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#6366f1",
 ];
 
-function laneColor(lane: number): string {
-  return LANE_COLORS[lane % LANE_COLORS.length];
+function laneColor(id: number): string {
+  return LANE_COLORS[id % LANE_COLORS.length];
+}
+
+/** Map from lane (column) index to the branch_id that owns it at a given row. */
+function buildLaneBranchMap(commits: GitCommit[]): Map<number, number>[] {
+  // For each row, map lane -> branch_id so pass-through lines can be colored
+  // by the branch that occupies that lane.
+  const maps: Map<number, number>[] = [];
+  for (let i = 0; i < commits.length; i++) {
+    const m = new Map<number, number>();
+    // The commit itself occupies its lane
+    m.set(commits[i].lane, commits[i].branch_id);
+    maps.push(m);
+  }
+  // Fill in pass-through lanes by scanning which branch occupies each lane.
+  // We do this by tracking branch_id per lane across rows.
+  const laneOwner = new Map<number, number>(); // lane -> branch_id
+  for (let i = 0; i < commits.length; i++) {
+    const c = commits[i];
+    laneOwner.set(c.lane, c.branch_id);
+    for (const pt of c.pass_through) {
+      if (laneOwner.has(pt)) {
+        maps[i].set(pt, laneOwner.get(pt)!);
+      }
+    }
+  }
+  return maps;
 }
 
 function laneX(lane: number): number {
@@ -68,7 +95,15 @@ function timeAgo(dateStr: string): string {
 
 // ── SVG sub-components ──────────────────────────────────────────────────
 
-function CommitLines({ commit, rowIndex }: { commit: GitCommit; rowIndex: number }) {
+function CommitLines({
+  commit,
+  rowIndex,
+  laneBranchMap,
+}: {
+  commit: GitCommit;
+  rowIndex: number;
+  laneBranchMap: Map<number, number>;
+}) {
   const y = rowY(rowIndex);
   const nextY = y + ROW_HEIGHT;
   const elements: ReactElement[] = [];
@@ -76,45 +111,47 @@ function CommitLines({ commit, rowIndex }: { commit: GitCommit; rowIndex: number
   // 1. Draw pass-through lines (active lanes that aren't this commit)
   for (const ptLane of commit.pass_through) {
     const x = laneX(ptLane);
+    const branchId = laneBranchMap.get(ptLane) ?? ptLane;
     elements.push(
       <line
         key={`pt-${ptLane}`}
         x1={x} y1={y - ROW_HEIGHT / 2}
         x2={x} y2={y + ROW_HEIGHT / 2}
-        stroke={laneColor(ptLane)}
+        stroke={laneColor(branchId)}
         strokeWidth={2}
         strokeLinecap="round"
       />
     );
   }
 
-  // 2. Draw connection lines from this commit to the next row
-  for (const conn of commit.connections) {
+  // 2. Draw connection lines from this commit toward parents (below)
+  for (let ci = 0; ci < commit.connections.length; ci++) {
+    const conn = commit.connections[ci];
     const fromX = laneX(conn.from_lane);
     const toX = laneX(conn.to_lane);
 
     if (conn.type === "straight") {
-      // Vertical line from this commit's dot down to next row
       elements.push(
         <line
-          key={`s-${conn.from_lane}-${conn.to_lane}`}
+          key={`s-${ci}-${conn.from_lane}-${conn.to_lane}`}
           x1={fromX} y1={y}
           x2={toX} y2={nextY}
-          stroke={laneColor(conn.from_lane)}
+          stroke={laneColor(commit.branch_id)}
           strokeWidth={2}
           strokeLinecap="round"
         />
       );
     } else if (conn.type === "merge") {
-      // Curved line from merge source lane up to this commit's lane
-      // The merge parent is below (in a later row), so we draw a curve
-      // from this commit's position down-and-out to the merge lane
+      // Curved line from this commit down to the merge-source lane.
+      // Spread control points wider for bigger lane gaps.
+      const gap = Math.abs(conn.to_lane - conn.from_lane);
+      const spread = Math.min(0.7, 0.4 + gap * 0.08);
       elements.push(
         <path
-          key={`m-${conn.from_lane}-${conn.to_lane}`}
-          d={`M ${fromX} ${y} C ${fromX} ${y + ROW_HEIGHT * 0.5}, ${toX} ${nextY - ROW_HEIGHT * 0.5}, ${toX} ${nextY}`}
+          key={`m-${ci}-${conn.from_lane}-${conn.to_lane}`}
+          d={`M ${fromX} ${y} C ${fromX} ${y + ROW_HEIGHT * spread}, ${toX} ${nextY - ROW_HEIGHT * spread}, ${toX} ${nextY}`}
           fill="none"
-          stroke={laneColor(conn.to_lane)}
+          stroke={laneColor(laneBranchMap.get(conn.to_lane) ?? conn.to_lane)}
           strokeWidth={2}
           strokeLinecap="round"
         />
@@ -128,7 +165,7 @@ function CommitLines({ commit, rowIndex }: { commit: GitCommit; rowIndex: number
 function CommitDot({ commit, rowIndex }: { commit: GitCommit; rowIndex: number }) {
   const x = laneX(commit.lane);
   const y = rowY(rowIndex);
-  const color = laneColor(commit.lane);
+  const color = laneColor(commit.branch_id);
   const hasTrees = commit.trees.length > 0;
   const r = hasTrees ? DOT_RADIUS + 2 : DOT_RADIUS;
 
@@ -287,6 +324,7 @@ export default function GitGraph({
 
   const svgWidth = (maxLanes + 1) * LANE_WIDTH;
   const svgHeight = commits.length * ROW_HEIGHT;
+  const laneBranchMaps = commits.length > 0 ? buildLaneBranchMap(commits) : [];
 
   return (
     <div className="git-graph">
@@ -322,7 +360,7 @@ export default function GitGraph({
             >
               {/* Lines behind dots */}
               {commits.map((commit, i) => (
-                <CommitLines key={`lines-${commit.sha}`} commit={commit} rowIndex={i} />
+                <CommitLines key={`lines-${commit.sha}`} commit={commit} rowIndex={i} laneBranchMap={laneBranchMaps[i]} />
               ))}
               {/* Dots on top */}
               {commits.map((commit, i) => (
