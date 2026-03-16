@@ -9,6 +9,7 @@ Started by server.py (the launcher).
 """
 
 import asyncio
+import logging
 import os
 import re
 import sys
@@ -170,6 +171,112 @@ async def clone_github_repo(url: str, name: str | None = None):
         raise HTTPException(400, f"Clone failed: {stderr.decode()}")
 
     return {"path": str(project_path), "name": name}
+
+
+@app.get("/api/git-graph/{repo_path:path}")
+async def git_graph(repo_path: str, limit: int = 100):
+    """Return git commit graph for a repository, annotated with CodeFission entities."""
+    log = logging.getLogger(__name__)
+    repo = Path("/") / repo_path  # repo_path comes without leading slash
+    if not repo.is_dir():
+        raise HTTPException(400, f"Not a directory: {repo}")
+    if not (repo / ".git").is_dir():
+        raise HTTPException(400, f"Not a git repo: {repo}")
+
+    # Run git log
+    proc = await asyncio.create_subprocess_exec(
+        "git", "log", "--all",
+        "--format=%H|%P|%s|%an|%aI|%D",
+        "--topo-order", f"-n{limit}",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(repo),
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise HTTPException(400, f"git log failed: {stderr.decode()}")
+
+    # Parse commits
+    commits = []
+    for line in stdout.decode().strip().splitlines():
+        if not line:
+            continue
+        parts = line.split("|", 5)
+        if len(parts) < 6:
+            continue
+        sha, parents_str, message, author, date, refs_str = parts
+        parents = parents_str.split() if parents_str.strip() else []
+        refs = [r.strip() for r in refs_str.split(",") if r.strip()] if refs_str.strip() else []
+        commits.append({
+            "sha": sha,
+            "short_sha": sha[:7],
+            "parents": parents,
+            "message": message,
+            "author": author,
+            "date": date,
+            "refs": refs,
+            "trees": [],
+            "nodes": [],
+        })
+
+    # Query DB for CodeFission trees and nodes in this repo
+    repo_path_str = str(repo)
+    try:
+        from store.trees import list_trees
+        from db import get_db as _get_db
+
+        all_trees = await list_trees()
+        trees = [t for t in all_trees if t.repo_path == repo_path_str]
+
+        nodes_rows = []
+        tree_ids = [t.id for t in trees]
+        if tree_ids:
+            async with _get_db() as db:
+                placeholders = ",".join("?" * len(tree_ids))
+                cursor = await db.execute(
+                    f"SELECT id, tree_id, label, git_commit, status FROM nodes WHERE tree_id IN ({placeholders})",
+                    tree_ids,
+                )
+                nodes_rows = await cursor.fetchall()
+
+        # Build commit -> trees/nodes mapping
+        commit_trees: dict[str, list[dict]] = {}
+        commit_nodes: dict[str, list[dict]] = {}
+        for t in trees:
+            if t.base_commit:
+                commit_trees.setdefault(t.base_commit, []).append({
+                    "tree_id": t.id, "tree_name": t.name,
+                })
+        for n in nodes_rows:
+            if n["git_commit"]:
+                commit_nodes.setdefault(n["git_commit"], []).append({
+                    "node_id": n["id"], "tree_id": n["tree_id"], "label": n["label"],
+                })
+
+        # Annotate commits
+        for c in commits:
+            c["trees"] = commit_trees.get(c["sha"], [])
+            c["nodes"] = commit_nodes.get(c["sha"], [])
+    except Exception:
+        log.exception("Error querying CodeFission entities for git graph")
+        # Return commits without annotations rather than failing
+
+    # Extract branch names
+    branches = set()
+    for c in commits:
+        for ref in c["refs"]:
+            # Parse "HEAD -> main" or "origin/main" etc.
+            if "->" in ref:
+                branches.add(ref.split("->")[-1].strip())
+            elif "/" not in ref or ref.startswith("origin/"):
+                branches.add(ref)
+
+    repo_name = repo.name
+    return {
+        "commits": commits,
+        "branches": sorted(branches),
+        "repo_name": repo_name,
+    }
 
 
 @app.get("/health")

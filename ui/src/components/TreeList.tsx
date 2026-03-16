@@ -125,7 +125,16 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
         onClick={() => setCollapsed((c) => !c)}
       >
         <span className="project-chevron">{collapsed ? "\u25B6" : "\u25BC"}</span>
-        <span className="project-name" title={group.repoPath || undefined}>{group.repoName}</span>
+        <span
+          className="project-name"
+          title={group.repoPath || undefined}
+          onClick={(e) => {
+            if (group.repoPath) {
+              e.stopPropagation();
+              actions.viewProject(group.repoPath, group.repoName);
+            }
+          }}
+        >{group.repoName}</span>
         <span className="project-count">{group.trees.length}</span>
         {group.repoPath && (
           <button

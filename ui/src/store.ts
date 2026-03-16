@@ -147,6 +147,7 @@ interface Store {
   seenNodes: Set<string>;
   sidebarOpen: boolean;
   creatingProject: boolean;  // show project setup screen instead of canvas
+  viewingProject: { repoPath: string; repoName: string } | null;
 }
 
 
@@ -227,6 +228,7 @@ export const useStore = create<Store>(() => ({
   seenNodes: new Set<string>(),
   sidebarOpen: true,
   creatingProject: false,
+  viewingProject: null,
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -486,8 +488,13 @@ export const actions = {
     useStore.setState({ deleteToast: toast }),
 
   // ── Project creation ─────────────────────────────────────────
-  startCreatingProject: () => useStore.setState({ creatingProject: true }),
+  startCreatingProject: () => useStore.setState({ creatingProject: true, viewingProject: null }),
   stopCreatingProject: () => useStore.setState({ creatingProject: false }),
+
+  // ── Git graph view ──────────────────────────────────────────
+  viewProject: (repoPath: string, repoName: string) =>
+    useStore.setState({ viewingProject: { repoPath, repoName }, creatingProject: false }),
+  closeProjectView: () => useStore.setState({ viewingProject: null }),
 
   // ── Settings ─────────────────────────────────────────────────
   toggleSettings: () => useStore.setState((s) => ({ showSettings: !s.showSettings })),
