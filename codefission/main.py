@@ -85,19 +85,23 @@ async def shutdown():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    import logging
+    _log = logging.getLogger("ws.endpoint")
+
     await ws.accept()
 
-    # No repo context on connect — the frontend sends open_repo to set it
     handler = ConnectionHandler(
         ws,
         orchestrator=_orchestrator,
     )
+    _log.info("WS CONNECT handler.send=%s", id(handler.send))
 
     try:
         while True:
             data = await ws.receive_json()
             await handler.dispatch(data)
     except (WebSocketDisconnect, RuntimeError):
+        _log.info("WS DISCONNECT handler.send=%s", id(handler.send))
         handler.cleanup()
 
 

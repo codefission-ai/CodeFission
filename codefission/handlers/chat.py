@@ -33,16 +33,14 @@ class ChatMixin:
         self.tasks[node_id] = task
 
     async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, file_quotes: list[dict] | None = None, draft_node_id: str | None = None):
-        """Thin WS consumer of Orchestrator.chat() async generator.
-
-        Translates domain events into WebSocket messages. All business logic
-        lives in the Orchestrator; this method is pure transport.
-        """
+        """Thin WS consumer of Orchestrator.chat() async generator."""
         from handlers import _active_streams
         from models import ChatNodeCreated, ChatCompleted
 
         nid = node_id
         tool_names: dict[str, str] = {}
+
+        log.info("_run_chat START parent=%s msg=%s", node_id[:8], msg[:50])
 
         try:
             async for event in self.orch.chat(
@@ -53,6 +51,7 @@ class ChatMixin:
             ):
                 if isinstance(event, ChatNodeCreated):
                     nid = event.node.id
+                    log.info("ChatNodeCreated nid=%s, self.send=%s", nid[:8], id(self.send))
                     created_payload = {"node": event.node.model_dump()}
                     if event.after_id:
                         created_payload["after_id"] = event.after_id
@@ -83,6 +82,7 @@ class ChatMixin:
                 elif isinstance(event, TextDelta):
                     if nid in self.streams:
                         self.streams[nid].text += event.text
+                    log.debug("TextDelta nid=%s len=%d", nid[:8], len(event.text))
                     await bus.emit(STREAM_DELTA, node_id=nid, text=event.text)
                     await self.send(WS.CHUNK, node_id=nid, text=event.text)
 
