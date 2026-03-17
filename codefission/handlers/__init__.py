@@ -52,28 +52,21 @@ class ConnectionHandler(
         self.streams: dict[str, StreamState] = {}
 
     async def send(self, msg_type: str, **payload):
-        import logging
-        _log = logging.getLogger("handlers.send")
-
         node_id = payload.get("node_id")
         if node_id:
             info = _active_streams.get(node_id)
             if info and info.send_fn is not None and info.send_fn != self.send:
-                _log.warning(
-                    "REROUTE %s for node %s: send_fn=%s self.send=%s (stream owner differs)",
-                    msg_type, node_id[:8], id(info.send_fn), id(self.send),
-                )
+                print(f"⚠️  REROUTE {msg_type} node={node_id[:8]}: send_fn={id(info.send_fn)} self.send={id(self.send)}")
                 try:
                     await info.send_fn(msg_type, **payload)
                 except Exception as e:
-                    _log.warning("REROUTE FAILED for %s node %s: %s", msg_type, node_id[:8], e)
+                    print(f"⚠️  REROUTE FAILED {msg_type} node={node_id[:8]}: {e}")
                 return
 
-        _log.debug("SEND %s node=%s", msg_type, node_id[:8] if node_id else "-")
         try:
             await self.ws.send_json({"type": msg_type, **payload})
         except Exception as e:
-            _log.warning("SEND FAILED %s node=%s: %s", msg_type, node_id[:8] if node_id else "-", e)
+            print(f"⚠️  SEND FAILED {msg_type} node={node_id[:8] if node_id else '-'}: {e}")
 
     def cleanup(self):
         for info in _active_streams.values():

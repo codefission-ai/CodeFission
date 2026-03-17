@@ -83,26 +83,40 @@ async def shutdown():
         pass
 
 
+_active_ws: set[WebSocket] = set()
+
+
+@app.on_event("shutdown")
+async def shutdown_ws():
+    """Force-close all WebSocket connections so shutdown doesn't hang."""
+    for w in list(_active_ws):
+        try:
+            await w.close()
+        except Exception:
+            pass
+    _active_ws.clear()
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    import logging
-    _log = logging.getLogger("ws.endpoint")
-
     await ws.accept()
+    _active_ws.add(ws)
 
     handler = ConnectionHandler(
         ws,
         orchestrator=_orchestrator,
     )
-    _log.info("WS CONNECT handler.send=%s", id(handler.send))
+    print(f"WS CONNECT handler.send={id(handler.send)}")
 
     try:
         while True:
             data = await ws.receive_json()
             await handler.dispatch(data)
     except (WebSocketDisconnect, RuntimeError):
-        _log.info("WS DISCONNECT handler.send=%s", id(handler.send))
+        print(f"WS DISCONNECT handler.send={id(handler.send)}")
         handler.cleanup()
+    finally:
+        _active_ws.discard(ws)
 
 
 @app.get("/api/browse")
