@@ -28,4 +28,8 @@ if [ ! -d "$DIST" ] || [ -n "$(find "$UI/src" "$UI/index.html" -newer "$DIST/ind
   cp -r "$DIST" "$STATIC"
 fi
 
-PYTHONPATH="$DIR/codefission" exec python -m codefission --port "$PORT"
+# Run server. Use exec so Ctrl+C goes directly to Python.
+# trap ensures cleanup even if signal handling is weird.
+trap 'echo "Caught signal"; kill %1 2>/dev/null; exit 0' INT TERM
+PYTHONPATH="$DIR/codefission" python -m codefission --port "$PORT" &
+wait $!
