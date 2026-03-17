@@ -213,6 +213,102 @@ class ChatMixin:
 
     # ── Chat preparation ──────────────────────────────────────────────
 
+    async def _create_chat_node(
+        self,
+        parent_node_id: str,
+        message: str,
+        after_id: str | None = None,
+        created_by: str = "human",
+        file_quotes: list[dict] | None = None,
+        draft_node_id: str | None = None,
+    ) -> tuple[Node, str | None]:
+        """Fast path: create the child node in DB and return it immediately.
+
+        This lets the UI show the node before the slow git worktree setup.
+        """
+        parent = await get_node(parent_node_id)
+        if not parent:
+            raise ValueError(f"Parent node {parent_node_id} not found")
+
+        # Reuse draft or create new child
+        if draft_node_id:
+            draft = await get_node(draft_node_id)
+            if draft and draft.status == "draft" and draft.parent_id == parent_node_id:
+                nid = draft.id
+            else:
+                log.warning("Draft %s invalid, creating new child", draft_node_id)
+                child = await create_child_node(parent_node_id, label=message[:40], created_by=created_by)
+                nid = child.id
+        else:
+            child = await create_child_node(parent_node_id, label=message[:40], created_by=created_by)
+            nid = child.id
+
+        # Save user message, set label and status
+        label = message[:40]
+        update_kwargs: dict = dict(user_message=message, label=label, status="active")
+        quoted_node_ids = list(set(fq["node_id"] for fq in file_quotes) - {parent_node_id}) if file_quotes else []
+        if quoted_node_ids:
+            update_kwargs["quoted_node_ids"] = quoted_node_ids
+        await update_node(nid, **update_kwargs)
+
+        node = await get_node(nid)
+        return node, after_id
+
+    async def _finish_prepare_chat(
+        self,
+        node_id: str,
+        parent_node_id: str,
+        message: str,
+        after_id: str | None = None,
+        created_by: str = "human",
+        file_quotes: list[dict] | None = None,
+    ) -> ChatContext:
+        """Slow path: set up git worktree, resolve session/settings."""
+        parent_node = await get_node(parent_node_id)
+        tree = await get_tree(parent_node.tree_id) if parent_node else None
+        if not tree:
+            raise ValueError(f"Tree for node {parent_node_id} not found")
+
+        nid = node_id
+        workspace = resolve_workspace(tree.root_node_id, nid)
+        await ensure_worktree(
+            tree.root_node_id, nid,
+            parent_node_id,
+            parent_node.git_commit if parent_node else None,
+        )
+
+        # Resolve parent's session_id for SDK session forking
+        parent_session_id = None
+        sdk_msg = message
+        if parent_node and parent_node.session_id:
+            parent_session_id = parent_node.session_id
+            parent_ws = resolve_workspace(tree.root_node_id, parent_node.id)
+            copy_session(parent_ws, workspace, parent_session_id)
+
+        # File quotes
+        if file_quotes:
+            quote_ctx = await self._build_file_quote_context(file_quotes, tree, tree.root_node_id)
+            sdk_msg = quote_ctx + sdk_msg
+
+        # Resolve effective settings
+        effective = await resolve_tree_settings(tree)
+        global_cfg = await get_global_defaults()
+
+        child = await get_node(nid)
+
+        return ChatContext(
+            node_id=nid,
+            node=child,
+            workspace=workspace,
+            sdk_message=sdk_msg,
+            parent_session_id=parent_session_id,
+            provider=effective["provider"],
+            model=effective["model"],
+            api_key=await get_effective_api_key(effective["provider"]),
+            after_id=after_id,
+            tree_instructions=tree.skill or "",
+        )
+
     async def prepare_chat(
         self,
         parent_node_id: str,
@@ -325,18 +421,24 @@ class ChatMixin:
         The caller (WS presenter, REST SSE, CLI) consumes events and
         delivers them over its transport.
         """
-        # 1. Prepare: create child node, resolve workspace/session/settings
-        ctx = await self.prepare_chat(
+        # 1a. Create child node in DB (fast) and notify UI immediately
+        early_node, early_after_id = await self._create_chat_node(
             parent_node_id, message,
             after_id=after_id,
             created_by=created_by,
             file_quotes=file_quotes,
             draft_node_id=draft_node_id,
         )
-        nid = ctx.node_id
+        yield ChatNodeCreated(node=early_node, after_id=early_after_id)
 
-        # Yield ChatNodeCreated so the caller can notify the UI
-        yield ChatNodeCreated(node=ctx.node, after_id=ctx.after_id)
+        # 1b. Prepare workspace, worktree, session (slow — git worktree add)
+        ctx = await self._finish_prepare_chat(
+            early_node.id, parent_node_id, message,
+            after_id=early_after_id,
+            created_by=created_by,
+            file_quotes=file_quotes,
+        )
+        nid = ctx.node_id
 
         # 2. Stream the chat via agentbridge
         full_text = ""
