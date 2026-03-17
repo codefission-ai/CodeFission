@@ -122,26 +122,10 @@ def main():
 
     print(f"Server:  http://localhost:{actual_port}")
 
-    import signal
+    # Run uvicorn in a daemon thread. Main thread just waits for Ctrl+C
+    # and force-exits. This completely bypasses uvicorn's broken graceful
+    # shutdown that hangs on open WebSocket connections.
     import threading
-
-    def _force_exit_watchdog():
-        """Watchdog: if the main thread is stuck shutting down, force exit."""
-        import time
-        time.sleep(5)
-        print("\nShutdown timed out. Force exit.", file=sys.stderr)
-        _release_lock()
-        os._exit(1)
-
-    def _on_sigint(sig, frame):
-        """On Ctrl+C: start a watchdog thread, then let uvicorn handle the signal."""
-        watchdog = threading.Thread(target=_force_exit_watchdog, daemon=True)
-        watchdog.start()
-        # Restore default handler so second Ctrl+C kills immediately
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-        raise KeyboardInterrupt
-
-    signal.signal(signal.SIGINT, _on_sigint)
 
     config = uvicorn.Config(
         "codefission.main:app",
@@ -150,13 +134,18 @@ def main():
         ws_ping_interval=30,
         ws_ping_timeout=10,
         loop="asyncio",
-        timeout_graceful_shutdown=2,
     )
     server = uvicorn.Server(config)
+
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
     try:
-        server.run()
+        thread.join()
     except KeyboardInterrupt:
+        print("\nShutting down...")
         _release_lock()
+        os._exit(0)
 
 
 if __name__ == "__main__":
