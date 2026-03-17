@@ -70,6 +70,10 @@ class ClaudeAdapter(BaseAdapter):
         # Include partial messages for streaming tool args
         cmd.append("--include-partial-messages")
 
+        # Memory control: skip user-level memory, only use project config (CLAUDE.md)
+        if config.disable_global_memory:
+            cmd.extend(["--setting-sources", "project,local"])
+
         cmd.extend(config.extra_args)
         return cmd
 

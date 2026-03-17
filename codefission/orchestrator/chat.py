@@ -292,7 +292,6 @@ class ChatMixin:
 
         # Resolve effective settings
         effective = await resolve_tree_settings(tree)
-        global_cfg = await get_global_defaults()
 
         child = await get_node(nid)
 

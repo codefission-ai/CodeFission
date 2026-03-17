@@ -90,6 +90,9 @@ class SessionConfig:
     # Cross-provider context transfer
     prior_context: str | None = None       # Formatted history from another provider
 
+    # Memory / persistence control
+    disable_global_memory: bool = False    # Skip user-level memory, only use project-level config
+
     # Escape hatch for arbitrary CLI flags
     extra_args: list[str] = field(default_factory=list)
 

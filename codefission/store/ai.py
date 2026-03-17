@@ -264,6 +264,7 @@ async def stream_chat(
         model=model,
         env=_sdk_env(api_key, provider),
         permission_mode="bypassPermissions",
+        disable_global_memory=True,  # skip user-level memory, keep project CLAUDE.md/AGENTS.md
     )
 
     if resume_sid:

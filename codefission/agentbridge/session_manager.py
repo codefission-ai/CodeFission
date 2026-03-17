@@ -250,6 +250,7 @@ class SessionManager:
         sandbox_mode: str | None = None,
         env: dict[str, str] | None = None,
         extra_args: list[str] | None = None,
+        disable_global_memory: bool = False,
     ) -> SessionConfig:
         """Build a SessionConfig from current state + per-call overrides."""
         provider_type = self.current_provider_type
@@ -260,7 +261,7 @@ class SessionManager:
             provider=provider_type,
             prompt=prompt,
             cwd=cwd or Path.cwd(),
-            model=self._current_model,  # None = adapter uses its own default
+            model=self._current_model,
             system_prompt=system_prompt,
             prior_context=prior_context,
             resume_session_id=resume_session_id,
@@ -270,4 +271,5 @@ class SessionManager:
             sandbox_mode=sandbox_mode,
             env=env or {},
             extra_args=extra_args or [],
+            disable_global_memory=disable_global_memory,
         )

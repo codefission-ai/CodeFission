@@ -57,6 +57,10 @@ class CodexAdapter(BaseAdapter):
             if sandbox:
                 cmd.extend(["--sandbox", sandbox])
 
+            # Memory control: don't persist sessions to disk
+            if config.disable_global_memory:
+                cmd.append("--ephemeral")
+
             cmd.extend(config.extra_args)
 
             # Build the prompt:

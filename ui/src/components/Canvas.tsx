@@ -376,7 +376,9 @@ function CanvasInner() {
     [nodes, expandedNodes, layoutVersion, ready, selectedNodeId, pendingDeleteNodes],
   );
 
-  // Compensate viewport when layout shifts the selected node (e.g. sibling added)
+  // Compensate layout shifts so the selected node stays at the same screen position.
+  // Instead of moving the viewport (which is async and causes a frame of jitter),
+  // offset all node positions so the selected node keeps its previous coordinates.
   const reactFlowInstance = useReactFlow();
   const newPositions: Record<string, { x: number; y: number }> = {};
   for (const fn of flowNodes) newPositions[fn.id] = fn.position;
@@ -388,11 +390,12 @@ function CanvasInner() {
       const dx = curr.x - prev.x;
       const dy = curr.y - prev.y;
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        const vp = reactFlowInstance.getViewport();
-        reactFlowInstance.setViewport(
-          { x: vp.x - dx * vp.zoom, y: vp.y - dy * vp.zoom, zoom: vp.zoom },
-          { duration: 350 },
-        );
+        // Shift all nodes so the selected one stays put
+        for (const fn of flowNodes) {
+          fn.position = { x: fn.position.x - dx, y: fn.position.y - dy };
+        }
+        // Rebuild position map after adjustment
+        for (const fn of flowNodes) newPositions[fn.id] = fn.position;
       }
     }
   }
