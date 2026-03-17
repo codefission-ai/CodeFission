@@ -121,9 +121,21 @@ def main():
 
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
+    # Force-exit on second Ctrl+C (in case graceful shutdown hangs)
+    _interrupted = False
+    def _handle_sigint(sig, frame):
+        nonlocal _interrupted
+        if _interrupted:
+            print("\nForce exit.", file=sys.stderr)
+            _release_lock()
+            os._exit(1)
+        _interrupted = True
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGINT, _handle_sigint)
+
     print(f"Server:  http://localhost:{actual_port}")
 
-    config = uvicorn.Config(
+    uvicorn.run(
         "codefission.main:app",
         host="0.0.0.0",
         port=actual_port,
@@ -131,27 +143,6 @@ def main():
         ws_ping_timeout=10,
         loop="asyncio",
     )
-    server = uvicorn.Server(config)
-
-    # Override uvicorn's signal handling — force exit on second Ctrl+C
-    _original_handler = None
-
-    def _handle_signal(sig, frame):
-        if server.should_exit:
-            # Second signal — force exit
-            print("\nForce exit.", file=sys.stderr)
-            _release_lock()
-            os._exit(1)
-        server.should_exit = True
-
-    signal.signal(signal.SIGINT, _handle_signal)
-    signal.signal(signal.SIGTERM, _handle_signal)
-
-    # Install our handler AFTER server.run starts (uvicorn installs its own in run)
-    # Use install_signal_handlers=False to prevent uvicorn from overriding ours
-    config.install_signal_handlers = False
-
-    server.run()
 
 
 if __name__ == "__main__":

@@ -125,23 +125,21 @@ export function connectWs() {
     actions.setConnected(true);
     backoffAttempt = 0;
     startHeartbeat();
-
-    // 1. Re-attach to current tree FIRST (reclaims active streams)
-    const currentTreeId = useStore.getState().currentTreeId;
-    if (currentTreeId) {
-      ws!.send(JSON.stringify({ type: WS.LOAD_TREE, tree_id: currentTreeId }));
-    }
-
-    // 2. List all trees for sidebar
-    ws!.send(JSON.stringify({ type: WS.LIST_TREES }));
-
-    // 3. Flush queued messages LAST (e.g. CHAT sent while disconnected)
+    // Flush queued messages
     for (const msg of sendQueue) {
       ws!.send(JSON.stringify(msg));
     }
     sendQueue = [];
 
+    // Always list all trees
     actions.setSidebarOpen(true);
+    send({ type: WS.LIST_TREES });
+
+    // Re-attach to current tree (reconnects active streams after WS drop)
+    const currentTreeId = useStore.getState().currentTreeId;
+    if (currentTreeId) {
+      send({ type: WS.LOAD_TREE, tree_id: currentTreeId });
+    }
   };
   ws.onclose = () => {
     actions.setConnected(false);

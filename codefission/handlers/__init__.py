@@ -50,36 +50,32 @@ class ConnectionHandler(
         self.tasks: dict[str, asyncio.Task] = {}
         self.cancelled: set[str] = set()
         self.streams: dict[str, StreamState] = {}
+        self._ws_alive = True
 
     async def send(self, msg_type: str, **payload):
-        import logging
-        _log = logging.getLogger("handlers.send")
-
         node_id = payload.get("node_id")
+
+        # Route to whoever currently owns this stream — may be a newer connection
         if node_id:
             info = _active_streams.get(node_id)
-            if info:
-                if info.send_fn is None:
-                    # Connection died, stream not yet reclaimed. Don't try to send
-                    # on the dead WS — the text is buffered in info.text and will
-                    # be sent when a new connection reclaims via LOAD_TREE.
-                    return
-                if info.send_fn != self.send:
-                    # Stream was reclaimed by a newer connection — route there
-                    try:
-                        await info.send_fn(msg_type, **payload)
-                    except Exception:
-                        _log.debug("Rerouted send failed for %s %s", msg_type, node_id)
-                    return
+            if info and info.send_fn is not None and info.send_fn != self.send:
+                try:
+                    await info.send_fn(msg_type, **payload)
+                except Exception:
+                    pass
+                return
+
+        # If our WS is dead, don't even try — just drop (data is in DB)
+        if not self._ws_alive:
+            return
+
         try:
             await self.ws.send_json({"type": msg_type, **payload})
-        except Exception as e:
-            _log.debug("WS send failed (%s): %s %s", e, msg_type, node_id or "")
+        except Exception:
+            self._ws_alive = False
 
     def cleanup(self):
-        for info in _active_streams.values():
-            if info.send_fn == self.send:
-                info.send_fn = None
+        self._ws_alive = False
 
     def _set_context_for_repo(self, repo_path: Path):
         set_project_path(repo_path)
