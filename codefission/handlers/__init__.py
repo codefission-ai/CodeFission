@@ -52,13 +52,23 @@ class ConnectionHandler(
         self.streams: dict[str, StreamState] = {}
 
     async def send(self, msg_type: str, **payload):
-        """Send a WS message. Always sends on THIS connection's websocket.
+        """Send a WS message.
 
-        The old reroute logic (sending to a different handler's send_fn) was
-        causing messages to go to dead connections. Removed — each handler
-        sends on its own WS only. Stream reconnect is handled by load_tree
-        which re-attaches streams to the new connection.
+        For streaming nodes: if a newer handler claimed this stream (via
+        load_tree after browser refresh), reroute to the new handler.
+        This keeps streaming output visible after page refresh.
         """
+        node_id = payload.get("node_id")
+        if node_id:
+            info = _active_streams.get(node_id)
+            if info and info.send_fn is not None and info.send_fn != self.send:
+                try:
+                    await info.send_fn(msg_type, **payload)
+                    return  # successfully rerouted
+                except Exception:
+                    # Reroute target is dead — fall through to our own WS
+                    info.send_fn = self.send
+
         try:
             await self.ws.send_json({"type": msg_type, **payload})
         except Exception:
