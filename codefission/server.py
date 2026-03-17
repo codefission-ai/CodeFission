@@ -122,11 +122,6 @@ def main():
 
     print(f"Server:  http://localhost:{actual_port}")
 
-    # Run uvicorn in a daemon thread. Main thread just waits for Ctrl+C
-    # and force-exits. This completely bypasses uvicorn's broken graceful
-    # shutdown that hangs on open WebSocket connections.
-    import threading
-
     config = uvicorn.Config(
         "codefission.main:app",
         host="0.0.0.0",
@@ -135,19 +130,22 @@ def main():
         ws_ping_timeout=10,
         loop="asyncio",
     )
-    server = uvicorn.Server(config)
 
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
+    # Subclass Server to prevent uvicorn from installing its own signal
+    # handlers. Uvicorn's graceful shutdown hangs on open WebSocket
+    # connections. We handle SIGINT ourselves with os._exit().
+    class FastExitServer(uvicorn.Server):
+        def install_signal_handlers(self):
+            import signal
+            def _die(sig, frame):
+                print("\nShutting down...")
+                _release_lock()
+                os._exit(0)
+            signal.signal(signal.SIGINT, _die)
+            signal.signal(signal.SIGTERM, _die)
 
-    try:
-        while thread.is_alive():
-            thread.join(timeout=0.5)
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-        _release_lock()
-        import signal
-        os.kill(os.getpid(), signal.SIGKILL)
+    server = FastExitServer(config)
+    server.run()
 
 
 if __name__ == "__main__":
