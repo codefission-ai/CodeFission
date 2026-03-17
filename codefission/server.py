@@ -141,7 +141,11 @@ def main():
     thread.start()
 
     try:
-        thread.join()
+        # thread.join() without timeout is NOT interruptible by signals
+        # in Python (blocks in C-level pthread_join). Use a timeout loop
+        # so the main thread can process KeyboardInterrupt.
+        while thread.is_alive():
+            thread.join(timeout=1)
     except KeyboardInterrupt:
         print("\nShutting down...")
         _release_lock()
