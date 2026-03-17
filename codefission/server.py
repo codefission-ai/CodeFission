@@ -97,6 +97,7 @@ def _release_lock():
 
 def main():
     """Entry point for `fission`. Just starts the server — no repo binding."""
+    import signal
     import uvicorn
 
     parser = argparse.ArgumentParser(
@@ -120,6 +121,18 @@ def main():
 
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
+    # Force-exit on second Ctrl+C (in case graceful shutdown hangs)
+    _interrupted = False
+    def _handle_sigint(sig, frame):
+        nonlocal _interrupted
+        if _interrupted:
+            print("\nForce exit.", file=sys.stderr)
+            _release_lock()
+            os._exit(1)
+        _interrupted = True
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGINT, _handle_sigint)
+
     print(f"Server:  http://localhost:{actual_port}")
 
     uvicorn.run(
@@ -128,7 +141,7 @@ def main():
         port=actual_port,
         ws_ping_interval=30,
         ws_ping_timeout=10,
-        loop="asyncio",  # avoid uvloop signal handling issues on macOS
+        loop="asyncio",
     )
 
 
