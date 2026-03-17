@@ -363,3 +363,17 @@ function handle(data: any) {
       break;
   }
 }
+
+// ── HMR cleanup (prevents duplicate connections during dev) ──────────────
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    stopHeartbeat();
+    if (ws) {
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      try { ws.close(); } catch {}
+      ws = null;
+    }
+  });
+}

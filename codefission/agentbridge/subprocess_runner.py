@@ -36,6 +36,7 @@ class SubprocessRunner:
             stderr=asyncio.subprocess.PIPE,
             cwd=str(self._cwd),
             env=self._env,
+            limit=MAX_BUFFER_SIZE,  # raise default 64KB StreamReader limit
         )
 
     async def read_events(self) -> AsyncGenerator[dict, None]:

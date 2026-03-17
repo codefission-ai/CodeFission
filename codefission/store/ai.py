@@ -134,12 +134,19 @@ def _build_system_prompt(tree=None, tree_instructions: str = "") -> str:
 
         parts.append(
             "\n\n## Response Format"
-            "\nYour response is displayed as rendered Markdown. Surface the "
-            "artifacts the user cares about most:"
-            "\n- Experiments/data science: include result tables, embed plots inline."
-            "\n- Web development: show the local URL/port."
-            "\n- Media: embed or link to generated files inline."
-            "\n- Code changes: show key snippets or a summary — not entire files."
+            "\nYour response is rendered Markdown. Always lead with the most "
+            "visual, tangible result first — text explanation comes last."
+            "\n"
+            "\n**Show, don't tell.** Prefer rich output over plain text:"
+            "\n- Images/plots: embed inline with `![description](_artifacts/file.png)`."
+            "\n- Videos/animations: embed with `![description](_artifacts/file.mp4)` "
+            "(rendered as a playable `<video>`)."
+            "\n- Websites/UIs: take a screenshot, embed it, then show the URL/port."
+            "\n- Data results: show a table or chart before describing findings."
+            "\n- Code changes: show key snippets or a summary — never dump entire files."
+            "\n"
+            "\nSupported media in Markdown image syntax: `.png`, `.jpg`, `.gif`, `.svg`, "
+            "`.mp4`, `.webm`, `.mov`. Save all generated output to `_artifacts/`."
         )
 
     if tree_instructions:

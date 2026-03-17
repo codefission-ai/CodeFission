@@ -50,6 +50,41 @@ function SunIcon() {
   );
 }
 
+function isSafari(): boolean {
+  const ua = navigator.userAgent;
+  return /Safari/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua);
+}
+
+function BrowserBanner() {
+  const [dismissed, setDismissed] = useState(() =>
+    localStorage.getItem("browser-banner-dismissed") === "1"
+  );
+  if (dismissed || !isSafari()) return null;
+  return (
+    <div style={{
+      background: "var(--warning-bg, #fff3cd)",
+      color: "var(--warning-text, #664d03)",
+      padding: "6px 16px",
+      fontSize: 13,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderBottom: "1px solid var(--border-dim)",
+      flexShrink: 0,
+    }}>
+      <span>CodeFission works best in Chrome. Safari has known issues with WebSocket connections and streaming.</span>
+      <button
+        onClick={() => { setDismissed(true); localStorage.setItem("browser-banner-dismissed", "1"); }}
+        style={{
+          background: "none", border: "none", cursor: "pointer",
+          color: "inherit", fontSize: 16, padding: "0 4px", marginLeft: 12,
+        }}
+        aria-label="Dismiss"
+      >&times;</button>
+    </div>
+  );
+}
+
 export default function App() {
   const hasTree = useStore((s) => !!s.currentTreeId);
   const creatingProject = useStore((s) => s.creatingProject);
@@ -119,6 +154,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <BrowserBanner />
       {/* Sidebar */}
       <div
         ref={sidebarRef}

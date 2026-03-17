@@ -135,6 +135,7 @@ interface Store {
   pendingQuotes: FileQuote[];
   pendingQuotesFor: string | null;  // which node these quotes target
   pendingInputText: string | null;
+  pendingInputReplace: boolean;
   pendingDeleteNodes: Set<string>;
   deleteToast: { ids: string[]; label: string; timer: ReturnType<typeof setTimeout> } | null;
   showSettings: boolean;
@@ -216,6 +217,7 @@ export const useStore = create<Store>(() => ({
   pendingQuotes: [],
   pendingQuotesFor: null,
   pendingInputText: null,
+  pendingInputReplace: false,
   pendingDeleteNodes: new Set<string>(),
   deleteToast: null,
   showSettings: false,
@@ -415,7 +417,19 @@ export const actions = {
     useStore.setState((s) => ({
       pendingInputText: (s.pendingInputText || "") + (s.pendingInputText ? "\n" : "") + "> " + text.replace(/\n/g, "\n> ") + "\n",
     })),
-  clearPendingInput: () => useStore.setState({ pendingInputText: null }),
+  clearPendingInput: () => useStore.setState({ pendingInputText: null, pendingInputReplace: false }),
+
+  /** Copy a node's user message into its parent's textarea for edit & resubmit. */
+  editResubmit: (nodeId: string) => {
+    const s = useStore.getState();
+    const node = s.nodes[nodeId];
+    if (!node?.user_message || !node.parent_id) return;
+    useStore.setState({
+      selectedNodeId: node.parent_id,
+      pendingInputText: node.user_message,
+      pendingInputReplace: true,
+    });
+  },
 
   // ── Soft delete / undo ───────────────────────────────────────
   softDeleteNodes: (ids: string[]) =>

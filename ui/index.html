@@ -622,7 +622,7 @@
       border: 1px solid var(--border-dim);
       border-radius: 4px; outline: none;
       resize: none; line-height: 1.4;
-      overflow: hidden;
+      overflow-y: auto; overflow-x: hidden;
       min-height: 24px; max-height: 150px;
     }
     .root-section-input::placeholder { color: var(--text-muted); }
@@ -692,7 +692,20 @@
       display: flex; align-items: center; justify-content: center;
       opacity: 0; transition: opacity 0.15s, background 0.1s, border-color 0.1s;
     }
-    .tree-node-user:hover .collapse-btn { opacity: 1; }
+    .tree-node-user:hover .collapse-btn,
+    .tree-node-user:hover .edit-resubmit-btn { opacity: 1; }
+    .edit-resubmit-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 14px; height: 14px; flex-shrink: 0;
+      background: none; border: none; border-radius: 3px;
+      color: var(--text-muted); cursor: pointer;
+      opacity: 0; transition: opacity 0.15s, color 0.1s;
+      margin-right: 3px; vertical-align: middle;
+      padding: 0;
+    }
+    .edit-resubmit-btn:hover {
+      color: var(--text-primary);
+    }
     .collapse-btn:hover {
       background: var(--bg-hover); border-color: var(--border-dim);
       color: var(--text-primary);
@@ -730,7 +743,7 @@
       outline: none;
       line-height: 1.4;
       min-height: 24px; max-height: 150px;
-      overflow: hidden;
+      overflow-y: auto; overflow-x: hidden;
     }
     .tree-node-textarea::placeholder { color: var(--text-muted); }
     .tree-node-textarea:focus { border-color: var(--accent); }

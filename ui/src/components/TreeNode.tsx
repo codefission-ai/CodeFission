@@ -350,12 +350,19 @@ function TreeNode({ data }: { data: { node: CNode } }) {
 
   // Consume pendingInputText from store
   const pendingInputText = useStore((s) => s.pendingInputText);
+  const pendingInputReplace = useStore((s) => s.pendingInputReplace);
   useEffect(() => {
     if (pendingInputText && selected) {
-      setInput((prev) => prev + pendingInputText);
+      if (pendingInputReplace) {
+        setInput(pendingInputText);
+      } else {
+        setInput((prev) => prev + pendingInputText);
+      }
       actions.clearPendingInput();
+      // Focus textarea so user can immediately edit
+      requestAnimationFrame(() => textareaRef.current?.focus());
     }
-  }, [pendingInputText, selected]);
+  }, [pendingInputText, selected, pendingInputReplace]);
 
   // Reset merging spinner when result arrives
   useEffect(() => {
@@ -490,10 +497,14 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           </label>
           <textarea
             ref={skillTextareaRef}
-            className="root-section-input nopan nodrag"
+            className="root-section-input nopan nodrag nowheel"
             value={skillInput}
             onChange={(e) => handleSkillChange(e.target.value)}
             onFocus={() => actions.selectNode(node.id)}
+            onWheel={(e) => {
+              const ta = e.currentTarget;
+              if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
+            }}
             placeholder="System instructions for all conversations..."
             rows={1}
             disabled={hasChildren}
@@ -549,7 +560,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           >
             <textarea
               ref={textareaRef}
-              className="root-section-input nopan nodrag"
+              className="root-section-input nopan nodrag nowheel"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onFocus={() => actions.selectNode(node.id)}
@@ -559,6 +570,10 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                   e.preventDefault();
                   handleSend();
                 }
+              }}
+              onWheel={(e) => {
+                const ta = e.currentTarget;
+                if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
               }}
               placeholder="Type a message..."
               rows={1}
@@ -581,7 +596,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           </div>
         </div>
 
-        <span className="tree-node-worktree-id">{node.id.slice(0, 8)}</span>
       </div>
     );
   }
@@ -659,6 +673,20 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           {isRoot && <StalenessBanner treeId={node.tree_id} />}
           {node.user_message && (
             <div className="tree-node-user">
+              {node.parent_id && (
+                <button
+                  className="edit-resubmit-btn nopan nodrag"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    actions.editResubmit(node.id);
+                  }}
+                  title="Edit & resubmit as new branch"
+                >
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M11.5 1.5l3 3L5 14H2v-3z" />
+                  </svg>
+                </button>
+              )}
               {truncate(node.user_message, 150)}
               <button
                 className="collapse-btn"
@@ -756,7 +784,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               >
                 <textarea
                   ref={textareaRef}
-                  className="tree-node-textarea nopan nodrag"
+                  className="tree-node-textarea nopan nodrag nowheel"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onFocus={() => actions.selectNode(node.id)}
@@ -765,6 +793,12 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       handleSend();
+                    }
+                  }}
+                  onWheel={(e) => {
+                    const ta = e.currentTarget;
+                    if (ta.scrollHeight > ta.clientHeight) {
+                      e.stopPropagation();
                     }
                   }}
                   placeholder="Follow up..."
