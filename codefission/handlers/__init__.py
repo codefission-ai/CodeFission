@@ -8,8 +8,11 @@ handlers/ only calls orchestrator/. Never touches store/ directly.
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from fastapi import WebSocket
+
+log = logging.getLogger(__name__)
 
 from config import set_project_path
 from events import WS
@@ -59,12 +62,12 @@ class ConnectionHandler(
                 try:
                     await info.send_fn(msg_type, **payload)
                 except Exception:
-                    pass
+                    log.debug("Failed to route %s to stream owner for %s", msg_type, node_id)
                 return
         try:
             await self.ws.send_json({"type": msg_type, **payload})
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("WS send failed for %s: %s", msg_type, e)
 
     def cleanup(self):
         for info in _active_streams.values():

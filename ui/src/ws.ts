@@ -267,6 +267,13 @@ function handle(data: any) {
       );
       break;
     case WS.DONE:
+      // Flush any pending chunks first, then set the authoritative full response
+      flushChunks();
+      if (data.full_response !== undefined) {
+        // Set the full response directly — don't rely on chunk batching
+        // (chunks may still be in the rAF queue when DONE arrives)
+        actions.setNodeResponse(data.node_id, data.full_response);
+      }
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
       if (data.git_commit) {
