@@ -108,7 +108,7 @@ function receivedPong() {
 let sendQueue: Record<string, unknown>[] = [];
 
 export function connectWs() {
-  if (ws && ws.readyState === WebSocket.OPEN) return;
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   // Clean up any lingering socket
   if (ws) {
     ws.onclose = null;
