@@ -434,15 +434,9 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     const s = useStore.getState();
     const ids = getSubtreeIds(s.nodes, node.id);
     if (ids.some((id) => s.streaming[id])) return;
-    actions.softDeleteNodes(ids);
-    const prev = s.deleteToast;
-    if (prev?.timer) clearTimeout(prev.timer);
-    const label = ids.length > 1 ? `Deleted subtree (${ids.length} nodes)` : "Deleted node";
-    const timer = setTimeout(() => {
-      actions.commitDeleteNodes(ids);
-      send({ type: WS.DELETE_NODE, node_id: node.id });
-    }, 10000);
-    actions.setDeleteToast({ ids, label, timer });
+    // Delete immediately — no undo toast
+    actions.commitDeleteNodes(ids);
+    send({ type: WS.DELETE_NODE, node_id: node.id });
   }, [node.id]);
 
   const handleMerge = useCallback((e: React.MouseEvent) => {

@@ -122,9 +122,27 @@ def main():
 
     print(f"Server:  http://localhost:{actual_port}")
 
-    # Use Server API for control over shutdown timeout.
-    # uvicorn.run() installs its own signal handlers that override ours,
-    # so we use the Server directly and set a short timeout.
+    import signal
+    import threading
+
+    def _force_exit_watchdog():
+        """Watchdog: if the main thread is stuck shutting down, force exit."""
+        import time
+        time.sleep(5)
+        print("\nShutdown timed out. Force exit.", file=sys.stderr)
+        _release_lock()
+        os._exit(1)
+
+    def _on_sigint(sig, frame):
+        """On Ctrl+C: start a watchdog thread, then let uvicorn handle the signal."""
+        watchdog = threading.Thread(target=_force_exit_watchdog, daemon=True)
+        watchdog.start()
+        # Restore default handler so second Ctrl+C kills immediately
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, _on_sigint)
+
     config = uvicorn.Config(
         "codefission.main:app",
         host="0.0.0.0",
@@ -132,10 +150,13 @@ def main():
         ws_ping_interval=30,
         ws_ping_timeout=10,
         loop="asyncio",
-        timeout_graceful_shutdown=3,  # force-exit after 3 seconds
+        timeout_graceful_shutdown=2,
     )
     server = uvicorn.Server(config)
-    server.run()
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        _release_lock()
 
 
 if __name__ == "__main__":
