@@ -133,16 +133,18 @@ def main():
 
     # Subclass Server to prevent uvicorn from installing its own signal
     # handlers. Uvicorn's graceful shutdown hangs on open WebSocket
-    # connections. We handle SIGINT ourselves with os._exit().
+    # connections. We use loop.add_signal_handler with os._exit().
     class FastExitServer(uvicorn.Server):
         def install_signal_handlers(self):
-            import signal
-            def _die(sig, frame):
-                print("\nShutting down...")
-                _release_lock()
-                os._exit(0)
-            signal.signal(signal.SIGINT, _die)
-            signal.signal(signal.SIGTERM, _die)
+            import asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            for sig in (2, 15):  # SIGINT, SIGTERM
+                loop.add_signal_handler(sig, self._fast_exit)
+
+        def _fast_exit(self):
+            print("\nShutting down...")
+            _release_lock()
+            os._exit(0)
 
     server = FastExitServer(config)
     server.run()
