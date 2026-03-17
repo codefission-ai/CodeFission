@@ -8,11 +8,8 @@ handlers/ only calls orchestrator/. Never touches store/ directly.
 """
 
 import asyncio
-import logging
 from pathlib import Path
 from fastapi import WebSocket
-
-log = logging.getLogger(__name__)
 
 from config import set_project_path
 from events import WS
@@ -55,19 +52,29 @@ class ConnectionHandler(
         self.streams: dict[str, StreamState] = {}
 
     async def send(self, msg_type: str, **payload):
+        import logging
+        _log = logging.getLogger("handlers.send")
+
         node_id = payload.get("node_id")
         if node_id:
             info = _active_streams.get(node_id)
-            if info and info.send_fn is not None and info.send_fn != self.send:
-                try:
-                    await info.send_fn(msg_type, **payload)
-                except Exception:
-                    log.debug("Failed to route %s to stream owner for %s", msg_type, node_id)
-                return
+            if info:
+                if info.send_fn is None:
+                    # Connection died, stream not yet reclaimed. Don't try to send
+                    # on the dead WS — the text is buffered in info.text and will
+                    # be sent when a new connection reclaims via LOAD_TREE.
+                    return
+                if info.send_fn != self.send:
+                    # Stream was reclaimed by a newer connection — route there
+                    try:
+                        await info.send_fn(msg_type, **payload)
+                    except Exception:
+                        _log.debug("Rerouted send failed for %s %s", msg_type, node_id)
+                    return
         try:
             await self.ws.send_json({"type": msg_type, **payload})
         except Exception as e:
-            log.warning("WS send failed for %s: %s", msg_type, e)
+            _log.debug("WS send failed (%s): %s %s", e, msg_type, node_id or "")
 
     def cleanup(self):
         for info in _active_streams.values():

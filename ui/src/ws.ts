@@ -125,21 +125,23 @@ export function connectWs() {
     actions.setConnected(true);
     backoffAttempt = 0;
     startHeartbeat();
-    // Flush queued messages
+
+    // 1. Re-attach to current tree FIRST (reclaims active streams)
+    const currentTreeId = useStore.getState().currentTreeId;
+    if (currentTreeId) {
+      ws!.send(JSON.stringify({ type: WS.LOAD_TREE, tree_id: currentTreeId }));
+    }
+
+    // 2. List all trees for sidebar
+    ws!.send(JSON.stringify({ type: WS.LIST_TREES }));
+
+    // 3. Flush queued messages LAST (e.g. CHAT sent while disconnected)
     for (const msg of sendQueue) {
       ws!.send(JSON.stringify(msg));
     }
     sendQueue = [];
 
-    // Always list all trees
     actions.setSidebarOpen(true);
-    send({ type: WS.LIST_TREES });
-
-    // Re-attach to current tree (reconnects active streams after WS drop)
-    const currentTreeId = useStore.getState().currentTreeId;
-    if (currentTreeId) {
-      send({ type: WS.LOAD_TREE, tree_id: currentTreeId });
-    }
   };
   ws.onclose = () => {
     actions.setConnected(false);
@@ -267,13 +269,6 @@ function handle(data: any) {
       );
       break;
     case WS.DONE:
-      // Flush any pending chunks first, then set the authoritative full response
-      flushChunks();
-      if (data.full_response !== undefined) {
-        // Set the full response directly — don't rely on chunk batching
-        // (chunks may still be in the rAF queue when DONE arrives)
-        actions.setNodeResponse(data.node_id, data.full_response);
-      }
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
       if (data.git_commit) {

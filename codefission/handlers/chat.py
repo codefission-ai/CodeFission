@@ -32,15 +32,6 @@ class ChatMixin:
         task = asyncio.create_task(self._run_chat(node_id, content, after_id, file_quotes, draft_node_id))
         self.tasks[node_id] = task
 
-        # Log unhandled task exceptions (otherwise they're silently swallowed)
-        def _on_task_done(t):
-            if t.cancelled():
-                return
-            exc = t.exception()
-            if exc:
-                log.error("Chat task for %s failed: %s", node_id, exc, exc_info=exc)
-        task.add_done_callback(_on_task_done)
-
     async def _run_chat(self, node_id: str, msg: str, after_id: str | None = None, file_quotes: list[dict] | None = None, draft_node_id: str | None = None):
         """Thin WS consumer of Orchestrator.chat() async generator.
 

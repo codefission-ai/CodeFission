@@ -306,12 +306,6 @@ export const actions = {
       if (!node) return s;
       return { nodes: { ...s.nodes, [nodeId]: { ...node, status } } };
     }),
-  setNodeResponse: (nodeId: string, response: string) =>
-    useStore.setState((s) => {
-      const node = s.nodes[nodeId];
-      if (!node) return s;
-      return { nodes: { ...s.nodes, [nodeId]: { ...node, assistant_response: response } } };
-    }),
   setStreaming: (nodeId: string, on: boolean) =>
     useStore.setState((s) => {
       const streaming = { ...s.streaming, [nodeId]: on };
