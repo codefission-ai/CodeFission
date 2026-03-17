@@ -41,8 +41,29 @@ export default function NodeModal({ nodeId, userMessage, assistantResponse, onCl
 
     const hideBtn = () => { btn.style.display = "none"; };
 
+    const scrollParent = responseEl.closest(".node-modal") || responseEl.parentElement;
+
+    const positionBtn = () => {
+      const sel = window.getSelection();
+      if (!sel?.rangeCount || !sel.toString().trim()) { hideBtn(); return; }
+      const range = sel.getRangeAt(0);
+      if (!responseEl.contains(range.commonAncestorContainer)) { hideBtn(); return; }
+      const rects = range.getClientRects();
+      const firstRect = rects.length ? rects[0] : range.getBoundingClientRect();
+      const fullRect = range.getBoundingClientRect();
+      if (scrollParent) {
+        const bounds = scrollParent.getBoundingClientRect();
+        if (fullRect.bottom > bounds.bottom || firstRect.top - 28 < bounds.top) {
+          btn.style.visibility = "hidden";
+          return;
+        }
+      }
+      btn.style.visibility = "";
+      btn.style.left = `${firstRect.left + firstRect.width / 2}px`;
+      btn.style.top = `${firstRect.top - 4}px`;
+    };
+
     const onMouseUp = () => {
-      // Defer so the browser can collapse the selection first (e.g. click-to-deselect)
       requestAnimationFrame(() => {
         const sel = window.getSelection();
         const text = sel?.toString().trim();
@@ -50,11 +71,14 @@ export default function NodeModal({ nodeId, userMessage, assistantResponse, onCl
         const range = sel.getRangeAt(0);
         if (!responseEl.contains(range.commonAncestorContainer)) { hideBtn(); return; }
         selectedTextRef.current = text;
-        const rect = range.getBoundingClientRect();
-        btn.style.left = `${rect.left + rect.width / 2}px`;
-        btn.style.top = `${rect.top - 4}px`;
+        positionBtn();
         btn.style.display = "";
       });
+    };
+
+    const onScroll = () => {
+      if (btn.style.display === "none") return;
+      positionBtn();
     };
 
     const onMouseDown = (e: MouseEvent) => {
@@ -78,12 +102,14 @@ export default function NodeModal({ nodeId, userMessage, assistantResponse, onCl
 
     responseEl.addEventListener("mouseup", onMouseUp);
     responseEl.addEventListener("mousedown", onMouseDown);
+    scrollParent?.addEventListener("scroll", onScroll, true);
     btn.addEventListener("mousedown", onBtnMouseDown);
     btn.addEventListener("click", onBtnClick);
 
     return () => {
       responseEl.removeEventListener("mouseup", onMouseUp);
       responseEl.removeEventListener("mousedown", onMouseDown);
+      scrollParent?.removeEventListener("scroll", onScroll, true);
       btn.removeEventListener("mousedown", onBtnMouseDown);
       btn.removeEventListener("click", onBtnClick);
       btn.remove();
