@@ -138,11 +138,12 @@ def main():
         def install_signal_handlers(self):
             import asyncio as _asyncio
             loop = _asyncio.get_event_loop()
+            print(f"[server] Installing fast-exit signal handlers on loop {id(loop)}")
             for sig in (2, 15):  # SIGINT, SIGTERM
                 loop.add_signal_handler(sig, self._fast_exit)
 
         def _fast_exit(self):
-            print("\nShutting down...")
+            print("\nCtrl+C received. Exiting.", flush=True)
             _release_lock()
             os._exit(0)
 

@@ -57,6 +57,7 @@ def _silence_asyncgen_gc(loop, context):
 @app.on_event("startup")
 async def startup():
     loop = asyncio.get_running_loop()
+    print(f"[startup] Running on loop {id(loop)}")
     loop.set_exception_handler(_silence_asyncgen_gc)
 
     await init_db()
