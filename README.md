@@ -144,3 +144,17 @@ npm run dev
 ```
 
 Data is stored in `~/.codefission/` (SQLite database, git worktrees). Override with `CODEFISSION_DATA_DIR` env var.
+
+## Platform support
+
+| Platform | Status |
+|----------|--------|
+| macOS | Tested |
+| Linux | Tested |
+| Windows | Not tested — may work, but no guarantees |
+
+> **Windows users:** if you hit issues, [open a GitHub issue](https://github.com/codefission-ai/CodeFission/issues) and I'll respond within 3 hours.
+
+## Support
+
+Found a bug or something not working? [Open an issue](https://github.com/codefission-ai/CodeFission/issues) — I respond to all issues within 3 hours.
