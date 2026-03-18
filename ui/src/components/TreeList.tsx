@@ -223,7 +223,7 @@ function NewProjectButton() {
   );
 }
 
-export default function TreeList() {
+export default function TreeList({ hideHeader }: { hideHeader?: boolean } = {}) {
   const trees = useStore((s) => s.trees);
   const currentTreeId = useStore((s) => s.currentTreeId);
 
@@ -265,9 +265,11 @@ export default function TreeList() {
 
   return (
     <div className="tree-list">
-      <div className="tree-list-header">
-        <span>CodeFission</span>
-      </div>
+      {!hideHeader && (
+        <div className="tree-list-header">
+          <span>CodeFission</span>
+        </div>
+      )}
 
       <NewProjectButton />
 
