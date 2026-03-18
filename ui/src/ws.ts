@@ -239,7 +239,7 @@ function handle(data: any) {
       if (_chatActiveNodeId && !nodeIds.includes(_chatActiveNodeId)) {
         console.warn("[ws] TREE_LOADED missing active chat node:", _chatActiveNodeId);
       }
-      // Populate node→tree map for all loaded nodes
+      // Populate node→tree map
       for (const n of (data.nodes || [])) {
         if (n.id && n.tree_id) _nodeTreeMap.set(n.id, n.tree_id);
       }
@@ -250,7 +250,6 @@ function handle(data: any) {
           actions.setNodeProcesses(nodeId, procs as any[]);
           if ((procs as any[]).length > 0) processNodeIds.push(nodeId);
         }
-        // Update tree-level process tracking
         const treeId = data.nodes?.[0]?.tree_id;
         if (treeId) actions.setTreeProcessNodes(treeId, processNodeIds);
       }
@@ -320,7 +319,7 @@ function handle(data: any) {
       console.log("[ws] DONE node=%s", data.node_id?.slice(0, 8));
       if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
       const doneTreeId = _treeIdFor(data.node_id);
-      if (doneTreeId) actions.markStreamingDone(doneTreeId, data.node_id);
+      if (doneTreeId) actions.markDone(doneTreeId, data.node_id);
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
       if (data.git_commit) {
@@ -336,7 +335,6 @@ function handle(data: any) {
       break;
     case "tree_node_processes": {
       actions.replaceAllNodeProcesses(data.tree_node_processes || {});
-      // Update tree activity process tracking
       const procsByTree = new Map<string, string[]>();
       for (const [nodeId, procs] of Object.entries(data.tree_node_processes || {})) {
         if ((procs as any[]).length > 0) {
@@ -347,8 +345,8 @@ function handle(data: any) {
           }
         }
       }
-      for (const [tid, nodeIds] of procsByTree) {
-        actions.setTreeProcessNodes(tid, nodeIds);
+      for (const [tid, nids] of procsByTree) {
+        actions.setTreeProcessNodes(tid, nids);
       }
       break;
     }
@@ -362,7 +360,7 @@ function handle(data: any) {
       console.error("[ws] ERROR node=%s: %s", data.node_id?.slice(0, 8), data.error);
       if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
       const errTreeId = _treeIdFor(data.node_id);
-      if (errTreeId) actions.markStreamingError(errTreeId, data.node_id);
+      if (errTreeId) actions.markError(errTreeId, data.node_id);
       actions.setNodeStatus(data.node_id, "error");
       actions.setStreaming(data.node_id, false);
       break;

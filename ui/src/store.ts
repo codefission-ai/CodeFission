@@ -118,11 +118,11 @@ export interface FilesPanel {
   selectedFile: string | null;
 }
 
-/** Per-tree activity summary — persists across tree switches. */
-export interface TreeActivity {
-  streamingNodes: Set<string>;   // node IDs currently streaming
-  processNodes: Set<string>;     // node IDs with running processes
-  unreadNodes: Set<string>;      // node IDs done but unseen
+/** Per-tree activity counters — survives tree switches. */
+export interface TreeActivityEntry {
+  streamingNodes: string[];  // node IDs currently streaming
+  processNodes: string[];    // node IDs with running processes
+  unreadNodes: string[];     // node IDs done but unseen
 }
 
 interface Store {
@@ -138,6 +138,7 @@ interface Store {
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
+  treeActivity: Record<string, TreeActivityEntry>;  // treeId -> activity (persists across switches)
   filesPanel: FilesPanel | null;
   pendingQuotes: FileQuote[];
   pendingQuotesFor: string | null;  // which node these quotes target
@@ -152,7 +153,6 @@ interface Store {
   repoBranches: BranchInfo[];
   mergeResult: MergeResult | null;
   treeStaleness: Record<string, StalenessInfo>;
-  treeActivity: Record<string, TreeActivity>;  // treeId -> activity
   seenNodes: Set<string>;
   sidebarOpen: boolean;
   creatingProject: boolean;  // show project setup screen instead of canvas
@@ -221,6 +221,7 @@ export const useStore = create<Store>(() => ({
   nodeDiffs: {},
   fileContents: {},
   nodeProcesses: {},
+  treeActivity: {},
   filesPanel: null,
   pendingQuotes: [],
   pendingQuotesFor: null,
@@ -235,7 +236,6 @@ export const useStore = create<Store>(() => ({
   repoBranches: [],
   mergeResult: null,
   treeStaleness: {},
-  treeActivity: {},
   seenNodes: new Set<string>(),
   sidebarOpen: true,
   creatingProject: false,
@@ -292,14 +292,15 @@ export const actions = {
       seenNodes = new Set(seenNodes);
       seenNodes.add(id);
     }
-    // Also clear from tree-level unread
+    // Clear from tree-level unread
     let treeActivity = s.treeActivity;
-    if (id !== null && s.currentTreeId) {
-      const act = treeActivity[s.currentTreeId];
-      if (act?.unreadNodes.has(id)) {
-        const unreadNodes = new Set(act.unreadNodes);
-        unreadNodes.delete(id);
-        treeActivity = { ...treeActivity, [s.currentTreeId]: { ...act, unreadNodes } };
+    if (id !== null) {
+      const node = s.nodes[id];
+      if (node) {
+        const act = treeActivity[node.tree_id];
+        if (act?.unreadNodes.includes(id)) {
+          treeActivity = { ...treeActivity, [node.tree_id]: { ...act, unreadNodes: act.unreadNodes.filter((x) => x !== id) } };
+        }
       }
     }
     return {
@@ -547,50 +548,43 @@ export const actions = {
   toggleSidebar: () => useStore.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
   // ── Tree activity (persists across tree switches) ──────────
-  _getActivity: (s: Store, treeId: string): TreeActivity =>
-    s.treeActivity[treeId] || { streamingNodes: new Set(), processNodes: new Set(), unreadNodes: new Set() },
+  _getAct: (s: Store, treeId: string): TreeActivityEntry =>
+    s.treeActivity[treeId] || { streamingNodes: [], processNodes: [], unreadNodes: [] },
 
   markStreaming: (treeId: string, nodeId: string) =>
     useStore.setState((s) => {
-      const act = actions._getActivity(s, treeId);
-      const streamingNodes = new Set(act.streamingNodes);
-      streamingNodes.add(nodeId);
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes } } };
+      const act = actions._getAct(s, treeId);
+      if (act.streamingNodes.includes(nodeId)) return {};
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes: [...act.streamingNodes, nodeId] } } };
     }),
 
-  markStreamingDone: (treeId: string, nodeId: string) =>
+  markDone: (treeId: string, nodeId: string) =>
     useStore.setState((s) => {
-      const act = actions._getActivity(s, treeId);
-      const streamingNodes = new Set(act.streamingNodes);
-      streamingNodes.delete(nodeId);
-      // Add to unread unless user is currently looking at this node
-      const unreadNodes = new Set(act.unreadNodes);
-      if (s.selectedNodeId !== nodeId || s.currentTreeId !== treeId) {
-        unreadNodes.add(nodeId);
-      }
+      const act = actions._getAct(s, treeId);
+      const streamingNodes = act.streamingNodes.filter((id) => id !== nodeId);
+      const unreadNodes = s.selectedNodeId !== nodeId
+        ? (act.unreadNodes.includes(nodeId) ? act.unreadNodes : [...act.unreadNodes, nodeId])
+        : act.unreadNodes;
       return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes, unreadNodes } } };
     }),
 
-  markStreamingError: (treeId: string, nodeId: string) =>
+  markError: (treeId: string, nodeId: string) =>
     useStore.setState((s) => {
-      const act = actions._getActivity(s, treeId);
-      const streamingNodes = new Set(act.streamingNodes);
-      streamingNodes.delete(nodeId);
+      const act = actions._getAct(s, treeId);
+      const streamingNodes = act.streamingNodes.filter((id) => id !== nodeId);
       return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes } } };
     }),
 
-  setTreeProcessNodes: (treeId: string, processNodeIds: string[]) =>
+  setTreeProcessNodes: (treeId: string, nodeIds: string[]) =>
     useStore.setState((s) => {
-      const act = actions._getActivity(s, treeId);
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, processNodes: new Set(processNodeIds) } } };
+      const act = actions._getAct(s, treeId);
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, processNodes: nodeIds } } };
     }),
 
-  markNodeRead: (treeId: string, nodeId: string) =>
+  clearUnread: (treeId: string, nodeId: string) =>
     useStore.setState((s) => {
       const act = s.treeActivity[treeId];
-      if (!act || !act.unreadNodes.has(nodeId)) return {};
-      const unreadNodes = new Set(act.unreadNodes);
-      unreadNodes.delete(nodeId);
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, unreadNodes } } };
+      if (!act || !act.unreadNodes.includes(nodeId)) return {};
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, unreadNodes: act.unreadNodes.filter((id) => id !== nodeId) } } };
     }),
 };

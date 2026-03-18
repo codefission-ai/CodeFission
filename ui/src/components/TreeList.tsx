@@ -2,15 +2,15 @@ import { useState, useMemo } from "react";
 import { useStore, actions, type CTree } from "../store";
 import { send, WS } from "../ws";
 
-/** Derive per-tree activity from global treeActivity state. */
+/** Per-tree activity from the persistent treeActivity store. */
 function useTreeActivity(treeId: string) {
   return useStore((s) => {
     const act = s.treeActivity[treeId];
     if (!act) return { streamingCount: 0, processCount: 0, unreadCount: 0 };
     return {
-      streamingCount: act.streamingNodes.size,
-      processCount: act.processNodes.size,
-      unreadCount: act.unreadNodes.size,
+      streamingCount: act.streamingNodes.length,
+      processCount: act.processNodes.length,
+      unreadCount: act.unreadNodes.length,
     };
   });
 }
@@ -50,7 +50,7 @@ function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; is
           <span className="tree-activity-dot unread" title={`${unreadCount} unread response${unreadCount > 1 ? "s" : ""}`} />
         )}
         {processCount > 0 && (
-          <span className="tree-activity-dot process" title={`${processCount} node${processCount > 1 ? "s" : ""} with running processes`} />
+          <span className="tree-activity-dot process" title={`${processCount} running process${processCount > 1 ? "es" : ""}`} />
         )}
       </span>
       <button
@@ -84,9 +84,9 @@ function useProjectActivity(treeIds: string[]) {
     for (const tid of treeIds) {
       const act = s.treeActivity[tid];
       if (!act) continue;
-      streaming += act.streamingNodes.size;
-      processes += act.processNodes.size;
-      unread += act.unreadNodes.size;
+      streaming += act.streamingNodes.length;
+      processes += act.processNodes.length;
+      unread += act.unreadNodes.length;
     }
     return { streaming, processes, unread };
   });
@@ -97,11 +97,11 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
   isActiveProject: boolean;
   currentTreeId: string | null;
 }) {
+  const treeIds = useMemo(() => group.trees.map((t) => t.id), [group.trees]);
+  const projActivity = useProjectActivity(treeIds);
   const [collapsed, setCollapsed] = useState(!isActiveProject);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const treeIds = useMemo(() => group.trees.map((t) => t.id), [group.trees]);
-  const projectActivity = useProjectActivity(treeIds);
 
   // Auto-expand when this project becomes active
   const wasActive = useState(isActiveProject)[0];
@@ -132,16 +132,16 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
       >
         <span className="project-chevron">{collapsed ? "\u25B6" : "\u25BC"}</span>
         <span className="project-name" title={group.repoPath || undefined}>{group.repoName}</span>
-        {projectActivity.streaming > 0 && (
-          <span className="tree-activity-dot streaming" title={`${projectActivity.streaming} streaming`} />
-        )}
-        {!projectActivity.streaming && projectActivity.unread > 0 && (
-          <span className="tree-activity-dot unread" title={`${projectActivity.unread} unread`} />
-        )}
-        {projectActivity.processes > 0 && (
-          <span className="tree-activity-dot process" title={`${projectActivity.processes} with processes`} />
-        )}
         <span className="project-count">{group.trees.length}</span>
+        {projActivity.streaming > 0 && (
+          <span className="tree-activity-dot streaming" title={`${projActivity.streaming} streaming`} />
+        )}
+        {!projActivity.streaming && projActivity.unread > 0 && (
+          <span className="tree-activity-dot unread" title={`${projActivity.unread} unread`} />
+        )}
+        {projActivity.processes > 0 && (
+          <span className="tree-activity-dot process" title={`${projActivity.processes} running`} />
+        )}
         {group.repoPath && (
           <button
             className="project-graph-btn"
