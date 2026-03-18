@@ -5,7 +5,7 @@ Tree-structured AI coding assistant. Each conversation node is an isolated git w
 ## Prerequisites
 
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager (used to install CodeFission)
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI backend. Install: `npm install -g @anthropic-ai/claude-code`
+- **An AI backend** — Claude Code or Codex CLI (or both)
 - **[git](https://git-scm.com/downloads)** — worktree isolation. Usually pre-installed.
 
 ### Install uv
@@ -24,9 +24,33 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 ### Authenticate Claude Code
 
-```
+Install and log in with your Anthropic account (Claude Pro/Max) or API key:
+
+```bash
+npm install -g @anthropic-ai/claude-code
 claude login
 ```
+
+Alternatively, set `ANTHROPIC_API_KEY` in your environment.
+
+### Authenticate Codex CLI
+
+Install and log in with your OpenAI account:
+
+```bash
+npm install -g @openai/codex
+```
+
+Then authenticate using one of:
+
+```bash
+codex login              # OpenAI API key (paid API access)
+codex login --chatgpt    # ChatGPT Plus or Pro account
+```
+
+Alternatively, set `OPENAI_API_KEY` in your environment.
+
+> You only need one backend. Install whichever you have access to.
 
 ## Install
 
