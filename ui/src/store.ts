@@ -118,6 +118,13 @@ export interface FilesPanel {
   selectedFile: string | null;
 }
 
+/** Per-tree activity summary — persists across tree switches. */
+export interface TreeActivity {
+  streamingNodes: Set<string>;   // node IDs currently streaming
+  processNodes: Set<string>;     // node IDs with running processes
+  unreadNodes: Set<string>;      // node IDs done but unseen
+}
+
 interface Store {
   connected: boolean;
   trees: CTree[];
@@ -145,6 +152,7 @@ interface Store {
   repoBranches: BranchInfo[];
   mergeResult: MergeResult | null;
   treeStaleness: Record<string, StalenessInfo>;
+  treeActivity: Record<string, TreeActivity>;  // treeId -> activity
   seenNodes: Set<string>;
   sidebarOpen: boolean;
   creatingProject: boolean;  // show project setup screen instead of canvas
@@ -227,6 +235,7 @@ export const useStore = create<Store>(() => ({
   repoBranches: [],
   mergeResult: null,
   treeStaleness: {},
+  treeActivity: {},
   seenNodes: new Set<string>(),
   sidebarOpen: true,
   creatingProject: false,
@@ -283,8 +292,19 @@ export const actions = {
       seenNodes = new Set(seenNodes);
       seenNodes.add(id);
     }
+    // Also clear from tree-level unread
+    let treeActivity = s.treeActivity;
+    if (id !== null && s.currentTreeId) {
+      const act = treeActivity[s.currentTreeId];
+      if (act?.unreadNodes.has(id)) {
+        const unreadNodes = new Set(act.unreadNodes);
+        unreadNodes.delete(id);
+        treeActivity = { ...treeActivity, [s.currentTreeId]: { ...act, unreadNodes } };
+      }
+    }
     return {
       selectedNodeId: id,
+      treeActivity,
       seenNodes,
       pendingQuotes: clear ? [] : s.pendingQuotes,
       pendingQuotesFor: clear ? null : s.pendingQuotesFor,
@@ -525,4 +545,52 @@ export const actions = {
     })),
   setSidebarOpen: (open: boolean) => useStore.setState({ sidebarOpen: open }),
   toggleSidebar: () => useStore.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
+
+  // ── Tree activity (persists across tree switches) ──────────
+  _getActivity: (s: Store, treeId: string): TreeActivity =>
+    s.treeActivity[treeId] || { streamingNodes: new Set(), processNodes: new Set(), unreadNodes: new Set() },
+
+  markStreaming: (treeId: string, nodeId: string) =>
+    useStore.setState((s) => {
+      const act = actions._getActivity(s, treeId);
+      const streamingNodes = new Set(act.streamingNodes);
+      streamingNodes.add(nodeId);
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes } } };
+    }),
+
+  markStreamingDone: (treeId: string, nodeId: string) =>
+    useStore.setState((s) => {
+      const act = actions._getActivity(s, treeId);
+      const streamingNodes = new Set(act.streamingNodes);
+      streamingNodes.delete(nodeId);
+      // Add to unread unless user is currently looking at this node
+      const unreadNodes = new Set(act.unreadNodes);
+      if (s.selectedNodeId !== nodeId || s.currentTreeId !== treeId) {
+        unreadNodes.add(nodeId);
+      }
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes, unreadNodes } } };
+    }),
+
+  markStreamingError: (treeId: string, nodeId: string) =>
+    useStore.setState((s) => {
+      const act = actions._getActivity(s, treeId);
+      const streamingNodes = new Set(act.streamingNodes);
+      streamingNodes.delete(nodeId);
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes } } };
+    }),
+
+  setTreeProcessNodes: (treeId: string, processNodeIds: string[]) =>
+    useStore.setState((s) => {
+      const act = actions._getActivity(s, treeId);
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, processNodes: new Set(processNodeIds) } } };
+    }),
+
+  markNodeRead: (treeId: string, nodeId: string) =>
+    useStore.setState((s) => {
+      const act = s.treeActivity[treeId];
+      if (!act || !act.unreadNodes.has(nodeId)) return {};
+      const unreadNodes = new Set(act.unreadNodes);
+      unreadNodes.delete(nodeId);
+      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, unreadNodes } } };
+    }),
 };

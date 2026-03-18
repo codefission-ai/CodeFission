@@ -2,37 +2,27 @@ import { useState, useMemo } from "react";
 import { useStore, actions, type CTree } from "../store";
 import { send, WS } from "../ws";
 
-/** Derive per-tree activity summary from global state. */
+/** Derive per-tree activity from global treeActivity state. */
 function useTreeActivity(treeId: string) {
-  const nodes = useStore((s) => s.nodes);
-  const streaming = useStore((s) => s.streaming);
-  const nodeProcesses = useStore((s) => s.nodeProcesses);
-
-  return useMemo(() => {
-    let streamingCount = 0;
-    let processCount = 0;
-    let hasError = false;
-
-    for (const node of Object.values(nodes)) {
-      if (node.tree_id !== treeId) continue;
-      if (streaming[node.id]) streamingCount++;
-      const procs = nodeProcesses[node.id];
-      if (procs?.length) processCount += procs.length;
-      if (node.status === "error") hasError = true;
-    }
-
-    return { streamingCount, processCount, hasError };
-  }, [nodes, streaming, nodeProcesses, treeId]);
+  return useStore((s) => {
+    const act = s.treeActivity[treeId];
+    if (!act) return { streamingCount: 0, processCount: 0, unreadCount: 0 };
+    return {
+      streamingCount: act.streamingNodes.size,
+      processCount: act.processNodes.size,
+      unreadCount: act.unreadNodes.size,
+    };
+  });
 }
 
 function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; isActive: boolean }) {
-  const { streamingCount, processCount, hasError } = useTreeActivity(treeId);
+  const { streamingCount, processCount, unreadCount } = useTreeActivity(treeId);
   const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
   const staleness = useStore((s) => s.treeStaleness[treeId]);
 
   return (
     <div
-      className={`tree-item ${isActive ? "active" : ""}`}
+      className={`tree-item ${isActive ? "active" : ""} ${unreadCount > 0 && !streamingCount ? "has-unread" : ""}`}
       onClick={() => {
         actions.closeProjectView();
         useStore.setState({ currentTreeId: treeId });
@@ -56,13 +46,11 @@ function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; is
         {streamingCount > 0 && (
           <span className="tree-activity-dot streaming" title={`${streamingCount} node${streamingCount > 1 ? "s" : ""} streaming`} />
         )}
-        {!streamingCount && hasError && (
-          <span className="tree-activity-dot error" title="Error" />
+        {!streamingCount && unreadCount > 0 && (
+          <span className="tree-activity-dot unread" title={`${unreadCount} unread response${unreadCount > 1 ? "s" : ""}`} />
         )}
         {processCount > 0 && (
-          <span className="tree-activity-badge" title={`${processCount} process${processCount > 1 ? "es" : ""} running`}>
-            {processCount}
-          </span>
+          <span className="tree-activity-dot process" title={`${processCount} node${processCount > 1 ? "s" : ""} with running processes`} />
         )}
       </span>
       <button
@@ -89,6 +77,21 @@ interface ProjectGroup {
   latestCreatedAt: string;
 }
 
+/** Aggregate activity across all trees in a project. */
+function useProjectActivity(treeIds: string[]) {
+  return useStore((s) => {
+    let streaming = 0, processes = 0, unread = 0;
+    for (const tid of treeIds) {
+      const act = s.treeActivity[tid];
+      if (!act) continue;
+      streaming += act.streamingNodes.size;
+      processes += act.processNodes.size;
+      unread += act.unreadNodes.size;
+    }
+    return { streaming, processes, unread };
+  });
+}
+
 function ProjectSection({ group, isActiveProject, currentTreeId }: {
   group: ProjectGroup;
   isActiveProject: boolean;
@@ -97,6 +100,8 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
   const [collapsed, setCollapsed] = useState(!isActiveProject);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
+  const treeIds = useMemo(() => group.trees.map((t) => t.id), [group.trees]);
+  const projectActivity = useProjectActivity(treeIds);
 
   // Auto-expand when this project becomes active
   const wasActive = useState(isActiveProject)[0];
@@ -127,6 +132,15 @@ function ProjectSection({ group, isActiveProject, currentTreeId }: {
       >
         <span className="project-chevron">{collapsed ? "\u25B6" : "\u25BC"}</span>
         <span className="project-name" title={group.repoPath || undefined}>{group.repoName}</span>
+        {projectActivity.streaming > 0 && (
+          <span className="tree-activity-dot streaming" title={`${projectActivity.streaming} streaming`} />
+        )}
+        {!projectActivity.streaming && projectActivity.unread > 0 && (
+          <span className="tree-activity-dot unread" title={`${projectActivity.unread} unread`} />
+        )}
+        {projectActivity.processes > 0 && (
+          <span className="tree-activity-dot process" title={`${projectActivity.processes} with processes`} />
+        )}
         <span className="project-count">{group.trees.length}</span>
         {group.repoPath && (
           <button
