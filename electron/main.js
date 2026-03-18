@@ -1,4 +1,5 @@
 const { app, BrowserWindow } = require("electron");
+const path = require("path");
 const net = require("net");
 
 const PORT = parseInt(process.env.CODEFISSION_PORT || "19440", 10);
@@ -31,6 +32,7 @@ async function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
     height: 860,
+    icon: path.join(__dirname, "icon.icns"),
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 14, y: 12 },
     webPreferences: {
