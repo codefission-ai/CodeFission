@@ -152,6 +152,64 @@ def _prompt_update(latest: str, force: bool = False):
         print(f"\n  Reminder: run `pip install -U codefission` to upgrade.\n")
 
 
+def _open_browser(url: str):
+    """Open url in a Chromium-based browser, falling back to system default."""
+    import platform
+    import subprocess
+
+    system = platform.system()
+
+    if system == "Darwin":
+        candidates = [
+            ["open", "-a", "Google Chrome", url],
+            ["open", "-a", "Brave Browser", url],
+            ["open", "-a", "Microsoft Edge", url],
+            ["open", "-a", "Chromium", url],
+            ["open", "-a", "Vivaldi", url],
+            ["open", "-a", "Opera", url],
+        ]
+        for cmd in candidates:
+            # `open -a AppName` fails fast if the app isn't installed
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, timeout=3
+                )
+                if result.returncode == 0:
+                    return
+            except Exception:
+                continue
+
+    elif system == "Linux":
+        bins = [
+            "google-chrome", "google-chrome-stable",
+            "chromium", "chromium-browser",
+            "brave-browser", "microsoft-edge",
+            "vivaldi", "opera",
+        ]
+        for b in bins:
+            if shutil.which(b):
+                try:
+                    subprocess.Popen([b, url])
+                    return
+                except Exception:
+                    continue
+
+    elif system == "Windows":
+        bins = [
+            "chrome", "msedge", "brave", "chromium",
+        ]
+        for b in bins:
+            if shutil.which(b):
+                try:
+                    subprocess.Popen([b, url])
+                    return
+                except Exception:
+                    continue
+
+    # Fall back to system default
+    webbrowser.open(url)
+
+
 def _check_prerequisites():
     missing = []
     if not shutil.which("git"):
@@ -211,7 +269,7 @@ def _acquire_lock(port: int):
     if existing:
         existing_port = existing.get("port", "?")
         print(f"CodeFission is already running at http://localhost:{existing_port}")
-        webbrowser.open(f"http://localhost:{existing_port}")
+        _open_browser(f"http://localhost:{existing_port}")
         sys.exit(0)
 
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,6 @@ import logging
 import os
 import re
 import sys
-import webbrowser
 from pathlib import Path
 
 # Allow running inside a Claude Code session
@@ -66,8 +65,9 @@ async def startup():
     async def _open_browser():
         await asyncio.sleep(0.5)
         try:
+            from codefission.server import _open_browser as open_chromium
             port = int(os.environ.get("CODEFISSION_PORT", "8080"))
-            webbrowser.open(f"http://localhost:{port}")
+            open_chromium(f"http://localhost:{port}")
         except Exception:
             pass
     asyncio.create_task(_open_browser())
