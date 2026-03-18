@@ -308,12 +308,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const hasVisibleChildren = useStore((s) => node.children_ids.some((cid) => !s.pendingDeleteNodes.has(cid)));
   const activeToolCalls = useStore((s) => s.toolCalls[node.id]) ?? EMPTY_TOOL_CALLS;
   const processes = useStore((s) => s.nodeProcesses[node.id]) ?? EMPTY_PROCESSES;
-  const isUnread = useStore((s) => {
-    // Check both legacy seenNodes and new treeActivity.unreadNodes
-    const act = s.treeActivity[node.tree_id];
-    if (act?.unreadNodes.has(node.id)) return true;
-    return node.status === "done" && !s.seenNodes.has(node.id);
-  });
+  const isUnread = useStore((s) => node.status === "done" && !s.seenNodes.has(node.id));
   const tree = useStore((s) => !node.parent_id ? s.trees.find((t) => t.id === node.tree_id) : undefined);
   const pendingQuotes = useStore((s) => s.pendingQuotes);
   const selectedHasInput = useStore((s) => {
@@ -692,7 +687,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                   </svg>
                 </button>
               )}
-              {truncate(node.user_message, 150)}
+              {truncate(node.user_message, 400)}
               <button
                 className="collapse-btn"
                 onClick={(e) => {

@@ -183,20 +183,6 @@ function queueChunk(nodeId: string, text: string) {
 
 let _chatActiveNodeId: string | null = null;
 
-/** Map nodeId → treeId so we can update treeActivity from events that only carry node_id. */
-const _nodeTreeMap = new Map<string, string>();
-
-function _treeIdFor(nodeId: string): string | null {
-  const cached = _nodeTreeMap.get(nodeId);
-  if (cached) return cached;
-  const node = useStore.getState().nodes[nodeId];
-  if (node) {
-    _nodeTreeMap.set(nodeId, node.tree_id);
-    return node.tree_id;
-  }
-  return null;
-}
-
 function handle(data: any) {
   switch (data.type) {
     case "pong":
@@ -239,19 +225,11 @@ function handle(data: any) {
       if (_chatActiveNodeId && !nodeIds.includes(_chatActiveNodeId)) {
         console.warn("[ws] TREE_LOADED missing active chat node:", _chatActiveNodeId);
       }
-      // Populate node→tree map
-      for (const n of (data.nodes || [])) {
-        if (n.id && n.tree_id) _nodeTreeMap.set(n.id, n.tree_id);
-      }
       actions.setNodes(data.nodes);
       if (data.node_processes) {
-        const processNodeIds: string[] = [];
         for (const [nodeId, procs] of Object.entries(data.node_processes)) {
           actions.setNodeProcesses(nodeId, procs as any[]);
-          if ((procs as any[]).length > 0) processNodeIds.push(nodeId);
         }
-        const treeId = data.nodes?.[0]?.tree_id;
-        if (treeId) actions.setTreeProcessNodes(treeId, processNodeIds);
       }
       if (data.tree && data.staleness) {
         actions.setTreeStaleness(data.tree.id, data.staleness);
@@ -263,11 +241,9 @@ function handle(data: any) {
       break;
     }
     case WS.NODE_CREATED:
-      if (data.node?.id && data.node?.tree_id) _nodeTreeMap.set(data.node.id, data.node.tree_id);
       actions.upsertNode(data.node, data.after_id);
       break;
     case WS.NODE_DATA:
-      if (data.node?.id && data.node?.tree_id) _nodeTreeMap.set(data.node.id, data.node.tree_id);
       actions.upsertNode(data.node);
       break;
     case WS.NODE_FILES:
@@ -279,16 +255,13 @@ function handle(data: any) {
     case WS.FILE_CONTENT:
       actions.setFileContent(data.node_id, data.file_path, data.content);
       break;
-    case WS.STATUS: {
+    case WS.STATUS:
       _chatActiveNodeId = data.node_id;
       console.log("[ws] STATUS node=%s — streaming started", data.node_id?.slice(0, 8));
-      const statusTreeId = _treeIdFor(data.node_id);
-      if (statusTreeId) actions.markStreaming(statusTreeId, data.node_id);
       actions.setNodeStatus(data.node_id, "active");
       actions.setStreaming(data.node_id, true);
       actions.setExpanded(data.node_id, true);
       break;
-    }
     case WS.CHUNK: {
       const nodeExists = !!useStore.getState().nodes[data.node_id];
       if (!nodeExists) {
@@ -315,11 +288,9 @@ function handle(data: any) {
         data.is_error || false,
       );
       break;
-    case WS.DONE: {
+    case WS.DONE:
       console.log("[ws] DONE node=%s", data.node_id?.slice(0, 8));
       if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
-      const doneTreeId = _treeIdFor(data.node_id);
-      if (doneTreeId) actions.markDone(doneTreeId, data.node_id);
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
       if (data.git_commit) {
@@ -329,42 +300,24 @@ function handle(data: any) {
         actions.setNodeProcesses(data.node_id, data.processes);
       }
       break;
-    }
     case WS.NODE_PROCESSES:
       actions.setNodeProcesses(data.node_id, data.processes || []);
       break;
-    case "tree_node_processes": {
+    case "tree_node_processes":
       actions.replaceAllNodeProcesses(data.tree_node_processes || {});
-      const procsByTree = new Map<string, string[]>();
-      for (const [nodeId, procs] of Object.entries(data.tree_node_processes || {})) {
-        if ((procs as any[]).length > 0) {
-          const tid = _treeIdFor(nodeId);
-          if (tid) {
-            if (!procsByTree.has(tid)) procsByTree.set(tid, []);
-            procsByTree.get(tid)!.push(nodeId);
-          }
-        }
-      }
-      for (const [tid, nids] of procsByTree) {
-        actions.setTreeProcessNodes(tid, nids);
-      }
       break;
-    }
     case WS.NODES_DELETED:
       actions.commitDeleteNodes(data.deleted_ids || []);
       if (data.updated_nodes) {
         for (const n of data.updated_nodes) actions.upsertNode(n);
       }
       break;
-    case WS.ERROR: {
+    case WS.ERROR:
       console.error("[ws] ERROR node=%s: %s", data.node_id?.slice(0, 8), data.error);
       if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
-      const errTreeId = _treeIdFor(data.node_id);
-      if (errTreeId) actions.markError(errTreeId, data.node_id);
       actions.setNodeStatus(data.node_id, "error");
       actions.setStreaming(data.node_id, false);
       break;
-    }
     case WS.SETTINGS:
       if (data.global_defaults) actions.setGlobalDefaults(data.global_defaults);
       if (data.providers) actions.setProviders(data.providers);

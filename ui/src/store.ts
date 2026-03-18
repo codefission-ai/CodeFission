@@ -118,13 +118,6 @@ export interface FilesPanel {
   selectedFile: string | null;
 }
 
-/** Per-tree activity counters — survives tree switches. */
-export interface TreeActivityEntry {
-  streamingNodes: string[];  // node IDs currently streaming
-  processNodes: string[];    // node IDs with running processes
-  unreadNodes: string[];     // node IDs done but unseen
-}
-
 interface Store {
   connected: boolean;
   trees: CTree[];
@@ -138,7 +131,6 @@ interface Store {
   nodeDiffs: Record<string, string>;       // nodeId -> diff text
   fileContents: Record<string, string>;    // "nodeId:filePath" -> content
   nodeProcesses: Record<string, ProcessInfo[]>;  // nodeId -> running processes
-  treeActivity: Record<string, TreeActivityEntry>;  // treeId -> activity (persists across switches)
   filesPanel: FilesPanel | null;
   pendingQuotes: FileQuote[];
   pendingQuotesFor: string | null;  // which node these quotes target
@@ -155,6 +147,8 @@ interface Store {
   treeStaleness: Record<string, StalenessInfo>;
   seenNodes: Set<string>;
   sidebarOpen: boolean;
+  nodeTreeId: Record<string, string>;      // persistent nodeId → treeId (survives tree switches)
+  nodeHasError: Record<string, boolean>;   // persistent error tracking
   creatingProject: boolean;  // show project setup screen instead of canvas
   viewingProject: { repoPath: string; repoName: string } | null;
 }
@@ -221,7 +215,6 @@ export const useStore = create<Store>(() => ({
   nodeDiffs: {},
   fileContents: {},
   nodeProcesses: {},
-  treeActivity: {},
   filesPanel: null,
   pendingQuotes: [],
   pendingQuotesFor: null,
@@ -240,6 +233,8 @@ export const useStore = create<Store>(() => ({
   sidebarOpen: true,
   creatingProject: false,
   viewingProject: null,
+  nodeTreeId: {},
+  nodeHasError: {},
 }));
 
 // Actions as plain functions (simpler than putting them in the store)
@@ -263,7 +258,16 @@ export const actions = {
   setNodes: (list: CNode[]) => {
     const nodes: Record<string, CNode> = {};
     for (const n of list) nodes[n.id] = n;
-    useStore.setState({ nodes });
+    useStore.setState((s) => {
+      const nodeTreeId = { ...s.nodeTreeId };
+      const nodeHasError = { ...s.nodeHasError };
+      for (const n of list) {
+        nodeTreeId[n.id] = n.tree_id;
+        if (n.status === "error") nodeHasError[n.id] = true;
+        else delete nodeHasError[n.id];
+      }
+      return { nodes, nodeTreeId, nodeHasError };
+    });
   },
   upsertNode: (node: CNode, afterId?: string) =>
     useStore.setState((s) => {
@@ -281,7 +285,7 @@ export const actions = {
           nodes[node.parent_id] = { ...p, children_ids: ids };
         }
       }
-      return { nodes };
+      return { nodes, nodeTreeId: { ...s.nodeTreeId, [node.id]: node.tree_id } };
     }),
   selectNode: (id: string | null) => useStore.setState((s) => {
     // Clear quotes when selecting a node that isn't the quotes' target
@@ -292,20 +296,8 @@ export const actions = {
       seenNodes = new Set(seenNodes);
       seenNodes.add(id);
     }
-    // Clear from tree-level unread
-    let treeActivity = s.treeActivity;
-    if (id !== null) {
-      const node = s.nodes[id];
-      if (node) {
-        const act = treeActivity[node.tree_id];
-        if (act?.unreadNodes.includes(id)) {
-          treeActivity = { ...treeActivity, [node.tree_id]: { ...act, unreadNodes: act.unreadNodes.filter((x) => x !== id) } };
-        }
-      }
-    }
     return {
       selectedNodeId: id,
-      treeActivity,
       seenNodes,
       pendingQuotes: clear ? [] : s.pendingQuotes,
       pendingQuotesFor: clear ? null : s.pendingQuotesFor,
@@ -325,9 +317,17 @@ export const actions = {
     }),
   setNodeStatus: (nodeId: string, status: string) =>
     useStore.setState((s) => {
+      const isError = status === "error";
+      const wasError = !!s.nodeHasError[nodeId];
+      let nodeHasError = s.nodeHasError;
+      if (isError !== wasError) {
+        nodeHasError = { ...s.nodeHasError };
+        if (isError) nodeHasError[nodeId] = true;
+        else delete nodeHasError[nodeId];
+      }
       const node = s.nodes[nodeId];
-      if (!node) return s;
-      return { nodes: { ...s.nodes, [nodeId]: { ...node, status } } };
+      if (!node) return { nodeHasError };
+      return { nodes: { ...s.nodes, [nodeId]: { ...node, status } }, nodeHasError };
     }),
   setStreaming: (nodeId: string, on: boolean) =>
     useStore.setState((s) => {
@@ -496,6 +496,8 @@ export const actions = {
       const nodeDiffs = { ...s.nodeDiffs };
       const nodeProcesses = { ...s.nodeProcesses };
       const pendingQuotes = s.pendingQuotes.filter((q) => !idSet.has(q.nodeId));
+      const nodeTreeId = { ...s.nodeTreeId };
+      const nodeHasError = { ...s.nodeHasError };
       for (const id of ids) {
         pendingDeleteNodes.delete(id);
         delete expandedNodes[id];
@@ -504,6 +506,8 @@ export const actions = {
         delete nodeFiles[id];
         delete nodeDiffs[id];
         delete nodeProcesses[id];
+        delete nodeTreeId[id];
+        delete nodeHasError[id];
       }
       // Clean fileContents keys
       const fileContents = { ...s.fileContents };
@@ -516,7 +520,7 @@ export const actions = {
       return {
         nodes, pendingDeleteNodes, expandedNodes, streaming,
         toolCalls, nodeFiles, nodeDiffs, nodeProcesses, fileContents, filesPanel,
-        selectedNodeId, pendingQuotes, deleteToast: null,
+        selectedNodeId, pendingQuotes, deleteToast: null, nodeTreeId, nodeHasError,
       };
     }),
   setDeleteToast: (toast: Store["deleteToast"]) =>
@@ -546,45 +550,4 @@ export const actions = {
     })),
   setSidebarOpen: (open: boolean) => useStore.setState({ sidebarOpen: open }),
   toggleSidebar: () => useStore.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
-
-  // ── Tree activity (persists across tree switches) ──────────
-  _getAct: (s: Store, treeId: string): TreeActivityEntry =>
-    s.treeActivity[treeId] || { streamingNodes: [], processNodes: [], unreadNodes: [] },
-
-  markStreaming: (treeId: string, nodeId: string) =>
-    useStore.setState((s) => {
-      const act = actions._getAct(s, treeId);
-      if (act.streamingNodes.includes(nodeId)) return {};
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes: [...act.streamingNodes, nodeId] } } };
-    }),
-
-  markDone: (treeId: string, nodeId: string) =>
-    useStore.setState((s) => {
-      const act = actions._getAct(s, treeId);
-      const streamingNodes = act.streamingNodes.filter((id) => id !== nodeId);
-      const unreadNodes = s.selectedNodeId !== nodeId
-        ? (act.unreadNodes.includes(nodeId) ? act.unreadNodes : [...act.unreadNodes, nodeId])
-        : act.unreadNodes;
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes, unreadNodes } } };
-    }),
-
-  markError: (treeId: string, nodeId: string) =>
-    useStore.setState((s) => {
-      const act = actions._getAct(s, treeId);
-      const streamingNodes = act.streamingNodes.filter((id) => id !== nodeId);
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, streamingNodes } } };
-    }),
-
-  setTreeProcessNodes: (treeId: string, nodeIds: string[]) =>
-    useStore.setState((s) => {
-      const act = actions._getAct(s, treeId);
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, processNodes: nodeIds } } };
-    }),
-
-  clearUnread: (treeId: string, nodeId: string) =>
-    useStore.setState((s) => {
-      const act = s.treeActivity[treeId];
-      if (!act || !act.unreadNodes.includes(nodeId)) return {};
-      return { treeActivity: { ...s.treeActivity, [treeId]: { ...act, unreadNodes: act.unreadNodes.filter((id) => id !== nodeId) } } };
-    }),
 };
