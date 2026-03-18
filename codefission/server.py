@@ -35,69 +35,105 @@ def _version_tuple(v: str):
         return (0,)
 
 
-def _check_for_update() -> str | None:
-    """Returns latest PyPI version if newer than installed, else None."""
-    installed = _get_installed_version()
-    now = datetime.now(timezone.utc)
+def _load_update_cache() -> dict:
+    try:
+        if UPDATE_CHECK_FILE.exists():
+            return json.loads(UPDATE_CHECK_FILE.read_text())
+    except Exception:
+        pass
+    return {}
 
-    if UPDATE_CHECK_FILE.exists():
-        try:
-            cache = json.loads(UPDATE_CHECK_FILE.read_text())
-            last_check = datetime.fromisoformat(cache["checked_at"])
-            if now - last_check < UPDATE_CHECK_INTERVAL:
-                latest = cache.get("latest", installed)
-                if _version_tuple(latest) > _version_tuple(installed):
-                    return latest
-                return None
-        except Exception:
-            pass
 
+def _save_update_cache(data: dict):
+    UPDATE_CHECK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    UPDATE_CHECK_FILE.write_text(json.dumps(data) + "\n")
+
+
+def _fetch_latest_version() -> str | None:
     try:
         with urllib.request.urlopen(
             "https://pypi.org/pypi/codefission/json", timeout=3
         ) as resp:
-            data = json.loads(resp.read())
-        latest = data["info"]["version"]
-        UPDATE_CHECK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        UPDATE_CHECK_FILE.write_text(json.dumps({
-            "checked_at": now.isoformat(),
-            "latest": latest,
-        }) + "\n")
-        if _version_tuple(latest) > _version_tuple(installed):
-            return latest
+            return json.loads(resp.read())["info"]["version"]
     except Exception:
-        pass
+        return None
+
+
+def _check_for_update(force: bool = False) -> str | None:
+    """Returns latest PyPI version if newer than installed (and not skipped), else None."""
+    installed = _get_installed_version()
+    now = datetime.now(timezone.utc)
+    cache = _load_update_cache()
+
+    if not force:
+        last_check = cache.get("checked_at")
+        if last_check:
+            try:
+                if now - datetime.fromisoformat(last_check) < UPDATE_CHECK_INTERVAL:
+                    latest = cache.get("latest", installed)
+                    skipped = cache.get("skipped")
+                    if _version_tuple(latest) > _version_tuple(installed):
+                        if skipped and _version_tuple(skipped) >= _version_tuple(latest):
+                            return None  # user already said no to this version
+                        return latest
+                    return None
+            except Exception:
+                pass
+
+    latest = _fetch_latest_version()
+    if latest is None:
+        return None
+
+    cache["checked_at"] = now.isoformat()
+    cache["latest"] = latest
+    _save_update_cache(cache)
+
+    if _version_tuple(latest) > _version_tuple(installed):
+        skipped = cache.get("skipped")
+        if not force and skipped and _version_tuple(skipped) >= _version_tuple(latest):
+            return None  # user already said no to this version
+        return latest
     return None
 
 
-def _prompt_update(latest: str):
+def _do_upgrade():
+    import subprocess
+    print()
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-U", "codefission"]
+    )
+    if result.returncode == 0:
+        print("\n  Upgraded! Restarting fission...\n")
+        os.execv(sys.argv[0], sys.argv)
+    else:
+        print("\n  Upgrade failed. Please run manually.", file=sys.stderr)
+        sys.exit(1)
+
+
+def _prompt_update(latest: str, force: bool = False):
     installed = _get_installed_version()
-    print(f"\n  A new version of CodeFission is available: {latest}  (you have {installed})")
-    print( "  Run `pip install -U codefission` to upgrade.\n")
+    print(f"\n  A new version of CodeFission is available: {latest}  (you have {installed})\n")
 
     if not sys.stdin.isatty():
+        print(f"  Run `pip install -U codefission` to upgrade.")
         return
 
     try:
-        answer = input("  Upgrade now? [Y/n] ").strip().lower()
+        answer = input("  Upgrade now? [Y/n/skip] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         return
 
     if answer in ("", "y", "yes"):
-        import subprocess
-        print()
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-U", "codefission"]
-        )
-        if result.returncode == 0:
-            print("\n  Upgraded! Restarting fission...\n")
-            os.execv(sys.argv[0], sys.argv)
-        else:
-            print("\n  Upgrade failed. Please run manually.", file=sys.stderr)
-            sys.exit(1)
+        _do_upgrade()
+    elif answer in ("s", "skip"):
+        cache = _load_update_cache()
+        cache["skipped"] = latest
+        _save_update_cache(cache)
+        print(f"\n  Skipping {latest}. You won't be reminded until a newer version is out.\n")
     else:
-        print()
+        # "no" — remind again next time the 24h cache expires
+        print(f"\n  Reminder: run `pip install -U codefission` to upgrade.\n")
 
 
 def _check_prerequisites():
@@ -193,7 +229,19 @@ def main():
     parser.add_argument(
         "--version", action="version", version=f"codefission {_get_installed_version()}",
     )
+    parser.add_argument(
+        "--update", action="store_true",
+        help="Check for updates and prompt to upgrade",
+    )
     args = parser.parse_args()
+
+    if args.update:
+        latest = _check_for_update(force=True)
+        if latest:
+            _prompt_update(latest, force=True)
+        else:
+            print(f"  codefission {_get_installed_version()} is up to date.")
+        sys.exit(0)
 
     latest = _check_for_update()
     if latest:
