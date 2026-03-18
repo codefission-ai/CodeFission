@@ -5,7 +5,7 @@ Tree-structured AI coding assistant. Each conversation node is an isolated git w
 ## Prerequisites
 
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager (used to install CodeFission)
-- **An AI backend** — Claude Code or Codex CLI (or both)
+- **An AI backend** — Claude Code or Codex CLI (**you only need one**)
 - **[git](https://git-scm.com/downloads)** — worktree isolation. Usually pre-installed.
 
 ### Install uv
@@ -50,7 +50,6 @@ codex login --chatgpt    # ChatGPT Plus or Pro account
 
 Alternatively, set `OPENAI_API_KEY` in your environment.
 
-> You only need one backend. Install whichever you have access to.
 
 ## Install
 
