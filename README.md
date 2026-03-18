@@ -4,11 +4,25 @@ Tree-structured AI coding assistant. Each conversation node is an isolated git w
 
 ## Prerequisites
 
-- **Python 3.12+** — [install](https://www.python.org/downloads/) or via your package manager
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI backend (spawned as subprocess). Install: `npm install -g @anthropic-ai/claude-code`
+- **[uv](https://docs.astral.sh/uv/)** — Python package manager (used to install CodeFission)
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — AI backend. Install: `npm install -g @anthropic-ai/claude-code`
 - **[git](https://git-scm.com/downloads)** — worktree isolation. Usually pre-installed.
 
-Authenticate Claude Code before first use:
+### Install uv
+
+uv is a fast Python package manager. If you don't have it:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+> You don't need to install Python separately — uv manages that for you.
+
+### Authenticate Claude Code
 
 ```
 claude login
@@ -16,9 +30,13 @@ claude login
 
 ## Install
 
+```bash
+uv tool install codefission
 ```
-pip install codefission
-```
+
+This installs `fission` as a standalone command on your system. uv creates an isolated environment for it automatically — no Python environment management needed on your end.
+
+> **Prefer pip?** `pip install codefission` works too.
 
 Then run:
 
@@ -26,7 +44,15 @@ Then run:
 fission
 ```
 
-Opens on `http://localhost:8080`. Use a different port: `fission 3000`.
+Opens on `http://localhost:19440`.
+
+### Updates
+
+When a new version is available, `fission` will notify you on launch and offer to upgrade automatically. You can also check manually:
+
+```
+fission --update
+```
 
 ## Install from source
 
@@ -90,7 +116,7 @@ make clean        # remove build artifacts
 Frontend dev server (hot reload):
 
 ```
-cd frontend
+cd ui
 npm run dev
 ```
 
