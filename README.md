@@ -67,7 +67,22 @@ Then run:
 fission
 ```
 
-Opens on `http://localhost:19440`.
+If Electron is installed, opens as a desktop app. Otherwise opens in your browser at `http://localhost:19440`.
+
+```
+fission --desktop    # force desktop app (Electron)
+fission --browser    # force browser mode
+```
+
+#### Desktop app (optional)
+
+For a native desktop experience with a custom title bar and pinch-to-zoom:
+
+```bash
+cd electron && npm install
+```
+
+Then `fission` will auto-launch the desktop app. Requires [Node.js](https://nodejs.org/).
 
 ### Updates
 
