@@ -19,6 +19,87 @@ LOCK_FILE = DATA_DIR / "server.lock"
 UPDATE_CHECK_FILE = DATA_DIR / "update_check.json"
 UPDATE_CHECK_INTERVAL = timedelta(hours=24)
 
+ELECTRON_VERSION = "33.3.1"
+ELECTRON_DIR = DATA_DIR / "electron"
+
+
+def _get_electron_binary() -> str | None:
+    """Return the path to the Electron binary, downloading it if needed."""
+    import platform
+    import zipfile
+
+    system = platform.system()
+    machine = platform.machine()
+
+    # Platform mapping for Electron release filenames
+    if system == "Darwin":
+        arch = "arm64" if machine == "arm64" else "x64"
+        zipname = f"electron-v{ELECTRON_VERSION}-darwin-{arch}.zip"
+        binary = ELECTRON_DIR / "Electron.app" / "Contents" / "MacOS" / "Electron"
+    elif system == "Linux":
+        arch = "arm64" if machine == "aarch64" else "x64"
+        zipname = f"electron-v{ELECTRON_VERSION}-linux-{arch}.zip"
+        binary = ELECTRON_DIR / "electron"
+    elif system == "Windows":
+        arch = "arm64" if "ARM" in machine.upper() else "x64"
+        zipname = f"electron-v{ELECTRON_VERSION}-win32-{arch}.zip"
+        binary = ELECTRON_DIR / "electron.exe"
+    else:
+        return None
+
+    # Already downloaded?
+    if binary.is_file():
+        return str(binary)
+
+    # Check for dev install (npm-based, e.g. from source checkout)
+    for dev_path in [
+        Path(__file__).resolve().parent.parent / "electron" / "node_modules" / ".bin" / "electron",
+        Path(__file__).resolve().parent / "electron" / "node_modules" / ".bin" / "electron",
+    ]:
+        if dev_path.is_file():
+            return str(dev_path)
+
+    # Download
+    url = f"https://github.com/electron/electron/releases/download/v{ELECTRON_VERSION}/{zipname}"
+    ELECTRON_DIR.mkdir(parents=True, exist_ok=True)
+    zip_path = ELECTRON_DIR / zipname
+
+    print(f"  Downloading desktop app (~80 MB, one-time setup)...")
+    try:
+        urllib.request.urlretrieve(url, zip_path)
+    except Exception as e:
+        print(f"  Download failed: {e}", file=sys.stderr)
+        zip_path.unlink(missing_ok=True)
+        return None
+
+    print(f"  Extracting...")
+    try:
+        if system == "Darwin":
+            # Use ditto to preserve macOS symlinks and frameworks
+            import subprocess as _sp
+            _sp.run(
+                ["ditto", "-xk", str(zip_path), str(ELECTRON_DIR)],
+                check=True, capture_output=True,
+            )
+        else:
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(ELECTRON_DIR)
+    except Exception as e:
+        print(f"  Extraction failed: {e}", file=sys.stderr)
+        zip_path.unlink(missing_ok=True)
+        return None
+    zip_path.unlink(missing_ok=True)
+
+    # Make binary executable on Unix
+    if system != "Windows" and binary.is_file():
+        binary.chmod(binary.stat().st_mode | 0o755)
+
+    if binary.is_file():
+        print(f"  Desktop app ready.")
+        return str(binary)
+
+    return None
+
 
 def _get_installed_version() -> str:
     try:
@@ -333,23 +414,7 @@ def main():
     _check_prerequisites()
 
     # Resolve launch mode: --desktop, --browser, or auto-detect
-    use_desktop = False
-    electron_dir = Path(__file__).resolve().parent.parent / "electron"
-    electron_bin = shutil.which("electron") or (
-        electron_dir / "node_modules" / ".bin" / "electron"
-        if (electron_dir / "node_modules" / ".bin" / "electron").is_file()
-        else None
-    )
-
-    if args.desktop:
-        if not electron_bin:
-            print("Error: Electron not found. Run `cd electron && npm install` first.", file=sys.stderr)
-            raise SystemExit(1)
-        use_desktop = True
-    elif not args.browser:
-        # Auto: use desktop if Electron is installed
-        if electron_bin:
-            use_desktop = True
+    use_desktop = args.desktop or not args.browser
 
     actual_port = _find_available_port(args.port)
     if actual_port is None:
@@ -361,13 +426,23 @@ def main():
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
     if use_desktop:
-        os.environ["CODEFISSION_NO_BROWSER"] = "1"
-        import subprocess as _sp
-        _sp.Popen(
-            [str(electron_bin), str(electron_dir)],
-            env={**os.environ, "CODEFISSION_PORT": str(actual_port)},
-        )
-        print(f"Desktop: CodeFission (Electron) on port {actual_port}")
+        electron_bin = _get_electron_binary()
+        if electron_bin:
+            os.environ["CODEFISSION_NO_BROWSER"] = "1"
+            # Electron launcher files: packaged inside codefission/electron/
+            electron_dir = Path(__file__).resolve().parent / "electron"
+            import subprocess as _sp
+            _sp.Popen(
+                [str(electron_bin), str(electron_dir)],
+                env={**os.environ, "CODEFISSION_PORT": str(actual_port)},
+            )
+            print(f"Desktop: CodeFission (Electron) on port {actual_port}")
+        elif args.desktop:
+            print("Error: Failed to set up Electron.", file=sys.stderr)
+            raise SystemExit(1)
+        else:
+            # Auto mode: fall back to browser
+            print(f"Server:  http://localhost:{actual_port}")
     else:
         print(f"Server:  http://localhost:{actual_port}")
 

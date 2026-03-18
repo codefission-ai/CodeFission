@@ -36,7 +36,7 @@ dev = [
 
 [tool.hatch.build]
 # codefission/static/ is gitignored but must be in the wheel
-artifacts = ["codefission/static/**"]
+artifacts = ["codefission/static/**", "codefission/electron/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["codefission"]

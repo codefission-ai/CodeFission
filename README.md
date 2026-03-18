@@ -67,33 +67,12 @@ Then run:
 fission
 ```
 
-If Electron is installed, opens as a desktop app. Otherwise opens in your browser at `http://localhost:19440`.
+Opens as a desktop app on first launch (downloads ~80 MB once). Use `fission --browser` to open in a browser instead.
 
 ```
-fission --desktop    # force desktop app (Electron)
-fission --browser    # force browser mode
-```
-
-#### Desktop app (optional)
-
-For a native desktop experience with a custom title bar and pinch-to-zoom:
-
-```bash
-cd electron && npm install
-```
-
-Then `fission` will auto-launch the desktop app. Requires [Node.js](https://nodejs.org/).
-
-To change the app icon, replace `electron/icon.icns` (macOS) or regenerate it from a PNG:
-
-```bash
-# Convert a 1024x1024 PNG to .icns
-ICONSET=$(mktemp -d)/App.iconset && mkdir -p "$ICONSET"
-for s in 16 32 64 128 256 512; do
-  sips -z $s $s your-icon.png --out "$ICONSET/icon_${s}x${s}.png"
-  sips -z $((s*2)) $((s*2)) your-icon.png --out "$ICONSET/icon_${s}x${s}@2x.png"
-done
-iconutil -c icns "$ICONSET" -o electron/icon.icns
+fission              # desktop app (default)
+fission --browser    # browser mode
+fission --desktop    # force desktop app
 ```
 
 ### Updates
