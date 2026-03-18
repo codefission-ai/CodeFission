@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, shell } = require("electron");
 const path = require("path");
 const net = require("net");
 
@@ -39,6 +39,19 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
+  });
+
+  // Open external links in the system browser, not inside the app
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    const appOrigin = `http://localhost:${PORT}`;
+    if (!url.startsWith(appOrigin)) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 
   await waitForServer(PORT);

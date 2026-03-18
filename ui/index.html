@@ -690,16 +690,17 @@
       background: none; border: 1px solid transparent; border-radius: 3px;
       color: var(--text-muted); font-size: 8px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      opacity: 0; transition: opacity 0.15s, background 0.1s, border-color 0.1s;
+      opacity: 0.3; transition: opacity 0.15s, background 0.1s, border-color 0.1s;
     }
     .tree-node-user:hover .collapse-btn,
-    .tree-node-user:hover .edit-resubmit-btn { opacity: 1; }
+    .tree-node-user:hover .edit-resubmit-btn { opacity: 0.6; }
+    .collapse-btn:hover, .edit-resubmit-btn:hover { opacity: 1 !important; }
     .edit-resubmit-btn {
       display: inline-flex; align-items: center; justify-content: center;
       width: 14px; height: 14px; flex-shrink: 0;
       background: none; border: none; border-radius: 3px;
       color: var(--text-muted); cursor: pointer;
-      opacity: 0; transition: opacity 0.15s, color 0.1s;
+      opacity: 0.3; transition: opacity 0.15s, color 0.1s;
       margin-right: 3px; vertical-align: middle;
       padding: 0;
     }
