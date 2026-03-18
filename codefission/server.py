@@ -345,18 +345,33 @@ def _read_lock() -> dict | None:
     return None
 
 
-def _acquire_lock(port: int):
+def _acquire_lock(port: int, mode: str = "browser"):
     existing = _read_lock()
     if existing:
         existing_port = existing.get("port", "?")
+        existing_mode = existing.get("mode", "browser")
         print(f"CodeFission is already running at http://localhost:{existing_port}")
-        _open_browser(f"http://localhost:{existing_port}")
+        if existing_mode == "desktop":
+            # Re-launch the Electron window pointing at the existing server
+            electron_bin = _get_electron_binary()
+            if electron_bin:
+                electron_dir = Path(__file__).resolve().parent / "electron"
+                import subprocess as _sp
+                _sp.Popen(
+                    [str(electron_bin), str(electron_dir)],
+                    env={**os.environ, "CODEFISSION_PORT": str(existing_port)},
+                )
+            else:
+                _open_browser(f"http://localhost:{existing_port}")
+        else:
+            _open_browser(f"http://localhost:{existing_port}")
         sys.exit(0)
 
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     LOCK_FILE.write_text(json.dumps({
         "pid": os.getpid(),
         "port": port,
+        "mode": mode,
         "started_at": datetime.now(timezone.utc).isoformat(),
     }) + "\n")
     atexit.register(_release_lock)
@@ -421,28 +436,29 @@ def main():
         print(f"Error: No available port in range {PORT_RANGE.start}-{PORT_RANGE.stop - 1}.", file=sys.stderr)
         raise SystemExit(1)
 
-    _acquire_lock(actual_port)
-
-    os.environ["CODEFISSION_PORT"] = str(actual_port)
-
+    # Determine actual mode (auto may fall back to browser)
+    launch_mode = "browser"
     if use_desktop:
         electron_bin = _get_electron_binary()
         if electron_bin:
-            os.environ["CODEFISSION_NO_BROWSER"] = "1"
-            # Electron launcher files: packaged inside codefission/electron/
-            electron_dir = Path(__file__).resolve().parent / "electron"
-            import subprocess as _sp
-            _sp.Popen(
-                [str(electron_bin), str(electron_dir)],
-                env={**os.environ, "CODEFISSION_PORT": str(actual_port)},
-            )
-            print(f"Desktop: CodeFission (Electron) on port {actual_port}")
+            launch_mode = "desktop"
         elif args.desktop:
             print("Error: Failed to set up Electron.", file=sys.stderr)
             raise SystemExit(1)
-        else:
-            # Auto mode: fall back to browser
-            print(f"Server:  http://localhost:{actual_port}")
+
+    _acquire_lock(actual_port, mode=launch_mode)
+
+    os.environ["CODEFISSION_PORT"] = str(actual_port)
+
+    if launch_mode == "desktop":
+        os.environ["CODEFISSION_NO_BROWSER"] = "1"
+        electron_dir = Path(__file__).resolve().parent / "electron"
+        import subprocess as _sp
+        _sp.Popen(
+            [str(electron_bin), str(electron_dir)],
+            env={**os.environ, "CODEFISSION_PORT": str(actual_port)},
+        )
+        print(f"Desktop: CodeFission (Electron) on port {actual_port}")
     else:
         print(f"Server:  http://localhost:{actual_port}")
 
