@@ -7,14 +7,97 @@ import os
 import shutil
 import socket
 import sys
+import urllib.request
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DATA_DIR = Path.home() / ".codefission"
 DEFAULT_PORT = 19440
 PORT_RANGE = range(19440, 19450)
 LOCK_FILE = DATA_DIR / "server.lock"
+UPDATE_CHECK_FILE = DATA_DIR / "update_check.json"
+UPDATE_CHECK_INTERVAL = timedelta(hours=24)
+
+
+def _get_installed_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("codefission")
+    except Exception:
+        return "0.0.0"
+
+
+def _version_tuple(v: str):
+    try:
+        return tuple(int(x) for x in v.split("."))
+    except Exception:
+        return (0,)
+
+
+def _check_for_update() -> str | None:
+    """Returns latest PyPI version if newer than installed, else None."""
+    installed = _get_installed_version()
+    now = datetime.now(timezone.utc)
+
+    if UPDATE_CHECK_FILE.exists():
+        try:
+            cache = json.loads(UPDATE_CHECK_FILE.read_text())
+            last_check = datetime.fromisoformat(cache["checked_at"])
+            if now - last_check < UPDATE_CHECK_INTERVAL:
+                latest = cache.get("latest", installed)
+                if _version_tuple(latest) > _version_tuple(installed):
+                    return latest
+                return None
+        except Exception:
+            pass
+
+    try:
+        with urllib.request.urlopen(
+            "https://pypi.org/pypi/codefission/json", timeout=3
+        ) as resp:
+            data = json.loads(resp.read())
+        latest = data["info"]["version"]
+        UPDATE_CHECK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        UPDATE_CHECK_FILE.write_text(json.dumps({
+            "checked_at": now.isoformat(),
+            "latest": latest,
+        }) + "\n")
+        if _version_tuple(latest) > _version_tuple(installed):
+            return latest
+    except Exception:
+        pass
+    return None
+
+
+def _prompt_update(latest: str):
+    installed = _get_installed_version()
+    print(f"\n  A new version of CodeFission is available: {latest}  (you have {installed})")
+    print( "  Run `pip install -U codefission` to upgrade.\n")
+
+    if not sys.stdin.isatty():
+        return
+
+    try:
+        answer = input("  Upgrade now? [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+
+    if answer in ("", "y", "yes"):
+        import subprocess
+        print()
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-U", "codefission"]
+        )
+        if result.returncode == 0:
+            print("\n  Upgraded! Restarting fission...\n")
+            os.execv(sys.argv[0], sys.argv)
+        else:
+            print("\n  Upgrade failed. Please run manually.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print()
 
 
 def _check_prerequisites():
@@ -107,7 +190,14 @@ def main():
         "--port", type=int, default=DEFAULT_PORT,
         help=f"Server port (default: {DEFAULT_PORT})",
     )
+    parser.add_argument(
+        "--version", action="version", version=f"codefission {_get_installed_version()}",
+    )
     args = parser.parse_args()
+
+    latest = _check_for_update()
+    if latest:
+        _prompt_update(latest)
 
     _check_prerequisites()
 
