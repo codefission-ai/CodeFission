@@ -99,6 +99,22 @@ def _check_for_update(force: bool = False) -> str | None:
 def _do_upgrade():
     import subprocess
     print()
+
+    # uv tool installations have no pip — use `uv tool upgrade` instead
+    if "uv/tools" in sys.executable or "uv\\tools" in sys.executable:
+        uv = shutil.which("uv")
+        if uv:
+            result = subprocess.run([uv, "tool", "upgrade", "codefission"])
+            if result.returncode == 0:
+                print("\n  Upgraded! Restarting fission...\n")
+                os.execv(sys.argv[0], sys.argv)
+            else:
+                print("\n  Upgrade failed. Try: uv tool upgrade codefission", file=sys.stderr)
+                sys.exit(1)
+            return
+        print("\n  Upgrade failed. Try: uv tool upgrade codefission", file=sys.stderr)
+        sys.exit(1)
+
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-U", "codefission"]
     )
@@ -106,7 +122,7 @@ def _do_upgrade():
         print("\n  Upgraded! Restarting fission...\n")
         os.execv(sys.argv[0], sys.argv)
     else:
-        print("\n  Upgrade failed. Please run manually.", file=sys.stderr)
+        print("\n  Upgrade failed. Try: pip install -U codefission", file=sys.stderr)
         sys.exit(1)
 
 
