@@ -21,3 +21,4 @@ dist/
 .codefission/
 .pytest_cache/
 assets/
+CodeFission.app/

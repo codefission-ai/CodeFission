@@ -152,59 +152,119 @@ def _prompt_update(latest: str, force: bool = False):
         print(f"\n  Reminder: run `pip install -U codefission` to upgrade.\n")
 
 
-def _open_browser(url: str):
-    """Open url in a Chromium-based browser, falling back to system default."""
+def _find_chromium_binary() -> str | None:
+    """Return the path to a Chromium-based browser binary, or None."""
     import platform
-    import subprocess
 
     system = platform.system()
-
     if system == "Darwin":
-        candidates = [
-            ["open", "-a", "Google Chrome", url],
-            ["open", "-a", "Brave Browser", url],
-            ["open", "-a", "Microsoft Edge", url],
-            ["open", "-a", "Chromium", url],
-            ["open", "-a", "Vivaldi", url],
-            ["open", "-a", "Opera", url],
-        ]
-        for cmd in candidates:
-            # `open -a AppName` fails fast if the app isn't installed
-            try:
-                result = subprocess.run(
-                    cmd, capture_output=True, timeout=3
-                )
-                if result.returncode == 0:
-                    return
-            except Exception:
-                continue
-
+        for app in [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+            "/Applications/Opera.app/Contents/MacOS/Opera",
+        ]:
+            if os.path.isfile(app):
+                return app
     elif system == "Linux":
-        bins = [
+        for b in [
             "google-chrome", "google-chrome-stable",
             "chromium", "chromium-browser",
             "brave-browser", "microsoft-edge",
             "vivaldi", "opera",
-        ]
-        for b in bins:
-            if shutil.which(b):
-                try:
-                    subprocess.Popen([b, url])
-                    return
-                except Exception:
-                    continue
-
+        ]:
+            path = shutil.which(b)
+            if path:
+                return path
     elif system == "Windows":
-        bins = [
-            "chrome", "msedge", "brave", "chromium",
-        ]
-        for b in bins:
-            if shutil.which(b):
-                try:
-                    subprocess.Popen([b, url])
-                    return
-                except Exception:
-                    continue
+        for b in ["chrome", "msedge", "brave", "chromium"]:
+            path = shutil.which(b)
+            if path:
+                return path
+    return None
+
+
+_CODEFISSION_APP = Path.home() / ".codefission" / "CodeFission.app"
+
+
+def _ensure_macos_app(chrome_binary: str, port: int) -> Path:
+    """Create or update a lightweight .app bundle that wraps Chrome in --app mode."""
+    app = _CODEFISSION_APP
+    launcher = app / "Contents" / "MacOS" / "launch"
+
+    expected_script = (
+        f'#!/usr/bin/env bash\n'
+        f'exec "{chrome_binary}" --app="http://localhost:{port}" '
+        f'--user-data-dir="$HOME/.codefission/chrome-profile"\n'
+    )
+
+    # Rebuild only if missing or launcher changed (different browser/port)
+    if launcher.is_file() and launcher.read_text() == expected_script:
+        return app
+
+    contents = app / "Contents"
+    macos = contents / "MacOS"
+    resources = contents / "Resources"
+    macos.mkdir(parents=True, exist_ok=True)
+    resources.mkdir(parents=True, exist_ok=True)
+
+    plist = contents / "Info.plist"
+    plist.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"\n'
+        '  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n<dict>\n'
+        '    <key>CFBundleName</key><string>CodeFission</string>\n'
+        '    <key>CFBundleDisplayName</key><string>CodeFission</string>\n'
+        '    <key>CFBundleIdentifier</key><string>com.codefission.app</string>\n'
+        '    <key>CFBundleVersion</key><string>1.0</string>\n'
+        '    <key>CFBundlePackageType</key><string>APPL</string>\n'
+        '    <key>CFBundleExecutable</key><string>launch</string>\n'
+        '</dict>\n</plist>\n'
+    )
+
+    launcher.write_text(expected_script)
+    launcher.chmod(0o755)
+
+    return app
+
+
+def _open_browser(url: str):
+    """Open url in a Chromium-based browser app window, falling back to system default."""
+    import platform
+    import subprocess
+    from urllib.parse import urlparse
+
+    system = platform.system()
+    chrome = _find_chromium_binary()
+
+    if chrome:
+        # Extract port from URL for the .app bundle
+        parsed = urlparse(url)
+        port = parsed.port or 19440
+
+        if system == "Darwin":
+            app_path = _ensure_macos_app(chrome, port)
+            try:
+                subprocess.Popen(["open", "-a", str(app_path)])
+                return
+            except Exception:
+                pass
+            # Fall back to direct binary launch
+            try:
+                subprocess.Popen([chrome, f"--app={url}",
+                                  "--user-data-dir=" + str(Path.home() / ".codefission" / "chrome-profile")])
+                return
+            except Exception:
+                pass
+        else:
+            try:
+                subprocess.Popen([chrome, f"--app={url}"])
+                return
+            except Exception:
+                pass
 
     # Fall back to system default
     webbrowser.open(url)
