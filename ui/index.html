@@ -2550,6 +2550,64 @@
       background: rgba(59,130,246,0.12);
     }
 
+    /* ── Desktop (Electron) layout ──────────────────────────────── */
+    .app.desktop {
+      flex-direction: column;
+    }
+    .desktop-titlebar {
+      display: flex;
+      align-items: center;
+      height: 44px;
+      padding: 0 12px 0 78px; /* 78px leaves room for macOS traffic lights */
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-dim);
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+      gap: 8px;
+    }
+    .desktop-titlebar button {
+      -webkit-app-region: no-drag;
+    }
+    .titlebar-left {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .titlebar-center {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .titlebar-right {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .desktop-body {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+    /* In desktop mode the main-area has no toolbar, canvas fills it */
+    .app.desktop .main-area {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .app.desktop .canvas {
+      flex: 1;
+    }
+
+    [data-theme="dark"] .desktop-titlebar {
+      background: var(--bg-surface);
+    }
+
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
 </head>

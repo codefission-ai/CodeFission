@@ -55,6 +55,8 @@ function isSafari(): boolean {
   return /Safari/.test(ua) && !/Chrome/.test(ua) && !/Chromium/.test(ua);
 }
 
+const isDesktop = navigator.userAgent.includes("Electron");
+
 function BrowserBanner() {
   const [dismissed, setDismissed] = useState(() =>
     localStorage.getItem("browser-banner-dismissed") === "1"
@@ -153,79 +155,146 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app">
-      <BrowserBanner />
-      {/* Sidebar */}
-      <div
-        ref={sidebarRef}
-        className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
-        style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
-      >
-        <TreeList />
-      </div>
+    <div className={`app ${isDesktop ? "desktop" : ""}`}>
+      {isDesktop ? (
+        <>
+          {/* Desktop: unified title bar spanning full width */}
+          <div className="desktop-titlebar">
+            <div className="titlebar-left">
+              <button
+                className="icon-btn has-tooltip"
+                onClick={() => setSidebarCollapsed((c) => !c)}
+              >
+                <SidebarIcon />
+                <span className="tooltip">Sidebar <kbd>{"\u2318"}B</kbd></span>
+              </button>
+            </div>
+            <div className="titlebar-center">
+              <span className="toolbar-tree-name">{treeName || "CodeFission"}</span>
+            </div>
+            <div className="titlebar-right">
+              <button
+                className="theme-toggle has-tooltip"
+                onClick={() => setDarkMode((d) => !d)}
+                aria-label="Toggle dark mode"
+              >
+                {darkMode ? <SunIcon /> : <MoonIcon />}
+                <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
+              </button>
+              <button
+                className="icon-btn has-tooltip"
+                onClick={() => actions.toggleSettings()}
+              >
+                <GearIcon />
+                <span className="tooltip">Settings</span>
+              </button>
+            </div>
+          </div>
 
-      {/* Sidebar resize handle */}
-      {!sidebarCollapsed && (
-        <div className="resize-handle" onMouseDown={startDrag} />
+          {/* Desktop: sidebar + canvas below title bar */}
+          <div className="desktop-body">
+            <div
+              ref={sidebarRef}
+              className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
+              style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
+            >
+              <TreeList hideHeader />
+            </div>
+            {!sidebarCollapsed && (
+              <div className="resize-handle" onMouseDown={startDrag} />
+            )}
+            <div className="main-area">
+              <div className="canvas">
+                {viewingProject ? <GitGraph project={viewingProject} /> : creatingProject ? <ProjectSetup /> : hasTree ? <Canvas /> : (
+                  <div className="canvas-empty">
+                    <div className="empty-icon">
+                      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="20" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                        <circle cx="12" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                        <circle cx="36" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                        <line x1="20" y1="25" x2="14" y2="34" stroke="currentColor" strokeWidth="1.5" />
+                        <line x1="28" y1="25" x2="34" y2="34" stroke="currentColor" strokeWidth="1.5" />
+                      </svg>
+                    </div>
+                    <div className="logo">CodeFission</div>
+                    <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <BrowserBanner />
+          {/* Browser: original layout */}
+          <div
+            ref={sidebarRef}
+            className={`sidebar ${sidebarCollapsed ? "collapsed" : ""}`}
+            style={sidebarCollapsed ? undefined : { width: sidebarWidth }}
+          >
+            <TreeList />
+          </div>
+          {!sidebarCollapsed && (
+            <div className="resize-handle" onMouseDown={startDrag} />
+          )}
+          <div className="main-area">
+            <div className="toolbar">
+              <div className="toolbar-left">
+                <button
+                  className="icon-btn has-tooltip"
+                  onClick={() => setSidebarCollapsed((c) => !c)}
+                >
+                  <SidebarIcon />
+                  <span className="tooltip">Sidebar <kbd>{"\u2318"}B</kbd></span>
+                </button>
+              </div>
+              <div className="toolbar-center">
+                <span className="toolbar-tree-name">{treeName}</span>
+              </div>
+              <div className="toolbar-right">
+                <button
+                  className="theme-toggle has-tooltip"
+                  onClick={() => setDarkMode((d) => !d)}
+                  aria-label="Toggle dark mode"
+                >
+                  {darkMode ? <SunIcon /> : <MoonIcon />}
+                  <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
+                </button>
+                <button
+                  className="icon-btn has-tooltip"
+                  onClick={() => actions.toggleSettings()}
+                >
+                  <GearIcon />
+                  <span className="tooltip">Settings</span>
+                </button>
+              </div>
+            </div>
+            <div className="canvas">
+              {viewingProject ? <GitGraph project={viewingProject} /> : creatingProject ? <ProjectSetup /> : hasTree ? <Canvas /> : (
+                <div className="canvas-empty">
+                  <div className="empty-icon">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                      <circle cx="24" cy="20" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                      <circle cx="12" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                      <circle cx="36" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                      <line x1="20" y1="25" x2="14" y2="34" stroke="currentColor" strokeWidth="1.5" />
+                      <line x1="28" y1="25" x2="34" y2="34" stroke="currentColor" strokeWidth="1.5" />
+                    </svg>
+                  </div>
+                  <div className="logo">CodeFission</div>
+                  <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <FilesPanel />
+          <SettingsPanel />
+        </>
       )}
 
-      {/* Main area: toolbar + canvas */}
-      <div className="main-area">
-        {/* Toolbar */}
-        <div className="toolbar">
-          <div className="toolbar-left">
-            <button
-              className="icon-btn has-tooltip"
-              onClick={() => setSidebarCollapsed((c) => !c)}
-            >
-              <SidebarIcon />
-              <span className="tooltip">Sidebar <kbd>{"\u2318"}B</kbd></span>
-            </button>
-          </div>
-          <div className="toolbar-center">
-            <span className="toolbar-tree-name">{treeName}</span>
-          </div>
-          <div className="toolbar-right">
-            <button
-              className="theme-toggle has-tooltip"
-              onClick={() => setDarkMode((d) => !d)}
-              aria-label="Toggle dark mode"
-            >
-              {darkMode ? <SunIcon /> : <MoonIcon />}
-              <span className="tooltip">{darkMode ? "Light mode" : "Dark mode"}</span>
-            </button>
-            <button
-              className="icon-btn has-tooltip"
-              onClick={() => actions.toggleSettings()}
-            >
-              <GearIcon />
-              <span className="tooltip">Settings</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Canvas */}
-        <div className="canvas">
-          {viewingProject ? <GitGraph project={viewingProject} /> : creatingProject ? <ProjectSetup /> : hasTree ? <Canvas /> : (
-            <div className="canvas-empty">
-              <div className="empty-icon">
-                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                  <circle cx="24" cy="20" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  <circle cx="12" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  <circle cx="36" cy="38" r="4" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                  <line x1="20" y1="25" x2="14" y2="34" stroke="currentColor" strokeWidth="1.5" />
-                  <line x1="28" y1="25" x2="34" y2="34" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-              </div>
-              <div className="logo">CodeFission</div>
-              <p className="empty-sub">Create a tree in the sidebar to begin branching conversations.</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <FilesPanel />
-      <SettingsPanel />
+      {isDesktop && <FilesPanel />}
+      {isDesktop && <SettingsPanel />}
     </div>
   );
 }

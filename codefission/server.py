@@ -307,6 +307,15 @@ def main():
         "--update", action="store_true",
         help="Check for updates and prompt to upgrade",
     )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--desktop", action="store_true",
+        help="Launch as desktop app (Electron)",
+    )
+    mode.add_argument(
+        "--browser", action="store_true",
+        help="Open in system browser",
+    )
     args = parser.parse_args()
 
     if args.update:
@@ -323,6 +332,25 @@ def main():
 
     _check_prerequisites()
 
+    # Resolve launch mode: --desktop, --browser, or auto-detect
+    use_desktop = False
+    electron_dir = Path(__file__).resolve().parent.parent / "electron"
+    electron_bin = shutil.which("electron") or (
+        electron_dir / "node_modules" / ".bin" / "electron"
+        if (electron_dir / "node_modules" / ".bin" / "electron").is_file()
+        else None
+    )
+
+    if args.desktop:
+        if not electron_bin:
+            print("Error: Electron not found. Run `cd electron && npm install` first.", file=sys.stderr)
+            raise SystemExit(1)
+        use_desktop = True
+    elif not args.browser:
+        # Auto: use desktop if Electron is installed
+        if electron_bin:
+            use_desktop = True
+
     actual_port = _find_available_port(args.port)
     if actual_port is None:
         print(f"Error: No available port in range {PORT_RANGE.start}-{PORT_RANGE.stop - 1}.", file=sys.stderr)
@@ -332,7 +360,16 @@ def main():
 
     os.environ["CODEFISSION_PORT"] = str(actual_port)
 
-    print(f"Server:  http://localhost:{actual_port}")
+    if use_desktop:
+        os.environ["CODEFISSION_NO_BROWSER"] = "1"
+        import subprocess as _sp
+        _sp.Popen(
+            [str(electron_bin), str(electron_dir)],
+            env={**os.environ, "CODEFISSION_PORT": str(actual_port)},
+        )
+        print(f"Desktop: CodeFission (Electron) on port {actual_port}")
+    else:
+        print(f"Server:  http://localhost:{actual_port}")
 
     config = uvicorn.Config(
         "codefission.main:app",
