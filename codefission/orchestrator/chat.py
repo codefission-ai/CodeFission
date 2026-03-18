@@ -11,6 +11,7 @@ cancel_chat: saves partial response with cancellation marker.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -420,6 +421,8 @@ class ChatMixin:
         The caller (WS presenter, REST SSE, CLI) consumes events and
         delivers them over its transport.
         """
+        t_chat_start = time.monotonic()
+
         # 1a. Create child node in DB (fast) and notify UI immediately
         early_node, early_after_id = await self._create_chat_node(
             parent_node_id, message,
@@ -428,9 +431,11 @@ class ChatMixin:
             file_quotes=file_quotes,
             draft_node_id=draft_node_id,
         )
+        log.info("[chat] node created in %.1fs: %s", time.monotonic() - t_chat_start, early_node.id[:8])
         yield ChatNodeCreated(node=early_node, after_id=early_after_id)
 
         # 1b. Prepare workspace, worktree, session (slow — git worktree add)
+        t_prep = time.monotonic()
         ctx = await self._finish_prepare_chat(
             early_node.id, parent_node_id, message,
             after_id=early_after_id,
@@ -438,12 +443,15 @@ class ChatMixin:
             file_quotes=file_quotes,
         )
         nid = ctx.node_id
+        log.info("[chat] workspace prepared in %.1fs (worktree + session copy)", time.monotonic() - t_prep)
 
         # 2. Stream the chat via agentbridge
         full_text = ""
         provider_name = ctx.provider or "claude"
+        chunk_count = 0
 
         try:
+            t_stream = time.monotonic()
             async for event in stream_chat(
                 nid, ctx.sdk_message, ctx.workspace, ctx.parent_session_id,
                 provider=ctx.provider,
@@ -452,12 +460,16 @@ class ChatMixin:
                 tree_instructions=ctx.tree_instructions,
             ):
                 if isinstance(event, SessionInit):
+                    log.info("[chat] SessionInit after %.1fs (session=%s)", time.monotonic() - t_stream, event.session_id[:8] if event.session_id else "?")
                     await update_node(nid, session_id=event.session_id)
                     if hasattr(event, "provider") and event.provider:
                         provider_name = event.provider
                     yield event
 
                 elif isinstance(event, TextDelta):
+                    chunk_count += 1
+                    if chunk_count == 1:
+                        log.info("[chat] first TextDelta after %.1fs", time.monotonic() - t_stream)
                     full_text += event.text
                     yield event
 
@@ -471,6 +483,8 @@ class ChatMixin:
                     # TurnComplete signals end of streaming — don't yield it,
                     # instead finalize and yield ChatCompleted below
                     pass
+
+            log.info("[chat] stream finished: %d chunks, %d chars, %.1fs total", chunk_count, len(full_text), time.monotonic() - t_chat_start)
 
             # 3. Complete: save response, auto-commit, yield ChatCompleted
             result = await self.complete_chat(

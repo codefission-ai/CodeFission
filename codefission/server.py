@@ -393,7 +393,14 @@ def _release_lock():
 
 def main():
     """Entry point for `fission`. Just starts the server — no repo binding."""
+    import logging
     import uvicorn
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
     parser = argparse.ArgumentParser(
         prog="fission",

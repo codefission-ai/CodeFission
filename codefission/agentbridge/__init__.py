@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import AsyncGenerator
 
 from .adapters import get_adapter
@@ -85,15 +87,23 @@ async def create_session(
             if isinstance(event, TextDelta):
                 print(event.text, end="")
     """
+    log = logging.getLogger(__name__)
     adapter = get_adapter(config.provider)
     cmd = adapter.build_command(config)
     env = adapter.build_env(config)
     runner = SubprocessRunner(cmd=cmd, cwd=config.cwd, env=env)
 
+    t0 = time.monotonic()
+    event_count = 0
     try:
         await runner.start()
+        log.info("[create_session] subprocess started in %.1fs, streaming events...", time.monotonic() - t0)
         async for event in adapter.stream(runner, config):
+            event_count += 1
+            if event_count == 1:
+                log.info("[create_session] first bridge event after %.1fs: %s", time.monotonic() - t0, type(event).__name__)
             yield event
+        log.info("[create_session] stream ended: %d events in %.1fs", event_count, time.monotonic() - t0)
     finally:
         await runner.close()
 

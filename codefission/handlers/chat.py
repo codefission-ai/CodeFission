@@ -7,6 +7,7 @@ Also handles auto-naming untitled trees from the first message.
 
 import asyncio
 import logging
+import time
 
 from agentbridge import TextDelta, ToolStart, ToolEnd, SessionInit
 from events import bus, WS, STREAM_START, STREAM_DELTA, STREAM_END, STREAM_ERROR
@@ -39,8 +40,10 @@ class ChatMixin:
 
         nid = node_id
         tool_names: dict[str, str] = {}
+        ws_send_count = 0
+        t_start = time.monotonic()
 
-        log.info("_run_chat START parent=%s msg=%s", node_id[:8], msg[:50])
+        log.info("[ws_chat] START parent=%s msg=%.50s", node_id[:8], msg[:50])
 
         try:
             async for event in self.orch.chat(
@@ -82,7 +85,9 @@ class ChatMixin:
                 elif isinstance(event, TextDelta):
                     if nid in self.streams:
                         self.streams[nid].text += event.text
-                    log.debug("TextDelta nid=%s len=%d", nid[:8], len(event.text))
+                    ws_send_count += 1
+                    if ws_send_count == 1:
+                        log.info("[ws_chat] first CHUNK sent to browser at %.1fs", time.monotonic() - t_start)
                     await bus.emit(STREAM_DELTA, node_id=nid, text=event.text)
                     await self.send(WS.CHUNK, node_id=nid, text=event.text)
 
@@ -124,6 +129,7 @@ class ChatMixin:
                         done_payload["processes"] = proc_result["processes"]
 
                     await self.send(WS.DONE, **done_payload)
+                    log.info("[ws_chat] DONE sent: %d WS messages in %.1fs", ws_send_count, time.monotonic() - t_start)
                     await self._send_tree_processes()
 
         except (asyncio.CancelledError, KeyboardInterrupt):

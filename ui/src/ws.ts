@@ -181,6 +181,8 @@ function queueChunk(nodeId: string, text: string) {
   }
 }
 
+let _chatActiveNodeId: string | null = null;
+
 function handle(data: any) {
   switch (data.type) {
     case "pong":
@@ -210,7 +212,19 @@ function handle(data: any) {
     case WS.TREE_UPDATED:
       actions.updateTree(data.tree);
       break;
-    case WS.TREE_LOADED:
+    case WS.TREE_LOADED: {
+      const nodeIds = (data.nodes || []).map((n: any) => n.id);
+      const streaming = useStore.getState().streaming;
+      const activeStreams = Object.keys(streaming).filter((k) => streaming[k]);
+      if (activeStreams.length > 0) {
+        const clobbered = activeStreams.filter((id) => !nodeIds.includes(id));
+        if (clobbered.length > 0) {
+          console.warn("[ws] TREE_LOADED would clobber active streaming nodes:", clobbered);
+        }
+      }
+      if (_chatActiveNodeId && !nodeIds.includes(_chatActiveNodeId)) {
+        console.warn("[ws] TREE_LOADED missing active chat node:", _chatActiveNodeId);
+      }
       actions.setNodes(data.nodes);
       if (data.node_processes) {
         for (const [nodeId, procs] of Object.entries(data.node_processes)) {
@@ -225,6 +239,7 @@ function handle(data: any) {
         actions.setRepoBranches(data.branches);
       }
       break;
+    }
     case WS.NODE_CREATED:
       actions.upsertNode(data.node, data.after_id);
       break;
@@ -241,13 +256,20 @@ function handle(data: any) {
       actions.setFileContent(data.node_id, data.file_path, data.content);
       break;
     case WS.STATUS:
+      _chatActiveNodeId = data.node_id;
+      console.log("[ws] STATUS node=%s — streaming started", data.node_id?.slice(0, 8));
       actions.setNodeStatus(data.node_id, "active");
       actions.setStreaming(data.node_id, true);
       actions.setExpanded(data.node_id, true);
       break;
-    case WS.CHUNK:
+    case WS.CHUNK: {
+      const nodeExists = !!useStore.getState().nodes[data.node_id];
+      if (!nodeExists) {
+        console.warn("[ws] CHUNK for missing node %s — was it clobbered?", data.node_id?.slice(0, 8));
+      }
       queueChunk(data.node_id, data.text);
       break;
+    }
     case WS.TOOL_START:
       actions.addToolCall(data.node_id, {
         tool_call_id: data.tool_call_id,
@@ -267,6 +289,8 @@ function handle(data: any) {
       );
       break;
     case WS.DONE:
+      console.log("[ws] DONE node=%s", data.node_id?.slice(0, 8));
+      if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
       actions.setNodeStatus(data.node_id, "done");
       actions.setStreaming(data.node_id, false);
       if (data.git_commit) {
@@ -289,6 +313,8 @@ function handle(data: any) {
       }
       break;
     case WS.ERROR:
+      console.error("[ws] ERROR node=%s: %s", data.node_id?.slice(0, 8), data.error);
+      if (_chatActiveNodeId === data.node_id) _chatActiveNodeId = null;
       actions.setNodeStatus(data.node_id, "error");
       actions.setStreaming(data.node_id, false);
       break;

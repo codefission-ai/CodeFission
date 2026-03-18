@@ -27,8 +27,25 @@ class SubprocessRunner:
         self._cwd = cwd
         self._env = {**os.environ, **(env or {})}
         self._process: asyncio.subprocess.Process | None = None
+        self._stderr_task: asyncio.Task | None = None
+        self._stderr_lines: list[str] = []
+
+    async def _drain_stderr(self) -> None:
+        """Continuously read stderr to prevent pipe buffer deadlock."""
+        assert self._process and self._process.stderr
+        try:
+            while True:
+                line = await self._process.stderr.readline()
+                if not line:
+                    break
+                text = line.decode("utf-8", errors="replace").rstrip()
+                self._stderr_lines.append(text)
+                log.debug("[subprocess stderr] %s", text)
+        except asyncio.CancelledError:
+            pass
 
     async def start(self) -> None:
+        log.info("[subprocess] starting: %s (cwd=%s)", self._cmd[0], self._cwd)
         self._process = await asyncio.create_subprocess_exec(
             *self._cmd,
             stdin=asyncio.subprocess.PIPE,
@@ -38,6 +55,9 @@ class SubprocessRunner:
             env=self._env,
             limit=MAX_BUFFER_SIZE,  # raise default 64KB StreamReader limit
         )
+        log.info("[subprocess] pid=%s started", self._process.pid)
+        # Drain stderr concurrently to prevent pipe buffer deadlock
+        self._stderr_task = asyncio.create_task(self._drain_stderr())
 
     async def read_events(self) -> AsyncGenerator[dict, None]:
         """Yield parsed JSON objects from stdout, one per JSONL line.
@@ -48,10 +68,24 @@ class SubprocessRunner:
         if not self._process or not self._process.stdout:
             raise RuntimeError("Process not started")
 
+        import time
+        event_count = 0
+        first_event_at: float | None = None
+        t_start = time.monotonic()
+        log.info("[subprocess] pid=%s waiting for first stdout line...", self._process.pid)
+
         buf = ""
         while True:
             raw = await self._process.stdout.readline()
             if not raw:
+                elapsed = time.monotonic() - t_start
+                log.info(
+                    "[subprocess] pid=%s stdout EOF after %.1fs (%d events, stderr_lines=%d, rc=%s)",
+                    self._process.pid, elapsed, event_count,
+                    len(self._stderr_lines), self._process.returncode,
+                )
+                if self._stderr_lines:
+                    log.info("[subprocess] stderr dump:\n%s", "\n".join(self._stderr_lines[-20:]))
                 break
             line = raw.decode("utf-8", errors="replace").strip()
             if not line:
@@ -66,6 +100,14 @@ class SubprocessRunner:
             try:
                 data = json.loads(buf)
                 buf = ""
+                event_count += 1
+                if event_count == 1:
+                    first_event_at = time.monotonic()
+                    log.info(
+                        "[subprocess] pid=%s first event after %.1fs: type=%s",
+                        self._process.pid, first_event_at - t_start,
+                        data.get("type", "?"),
+                    )
                 yield data
             except json.JSONDecodeError:
                 # Partial JSON — keep accumulating
@@ -87,6 +129,9 @@ class SubprocessRunner:
     async def close(self) -> None:
         if not self._process:
             return
+        # Cancel stderr drain
+        if self._stderr_task and not self._stderr_task.done():
+            self._stderr_task.cancel()
         # Close stdin to signal EOF
         if self._process.stdin and not self._process.stdin.is_closing():
             try:
@@ -105,11 +150,8 @@ class SubprocessRunner:
                     pass
 
     async def read_stderr(self) -> str:
-        """Read all stderr (for error reporting after process exits)."""
-        if self._process and self._process.stderr:
-            data = await self._process.stderr.read()
-            return data.decode("utf-8", errors="replace")
-        return ""
+        """Return buffered stderr (already drained by background task)."""
+        return "\n".join(self._stderr_lines)
 
     @property
     def pid(self) -> int | None:
