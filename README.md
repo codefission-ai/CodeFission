@@ -6,7 +6,7 @@ Tree-structured AI coding assistant. Each conversation node is an isolated git w
 
 The canvas works for open-ended research too: branch from a root prompt, iterate on sub-questions, and keep parallel threads visible — sticky notes and deep trees included.
 
-![Research workflow in CodeFission: branching exploration on the canvas](assets/screenshots/example_research.jpg)
+![Research workflow in CodeFission: branching exploration on the canvas](assets/screenshots/example_research.png)
 
 ## Example: duplicating a session
 
