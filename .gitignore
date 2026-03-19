@@ -20,4 +20,5 @@ codefission/static/
 dist/
 .codefission/
 .pytest_cache/
-assets/
+# Bulky / generated imagery and scripts — keep out of git
+assets/local/

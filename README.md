@@ -2,6 +2,18 @@
 
 Tree-structured AI coding assistant. Each conversation node is an isolated git worktree — branch conversations to explore alternative approaches, and each branch gets its own filesystem sandbox.
 
+## Example: research workflow
+
+The canvas works for open-ended research too: branch from a root prompt, iterate on sub-questions, and keep parallel threads visible — sticky notes and deep trees included.
+
+![Research workflow in CodeFission: branching exploration on the canvas](assets/screenshots/example_research.jpg)
+
+## Example: duplicating a session
+
+Use **Duplicate** on a node to spin up another branch from the same starting point — handy when you want the same prompt but different tool runs, follow-ups, or outcomes side by side.
+
+![Duplicating a session: parallel branches from the same prompt](assets/screenshots/duplicate_sessions.png)
+
 ## Prerequisites
 
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager (used to install CodeFission)
