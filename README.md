@@ -14,6 +14,12 @@ Use **Duplicate** on a node to spin up another branch from the same starting poi
 
 ![Duplicating a session: parallel branches from the same prompt](assets/screenshots/duplicate_sessions.png)
 
+## Example: start a tree from commit history
+
+Open the **git graph** view for a project to see branches and commits. Pick any commit and use **Plant new tree here** to spin up a new conversation tree rooted at that exact revision — useful for revisiting an older state or exploring “what if” from a specific point in history.
+
+![Git graph: plant a new tree from any commit](assets/screenshots/grow_code_from_commit_history.png)
+
 ## Prerequisites
 
 - **[uv](https://docs.astral.sh/uv/)** — Python package manager (used to install CodeFission)
