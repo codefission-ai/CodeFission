@@ -150,8 +150,13 @@ class TestResolveSessionContinuity:
         assert context is not None
 
     @pytest.mark.asyncio
-    async def test_empty_parent_message_returns_fresh(self):
-        """Empty parent message (branch with no chat yet) -> fresh start."""
+    async def test_branch_passthrough_same_provider_forks_session(self):
+        """Branch passthrough node (inherited session, no user_message) -> fork.
+
+        Previously this returned (None, False, None) — a fresh start — which was
+        the session-continuity bug. The correct behaviour is to fork the inherited
+        session so conversation context isn't silently dropped at branch points.
+        """
         from store.ai import resolve_session_continuity
 
         parent = FakeNode(
@@ -160,6 +165,18 @@ class TestResolveSessionContinuity:
             session_id="sess_abc",
         )
         resume_id, fork, context = await resolve_session_continuity(parent, "claude")
+
+        assert resume_id == "sess_abc"
+        assert fork is True
+        assert context is None
+
+    @pytest.mark.asyncio
+    async def test_sessionless_empty_message_returns_fresh(self):
+        """Root node (no session, no user_message) -> fresh start (unchanged)."""
+        from store.ai import resolve_session_continuity
+
+        root = FakeNode(user_message="", provider=None, session_id=None)
+        resume_id, fork, context = await resolve_session_continuity(root, "claude")
 
         assert resume_id is None
         assert fork is False

@@ -24,9 +24,15 @@ class NodesMixin:
 
         parent = await get_node(parent_id)
         if parent:
-            # Record branch name and inherit parent's commit (worktree created lazily)
+            # Record branch name and inherit parent's commit and session (worktree created lazily)
             branch_name = f"ct-{node.id}"
-            await update_node(node.id, git_branch=branch_name, git_commit=parent.git_commit)
+            await update_node(
+                node.id,
+                git_branch=branch_name,
+                git_commit=parent.git_commit,
+                session_id=parent.session_id,
+                provider=parent.provider,
+            )
             node = await get_node(node.id)
 
         return node

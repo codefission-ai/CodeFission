@@ -36,6 +36,7 @@ from store.git import (
     persist_artifacts,
     resolve_workspace,
     copy_session,
+    session_file_exists,
     remove_worktree_and_branch,
     read_file_from_commit,
     list_files_from_commit,
@@ -284,6 +285,12 @@ class ChatMixin:
         if parent_node and parent_node.session_id:
             parent_session_id = parent_node.session_id
             parent_ws = resolve_workspace(tree.root_node_id, parent_node.id)
+            # Branch passthrough nodes inherit session_id but have no session file of
+            # their own — walk up to find the workspace where the file actually lives.
+            if not session_file_exists(parent_ws, parent_session_id) and parent_node.parent_id:
+                grandparent = await get_node(parent_node.parent_id)
+                if grandparent and grandparent.session_id == parent_session_id:
+                    parent_ws = resolve_workspace(tree.root_node_id, grandparent.id)
             copy_session(parent_ws, workspace, parent_session_id)
 
         # File quotes
@@ -372,6 +379,12 @@ class ChatMixin:
         if parent_node and parent_node.session_id:
             parent_session_id = parent_node.session_id
             parent_ws = resolve_workspace(tree.root_node_id, parent_node.id)
+            # Branch passthrough nodes inherit session_id but have no session file of
+            # their own — walk up to find the workspace where the file actually lives.
+            if not session_file_exists(parent_ws, parent_session_id) and parent_node.parent_id:
+                grandparent = await get_node(parent_node.parent_id)
+                if grandparent and grandparent.session_id == parent_session_id:
+                    parent_ws = resolve_workspace(tree.root_node_id, grandparent.id)
             copy_session(parent_ws, workspace, parent_session_id)
 
         # File quotes: prepend actual file contents to user message

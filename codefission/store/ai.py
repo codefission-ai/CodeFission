@@ -58,7 +58,20 @@ async def resolve_session_continuity(
 
     Returns (resume_session_id, fork_session, prior_context).
     """
-    if not parent_node or not parent_node.user_message:
+    if not parent_node:
+        return None, False, None
+
+    if not parent_node.user_message:
+        # Branch passthrough node: inherited a session but has no conversation of its own.
+        # Fork the session (same provider) or build ancestor context (provider switch).
+        if parent_node.session_id:
+            parent_provider = parent_node.provider or new_provider
+            if parent_provider == new_provider:
+                return parent_node.session_id, True, None
+            if ancestors is None:
+                ancestors = await get_ancestor_chain(parent_node.id)
+            prior_context = _build_context_from_ancestors(ancestors)
+            return None, False, prior_context
         return None, False, None
 
     parent_provider = parent_node.provider or "claude-code"
