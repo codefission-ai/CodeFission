@@ -44,7 +44,7 @@ function BranchSection({ tree, hasChildren }: { tree: CTree; hasChildren: boolea
   }, [pathInput, tree.id, tree.repo_path]);
 
   return (
-    <div className={`root-section ${locked ? "root-section-locked" : ""}`} onClick={(e) => e.stopPropagation()}>
+    <div className={`root-section ${locked ? "root-section-locked" : ""}`}>
       <label className="root-section-label">Base</label>
       {locked ? (
         tree.repo_path ? (
@@ -427,7 +427,7 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     }, 500);
   }, [node.tree_id]);
 
-  // Root hub: two-section input (Skill + Message), with branch badge
+  // Root hub: collapsed label when unfocused, full input sections when selected
   if (isRoot && !node.user_message) {
     return (
       <div className={`tree-node tree-node-root ${selected ? "selected" : ""}`} onClick={(e) => { e.stopPropagation(); actions.selectNode(node.id); }}>
@@ -452,90 +452,93 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             placeholder="System instructions for all conversations..."
             rows={1}
             disabled={hasChildren}
+            style={hasChildren ? { pointerEvents: "none" } : undefined}
           />
         </div>
 
         {/* Branch info (editable when no children, locked once children exist) */}
         {tree && <BranchSection tree={tree} hasChildren={hasChildren} />}
 
-        {/* Files button */}
-        {node.git_commit && (
+        {/* Files button — only when focused */}
+        {selected && node.git_commit && (
           <button className="tree-node-action-btn files-btn root-files-btn nopan nodrag" onClick={handleOpenFiles}>
             Files
           </button>
         )}
 
-        {/* Section 2: Message */}
-        <div className="root-section">
-          <label className="root-section-label">Message</label>
-          {pendingQuotes.length > 0 && selected && (
-            <div className="quote-chips">
-              {pendingQuotes.map((q) => (
-                <span key={q.id} className="quote-chip">
-                  <span className="quote-chip-label">{q.label}</span>
-                  <button
-                    className="quote-chip-remove"
-                    onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
-                    onMouseDown={(e) => e.preventDefault()}
-                  >&times;</button>
-                </span>
-              ))}
-            </div>
-          )}
-          {attach.pendingFiles.length > 0 && (
-            <div className="file-chips nodrag nopan" onClick={(e) => e.stopPropagation()}>
-              {attach.pendingFiles.map((f, i) => (
-                <span key={i} className="file-chip">
-                  <span className="file-chip-name" title={f.path}>{f.path.split("/").pop()}</span>
-                  <button className="file-chip-remove" onClick={() => attach.removeFile(i)}>&times;</button>
-                </span>
-              ))}
-              <span className="file-chips-size">{formatFileSize(attach.totalSize)}</span>
-            </div>
-          )}
-          <div
-            className={`tree-node-input-wrap ${attach.dragOver ? "drag-over" : ""}`}
-            onDragOver={attach.onDragOver}
-            onDragLeave={attach.onDragLeave}
-            onDrop={attach.addFromDrop}
-          >
-            <textarea
-              ref={textareaRef}
-              className="root-section-input nopan nodrag nowheel"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onFocus={() => actions.selectNode(node.id)}
-              onPaste={attach.addFromPaste}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              onWheel={(e) => {
-                const ta = e.currentTarget;
-                if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
-              }}
-              placeholder="Type a message..."
-              rows={1}
-            />
-            <button
-              className="attach-btn nopan nodrag"
-              onClick={(e) => { e.stopPropagation(); attach.fileInputRef.current?.click(); }}
-              title="Attach files"
+        {/* Section 2: Message — only when focused */}
+        {selected && (
+          <div className="root-section">
+            <label className="root-section-label">Message</label>
+            {pendingQuotes.length > 0 && (
+              <div className="quote-chips">
+                {pendingQuotes.map((q) => (
+                  <span key={q.id} className="quote-chip">
+                    <span className="quote-chip-label">{q.label}</span>
+                    <button
+                      className="quote-chip-remove"
+                      onClick={(e) => { e.stopPropagation(); actions.removeFileQuote(q.id); }}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >&times;</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {attach.pendingFiles.length > 0 && (
+              <div className="file-chips nodrag nopan" onClick={(e) => e.stopPropagation()}>
+                {attach.pendingFiles.map((f, i) => (
+                  <span key={i} className="file-chip">
+                    <span className="file-chip-name" title={f.path}>{f.path.split("/").pop()}</span>
+                    <button className="file-chip-remove" onClick={() => attach.removeFile(i)}>&times;</button>
+                  </span>
+                ))}
+                <span className="file-chips-size">{formatFileSize(attach.totalSize)}</span>
+              </div>
+            )}
+            <div
+              className={`tree-node-input-wrap ${attach.dragOver ? "drag-over" : ""}`}
+              onDragOver={attach.onDragOver}
+              onDragLeave={attach.onDragLeave}
+              onDrop={attach.addFromDrop}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </button>
-            <input
-              ref={attach.fileInputRef}
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              onChange={attach.addFromInput}
-            />
-            {attach.dragOver && <div className="drop-overlay nopan nodrag">Drop files here</div>}
+              <textarea
+                ref={textareaRef}
+                className="root-section-input nopan nodrag nowheel"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onFocus={() => actions.selectNode(node.id)}
+                onPaste={attach.addFromPaste}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                onWheel={(e) => {
+                  const ta = e.currentTarget;
+                  if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
+                }}
+                placeholder="Type a message..."
+                rows={1}
+              />
+              <button
+                className="attach-btn nopan nodrag"
+                onClick={(e) => { e.stopPropagation(); attach.fileInputRef.current?.click(); }}
+                title="Attach files"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input
+                ref={attach.fileInputRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={attach.addFromInput}
+              />
+              {attach.dragOver && <div className="drop-overlay nopan nodrag">Drop files here</div>}
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
     );
