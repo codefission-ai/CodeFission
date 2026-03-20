@@ -17,7 +17,7 @@ DEFAULT_PORT = 19440
 PORT_RANGE = range(19440, 19450)
 LOCK_FILE = DATA_DIR / "server.lock"
 UPDATE_CHECK_FILE = DATA_DIR / "update_check.json"
-UPDATE_CHECK_INTERVAL = timedelta(hours=24)
+UPDATE_CHECK_INTERVAL = timedelta(seconds=0)
 
 ELECTRON_VERSION = "33.3.1"
 ELECTRON_DIR = DATA_DIR / "electron"
