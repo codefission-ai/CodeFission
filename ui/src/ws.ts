@@ -8,7 +8,6 @@ export const WS = {
   CREATE_TREE: "create_tree",
   LOAD_TREE: "load_tree",
   DELETE_TREE: "delete_tree",
-  BRANCH: "branch",
   CHAT: "chat",
   CANCEL: "cancel",
   DUPLICATE: "duplicate",
@@ -26,7 +25,6 @@ export const WS = {
   DELETE_NODE: "delete_node",
   GET_REPO_INFO: "get_repo_info",
   LIST_BRANCHES: "list_branches",
-  MERGE_TO_BRANCH: "merge_to_branch",
   OPEN_REPO: "open_repo",
   UPDATE_BASE: "update_base",
 
@@ -52,7 +50,6 @@ export const WS = {
   NODES_DELETED: "nodes_deleted",
   REPO_INFO: "repo_info",
   BRANCHES: "branches",
-  MERGE_RESULT: "merge_result",
   REPO_OPENED: "repo_opened",
   BASE_UPDATED: "base_updated",
 } as const;
@@ -231,9 +228,6 @@ function handle(data: any) {
           actions.setNodeProcesses(nodeId, procs as any[]);
         }
       }
-      if (data.tree && data.staleness) {
-        actions.setTreeStaleness(data.tree.id, data.staleness);
-      }
       // Update branches for this project (so switching projects refreshes)
       if (data.branches) {
         actions.setRepoBranches(data.branches);
@@ -333,20 +327,6 @@ function handle(data: any) {
     case WS.BRANCHES:
       actions.setRepoBranches(data.branches || []);
       break;
-    case WS.MERGE_RESULT:
-      actions.setMergeResult({
-        nodeId: data.node_id,
-        ok: data.ok,
-        commit: data.commit,
-        error: data.error,
-        conflicts: data.conflicts,
-      });
-      if (data.ok) {
-        // Refresh repo info and branches after successful merge
-        send({ type: WS.GET_REPO_INFO });
-        send({ type: WS.LIST_BRANCHES });
-      }
-      break;
     case WS.REPO_OPENED:
       actions.setRepoContext({
         repo_path: data.path,
@@ -359,7 +339,6 @@ function handle(data: any) {
         actions.addTree(data.tree);
         actions.selectTree(data.tree.id);
         if (data.nodes) actions.setNodes(data.nodes);
-        if (data.staleness) actions.setTreeStaleness(data.tree.id, data.staleness);
       }
       if (data.branches) {
         actions.setRepoBranches(data.branches);
@@ -378,7 +357,6 @@ function handle(data: any) {
       }
       if (data.tree) {
         actions.updateTree(data.tree);
-        actions.setTreeStaleness(data.tree.id, data.staleness || { stale: false, commits_behind: 0 });
         if (data.tree.root_node_id && data.tree.base_commit) {
           actions.updateNodeGit(data.tree.root_node_id, data.tree.base_commit);
         }

@@ -24,11 +24,9 @@ class NodesMixin:
 
         parent = await get_node(parent_id)
         if parent:
-            # Record branch name and inherit parent's commit and session (worktree created lazily)
-            branch_name = f"ct-{node.id}"
+            # Inherit parent's commit and session; git_branch is set when chat starts
             await update_node(
                 node.id,
-                git_branch=branch_name,
                 git_commit=parent.git_commit,
                 session_id=parent.session_id,
                 provider=parent.provider,

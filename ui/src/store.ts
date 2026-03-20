@@ -43,19 +43,6 @@ export interface BranchInfo {
   current: boolean;
 }
 
-export interface MergeResult {
-  nodeId: string;
-  ok: boolean;
-  commit?: string;
-  error?: string;
-  conflicts?: string[];
-}
-
-export interface StalenessInfo {
-  stale: boolean;
-  commits_behind: number;
-  branch_head?: string;
-}
 
 export interface AuthDetail {
   method: string;
@@ -143,8 +130,6 @@ interface Store {
   providers: ProviderInfo[];
   repoContext: RepoContext | null;
   repoBranches: BranchInfo[];
-  mergeResult: MergeResult | null;
-  treeStaleness: Record<string, StalenessInfo>;
   seenNodes: Set<string>;
   sidebarOpen: boolean;
   nodeTreeId: Record<string, string>;      // persistent nodeId → treeId (survives tree switches)
@@ -227,8 +212,6 @@ export const useStore = create<Store>(() => ({
   providers: [],
   repoContext: null,
   repoBranches: [],
-  mergeResult: null,
-  treeStaleness: {},
   seenNodes: new Set<string>(),
   sidebarOpen: true,
   creatingProject: false,
@@ -543,11 +526,6 @@ export const actions = {
   // ── Repo context ──────────────────────────────────────────────
   setRepoContext: (ctx: RepoContext | null) => useStore.setState({ repoContext: ctx }),
   setRepoBranches: (branches: BranchInfo[]) => useStore.setState({ repoBranches: branches }),
-  setMergeResult: (result: MergeResult | null) => useStore.setState({ mergeResult: result }),
-  setTreeStaleness: (treeId: string, staleness: StalenessInfo) =>
-    useStore.setState((s) => ({
-      treeStaleness: { ...s.treeStaleness, [treeId]: staleness },
-    })),
   setSidebarOpen: (open: boolean) => useStore.setState({ sidebarOpen: open }),
   toggleSidebar: () => useStore.setState((s) => ({ sidebarOpen: !s.sidebarOpen })),
 };

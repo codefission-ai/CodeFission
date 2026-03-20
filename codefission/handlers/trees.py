@@ -97,17 +97,12 @@ class TreesMixin:
 
         # Load tree data
         nodes = await self.orch.get_all_nodes(tree.id)
-        staleness = {"stale": False, "commits_behind": 0}
-        if tree.base_commit:
-            staleness = await self.orch.check_staleness(tree.base_branch, tree.base_commit)
-
         info = await self.orch.get_repo_info(repo_path)
         branches = await self.orch.list_branches()
 
         await self.send(WS.REPO_OPENED, **info,
                         tree=tree.model_dump(),
                         nodes=[n.model_dump() for n in nodes],
-                        staleness=staleness,
                         branches=branches,
                         repo_id=repo_id, repo_name=repo_name)
 
@@ -126,6 +121,7 @@ class TreesMixin:
         name = data.get("name", "Untitled")
         base_branch = data.get("base_branch", "main")
         from_node_id = data.get("from_node_id")
+        base_commit = data.get("base_commit")
 
         # Allow overriding repo context from the message (e.g. "new tree from node")
         repo_id = data.get("repo_id") or self.repo_id
@@ -143,6 +139,7 @@ class TreesMixin:
                 repo_path=repo_path_str,
                 repo_name=repo_name,
                 from_node_id=from_node_id,
+                base_commit=base_commit,
             )
             await self.send(WS.TREE_CREATED, tree=tree.model_dump(), root=root.model_dump())
         except Exception as e:
@@ -161,11 +158,6 @@ class TreesMixin:
         if tree and tree.root_node_id:
             node_processes = self.orch.scan_tree_processes()
 
-        # Check staleness
-        staleness = {"stale": False, "commits_behind": 0}
-        if tree and tree.base_commit:
-            staleness = await self.orch.check_staleness(tree.base_branch, tree.base_commit)
-
         # Include branches for this tree's repo (so switching projects refreshes branches)
         branches = await self.orch.list_branches()
 
@@ -174,7 +166,6 @@ class TreesMixin:
             tree=tree.model_dump() if tree else None,
             nodes=[n.model_dump() for n in nodes],
             node_processes=node_processes,
-            staleness=staleness,
             branches=branches,
         )
 

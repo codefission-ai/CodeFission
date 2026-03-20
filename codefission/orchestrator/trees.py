@@ -73,6 +73,7 @@ class TreesMixin:
         repo_path: str | None = None,
         repo_name: str | None = None,
         from_node_id: str | None = None,
+        base_commit: str | None = None,
     ) -> tuple[Tree, Node]:
         """Create a tree + root node from the user's repo. Returns (tree, root_node).
 
@@ -87,18 +88,23 @@ class TreesMixin:
             if not source_node or not source_node.git_commit:
                 raise ValueError(f"Source node {from_node_id} not found or has no git commit")
             head_sha = source_node.git_commit
-            # Use branch from source node or fall back to base_branch
-            actual_branch = source_node.git_branch or base_branch
             # Inherit instructions and repo context from source tree
             source_tree = await get_tree(source_node.tree_id)
+            # Use source tree's base_branch (e.g. "main"), not the node's
+            # internal ct- branch name
+            actual_branch = (source_tree.base_branch if source_tree else None) or base_branch
             skill = source_tree.skill if source_tree else ""
             if source_tree:
                 repo_id = repo_id or source_tree.repo_id
                 repo_path = repo_path or source_tree.repo_path
                 repo_name = repo_name or source_tree.repo_name
         else:
-            # Resolve HEAD of the base_branch in the user's repo
-            _, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch)
+            # Resolve commit: use explicit base_commit if provided (git graph),
+            # otherwise resolve HEAD of base_branch
+            if base_commit:
+                head_sha = base_commit
+            else:
+                _, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch)
             _, actual_branch, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", base_branch, check=False)
             skill = ""
 

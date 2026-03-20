@@ -110,7 +110,6 @@ class ConnectionHandler(
         WS.CREATE_TREE: TreesMixin.handle_create_tree,
         WS.LOAD_TREE: TreesMixin.handle_load_tree,
         WS.DELETE_TREE: TreesMixin.handle_delete_tree,
-        WS.BRANCH: NodesMixin.handle_branch,
         WS.CHAT: ChatMixin.handle_chat,
         WS.CANCEL: ChatMixin.handle_cancel,
         WS.DUPLICATE: ChatMixin.handle_duplicate,
@@ -128,7 +127,6 @@ class ConnectionHandler(
         WS.DELETE_NODE: NodesMixin.handle_delete_node,
         WS.GET_REPO_INFO: RepoMixin.handle_get_repo_info,
         WS.LIST_BRANCHES: RepoMixin.handle_list_branches,
-        WS.MERGE_TO_BRANCH: RepoMixin.handle_merge_to_branch,
         WS.OPEN_REPO: TreesMixin.handle_open_repo,
         WS.UPDATE_BASE: RepoMixin.handle_update_base,
     }

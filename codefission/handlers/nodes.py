@@ -1,15 +1,9 @@
-"""Node handlers — branch, get node details, delete node + subtree."""
+"""Node handlers — get node details, delete node + subtree."""
 
 from events import WS
 
 
 class NodesMixin:
-
-    async def handle_branch(self, data: dict):
-        parent_id = data["parent_id"]
-        label = data.get("label", "")
-        node = await self.orch.branch(parent_id, label)
-        await self.send(WS.NODE_CREATED, node=node.model_dump())
 
     async def handle_get_node(self, data: dict):
         node_id = data["node_id"]

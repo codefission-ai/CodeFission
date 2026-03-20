@@ -62,7 +62,6 @@ class WS:
     CREATE_TREE = "create_tree"
     LOAD_TREE = "load_tree"
     DELETE_TREE = "delete_tree"
-    BRANCH = "branch"
     CHAT = "chat"
     CANCEL = "cancel"
     DUPLICATE = "duplicate"
@@ -80,7 +79,6 @@ class WS:
     DELETE_NODE = "delete_node"
     GET_REPO_INFO = "get_repo_info"
     LIST_BRANCHES = "list_branches"
-    MERGE_TO_BRANCH = "merge_to_branch"
     UPDATE_BASE = "update_base"
 
     # Outbound — Settings
@@ -110,5 +108,4 @@ class WS:
     NODES_DELETED = "nodes_deleted"
     REPO_INFO = "repo_info"
     BRANCHES = "branches"
-    MERGE_RESULT = "merge_result"
     BASE_UPDATED = "base_updated"

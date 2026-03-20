@@ -1,8 +1,7 @@
-"""Repo operations — open repo (find/create tree), update base, merge.
+"""Repo operations — open repo (find/create tree), update base.
 
 open_repo: finds an existing tree for a repo+commit, or creates one.
 update_base: changes a tree's base branch/commit (only before children exist).
-merge_to_branch: squash-merges a node's changes into a real git branch.
 """
 
 from __future__ import annotations
@@ -19,19 +18,16 @@ from store.trees import (
 )
 from store.git import (
     _run_git,
-    ensure_worktree,
     compute_repo_id,
     detect_repo_name,
-    check_staleness,
     create_protective_ref,
-    merge_to_branch as ws_merge_to_branch,
     list_branches as ws_list_branches,
 )
 from config import get_project_path, set_project_path
 
 
 class RepoMixin:
-    """Repo operations — open_repo, update_base, merge_to_branch."""
+    """Repo operations — open_repo, update_base."""
 
     # ── Data accessors (thin wrappers over store) ────────────────────
 
@@ -41,9 +37,6 @@ class RepoMixin:
 
     async def list_branches(self):
         return await ws_list_branches()
-
-    async def check_staleness(self, base_branch: str, base_commit: str) -> dict:
-        return await check_staleness(base_branch, base_commit)
 
     def detect_repo_name(self, repo_path) -> str:
         return detect_repo_name(repo_path)
@@ -181,33 +174,10 @@ class RepoMixin:
             await update_node(tree.root_node_id, git_commit=resolved_sha)
 
         await create_protective_ref(tree_id, resolved_sha)
-        staleness = await check_staleness(target_branch, resolved_sha)
 
         updated = await get_tree(tree_id)
         return UpdateBaseResult(
             tree=updated,
-            staleness=staleness,
             branches=extra_branches,
         )
 
-    async def merge_to_branch(self, node_id: str, target_branch: str) -> dict:
-        """Squash merge a node's branch into target_branch.
-
-        Returns merge result dict.
-        """
-        node = await get_node(node_id)
-        if not node or not node.git_branch:
-            return {"ok": False, "error": "Node has no branch"}
-
-        tree = await get_tree(node.tree_id)
-        if not tree or not tree.root_node_id:
-            return {"ok": False, "error": "Tree not found"}
-
-        # Ensure the worktree/branch exists
-        await ensure_worktree(
-            tree.root_node_id, node_id,
-            node.parent_id, node.git_commit,
-        )
-
-        result = await ws_merge_to_branch(node.git_branch, target_branch)
-        return result

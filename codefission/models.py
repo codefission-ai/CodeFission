@@ -130,7 +130,6 @@ class UpdateBaseResult:
     """Result of updating a tree's base branch/commit."""
     tree: Tree
     existing_tree_id: str | None = None
-    staleness: dict = field(default_factory=lambda: {"stale": False, "commits_behind": 0})
     branches: list[str] | None = None
 
 

@@ -435,46 +435,6 @@ async def list_branches() -> list[dict]:
     return branches
 
 
-async def merge_to_branch(source_branch: str, target_branch: str) -> dict:
-    """Squash merge source_branch into target_branch.
-
-    Returns {"ok": True, "commit": sha} on success,
-    or {"ok": False, "conflicts": [...]} on conflict.
-    """
-    project_path = get_project_path()
-
-    # Ensure we're on the target branch
-    _, current, _ = await _run_git(project_path, "rev-parse", "--abbrev-ref", "HEAD", check=False)
-    if current != target_branch:
-        await _run_git(project_path, "checkout", target_branch)
-
-    # Check for uncommitted changes
-    rc, _, _ = await _run_git(project_path, "diff", "--quiet", check=False)
-    rc2, _, _ = await _run_git(project_path, "diff", "--cached", "--quiet", check=False)
-    if rc != 0 or rc2 != 0:
-        return {"ok": False, "error": "Target branch has uncommitted changes. Commit or stash them first."}
-
-    # Squash merge
-    rc, _, stderr = await _run_git(project_path, "merge", "--squash", source_branch, check=False)
-    if rc != 0:
-        # Check for conflicts
-        _, status, _ = await _run_git(project_path, "diff", "--name-only", "--diff-filter=U", check=False)
-        conflicts = [f for f in status.splitlines() if f]
-        if conflicts:
-            # Abort the merge
-            await _run_git(project_path, "merge", "--abort", check=False)
-            # Reset any staged changes
-            await _run_git(project_path, "reset", "HEAD", check=False)
-            await _run_git(project_path, "checkout", ".", check=False)
-            return {"ok": False, "conflicts": conflicts}
-        return {"ok": False, "error": f"Merge failed: {stderr}"}
-
-    # Commit the squash merge
-    commit_msg = f"Merge {source_branch} (squash)"
-    await _run_git(project_path, "commit", "-m", commit_msg, env=_GIT_ENV, check=False)
-    _, sha, _ = await _run_git(project_path, "rev-parse", "HEAD")
-    return {"ok": True, "commit": sha}
-
 
 # ── Repo identity ─────────────────────────────────────────────────────
 
@@ -530,31 +490,6 @@ async def get_repo_info(repo_path: Path | None = None) -> dict:
 # Keep old name as alias for backward compatibility within this module
 async def get_project_info() -> dict:
     return await get_repo_info()
-
-
-# ── Staleness detection ──────────────────────────────────────────────
-
-async def check_staleness(base_branch: str, base_commit: str | None) -> dict:
-    """Compare base_branch HEAD with stored base_commit.
-
-    Returns {"stale": False} or {"stale": True, "commits_behind": N, "branch_head": sha}.
-    """
-    if not base_commit:
-        return {"stale": False, "commits_behind": 0}
-
-    project_path = get_project_path()
-    rc, head_sha, _ = await _run_git(project_path, "rev-parse", base_branch, check=False)
-    if rc != 0:
-        return {"stale": False, "commits_behind": 0, "branch_missing": True}
-
-    if head_sha == base_commit:
-        return {"stale": False, "commits_behind": 0}
-
-    _, count_str, _ = await _run_git(
-        project_path, "rev-list", "--count", f"{base_commit}..{head_sha}", check=False
-    )
-    commits_behind = int(count_str) if count_str.strip().isdigit() else 0
-    return {"stale": True, "commits_behind": commits_behind, "branch_head": head_sha}
 
 
 # ── Protective git ref ───────────────────────────────────────────────

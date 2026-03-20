@@ -99,11 +99,14 @@ class TestBranch:
         assert child.label == "explore"
 
     @pytest.mark.asyncio
-    async def test_child_has_own_branch(self, orch, project):
+    async def test_child_git_branch_not_set_until_chat(self, orch, project):
+        """branch() creates a placeholder node; no git branch is created in
+        git yet, so git_branch should be None.  It is set to "ct-{nid}" only
+        when prepare_chat actually runs ensure_worktree."""
         branch = await _init_project(project)
         _, root = await orch.create_tree("T", base_branch=branch)
         child = await orch.branch(root.id)
-        assert child.git_branch == f"ct-{child.id}"
+        assert child.git_branch is None
 
     @pytest.mark.asyncio
     async def test_created_by_default(self, orch, project):

@@ -54,7 +54,6 @@ function useProjectActivity(treeIds: string[]) {
 function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; isActive: boolean }) {
   const { streamingCount, processCount } = useTreeActivity(treeId);
   const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
-  const staleness = useStore((s) => s.treeStaleness[treeId]);
 
   return (
     <div
@@ -72,12 +71,6 @@ function TreeItem({ treeId, name, isActive }: { treeId: string; name: string; is
           <span className="tree-branch-badge" title={`Base: ${tree.base_branch}`}>
             {tree.base_branch}
           </span>
-        )}
-        {staleness?.stale && (
-          <span
-            className="tree-activity-dot stale"
-            title={`${staleness.commits_behind} new commit${staleness.commits_behind !== 1 ? "s" : ""} on ${tree?.base_branch || "main"}`}
-          />
         )}
         {streamingCount > 0 && (
           <span className="tree-activity-dot streaming" title={`${streamingCount} node${streamingCount > 1 ? "s" : ""} streaming`} />

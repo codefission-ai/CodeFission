@@ -278,6 +278,7 @@ class ChatMixin:
             parent_node_id,
             parent_node.git_commit if parent_node else None,
         )
+        await update_node(nid, git_branch=f"ct-{nid}")
 
         # Resolve parent's session_id for SDK session forking
         parent_session_id = None
@@ -372,6 +373,7 @@ class ChatMixin:
             parent_node_id,
             parent_node.git_commit if parent_node else None,
         )
+        await update_node(nid, git_branch=f"ct-{nid}")
 
         # Resolve parent's session_id for SDK session forking
         parent_session_id = None

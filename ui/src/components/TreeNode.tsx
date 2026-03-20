@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useRef, useLayoutEffect, useMemo, useEffect } from "react";
 import { Handle, Position } from "@xyflow/react";
-import { useStore, actions, type CNode, type CTree, type ToolCall, type ProcessInfo, type FileQuote, type MergeResult, isDetachable, getSubtreeIds } from "../store";
+import { useStore, actions, type CNode, type CTree, type ToolCall, type ProcessInfo, type FileQuote, isDetachable, getSubtreeIds } from "../store";
 import { send, WS } from "../ws";
 import { renderMarkdown } from "../renderMarkdown";
 import ToolCallLine from "./ToolCallLine";
@@ -122,43 +122,6 @@ function BranchSection({ tree, hasChildren }: { tree: CTree; hasChildren: boolea
   );
 }
 
-function StalenessBanner({ treeId }: { treeId: string }) {
-  const staleness = useStore((s) => s.treeStaleness[treeId]);
-  const tree = useStore((s) => s.trees.find((t) => t.id === treeId));
-  if (!staleness?.stale) return null;
-  const branch = tree?.base_branch || "main";
-  return (
-    <div className="staleness-banner" onClick={(e) => e.stopPropagation()}>
-      <span>{branch} has {staleness.commits_behind} new commit{staleness.commits_behind !== 1 ? "s" : ""} since this tree was created</span>
-      <button
-        className="staleness-update-btn"
-        onClick={() => send({ type: WS.UPDATE_BASE, tree_id: treeId })}
-      >
-        Update base
-      </button>
-    </div>
-  );
-}
-
-function MergeResultBanner({ result, onDismiss }: { result: MergeResult; onDismiss: () => void }) {
-  return (
-    <div className={`merge-result-banner ${result.ok ? "success" : "error"}`} onClick={(e) => e.stopPropagation()}>
-      {result.ok ? (
-        <span>Merged successfully{result.commit ? ` (${result.commit.slice(0, 7)})` : ""}</span>
-      ) : (
-        <div className="merge-result-error">
-          <span>{result.error || "Merge failed"}</span>
-          {result.conflicts && result.conflicts.length > 0 && (
-            <ul className="merge-conflicts-list">
-              {result.conflicts.map((f) => <li key={f}>{f}</li>)}
-            </ul>
-          )}
-        </div>
-      )}
-      <button className="merge-result-dismiss" onClick={onDismiss}>&times;</button>
-    </div>
-  );
-}
 
 const EMPTY_TOOL_CALLS: ToolCall[] = [];
 const EMPTY_PROCESSES: ProcessInfo[] = [];
@@ -326,10 +289,8 @@ function TreeNode({ data }: { data: { node: CNode } }) {
   const isRoot = !node.parent_id;
   const parentCommit = useStore((s) => node.parent_id ? s.nodes[node.parent_id]?.git_commit : null);
   const hasCodeChange = !isRoot && !!node.git_commit && node.git_commit !== parentCommit;
-  // Get tree info for merge button (need base_branch for non-root nodes too)
+  // Get tree info for "Plant new tree" button (need base_branch for non-root nodes too)
   const treeForMerge = useStore((s) => s.trees.find((t) => t.id === node.tree_id));
-  const mergeResult = useStore((s) => s.mergeResult?.nodeId === node.id ? s.mergeResult : null);
-  const [merging, setMerging] = useState(false);
   const [input, setInput] = useState("");
   const [showModal, setShowModal] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -363,11 +324,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
       requestAnimationFrame(() => textareaRef.current?.focus());
     }
   }, [pendingInputText, selected, pendingInputReplace]);
-
-  // Reset merging spinner when result arrives
-  useEffect(() => {
-    if (mergeResult) setMerging(false);
-  }, [mergeResult]);
 
   const assistantHtml = useMemo(
     () => node.assistant_response ? renderMarkdown(node.assistant_response, node.id) : "",
@@ -446,18 +402,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
     send({ type: WS.DELETE_NODE, node_id: node.id });
   }, [node.id]);
 
-  const handleMerge = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!treeForMerge || merging) return;
-    setMerging(true);
-    actions.setMergeResult(null);
-    send({
-      type: WS.MERGE_TO_BRANCH,
-      node_id: node.id,
-      target_branch: treeForMerge.base_branch || "main",
-    });
-  }, [node.id, treeForMerge, merging]);
-
   const hasChildren = node.children_ids.length > 0;
   const [skillInput, setSkillInput] = useState(tree?.skill ?? "");
   const skillTimerRef = useRef<ReturnType<typeof setTimeout>>(0 as never);
@@ -513,9 +457,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
 
         {/* Branch info (editable when no children, locked once children exist) */}
         {tree && <BranchSection tree={tree} hasChildren={hasChildren} />}
-
-        {/* Staleness banner */}
-        <StalenessBanner treeId={node.tree_id} />
 
         {/* Files button */}
         {node.git_commit && (
@@ -670,7 +611,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               )}
             </div>
           )}
-          {isRoot && <StalenessBanner treeId={node.tree_id} />}
           {node.user_message && (
             <div className="tree-node-user">
               {node.parent_id && (
@@ -837,24 +777,12 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                 )}
                 {hasCodeChange && treeForMerge && (
                   <button
-                    className={`tree-node-action-btn merge-btn ${merging ? "merging" : ""}`}
-                    onClick={handleMerge}
-                    disabled={merging}
-                    title={`Squash merge into ${treeForMerge.base_branch || "main"}`}
-                  >
-                    {merging ? "Merging..." : `Merge to ${treeForMerge.base_branch || "main"}`}
-                  </button>
-                )}
-                {hasCodeChange && treeForMerge && (
-                  <button
                     className="tree-node-action-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const treeName = prompt("New tree name:", "");
-                      if (treeName === null || !treeName.trim()) return;
                       send({
                         type: WS.CREATE_TREE,
-                        name: treeName.trim(),
+                        name: "Untitled",
                         from_node_id: node.id,
                         repo_id: treeForMerge.repo_id,
                         repo_path: treeForMerge.repo_path,
@@ -866,9 +794,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                   </button>
                 )}
               </div>
-              {mergeResult && (
-                <MergeResultBanner result={mergeResult} onDismiss={() => actions.setMergeResult(null)} />
-              )}
             </>
           )}
 

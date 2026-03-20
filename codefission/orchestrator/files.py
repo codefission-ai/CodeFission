@@ -16,6 +16,7 @@ from store.git import (
     get_diff,
     get_diff_from_commits,
     list_artifact_files,
+    _run_git,
 )
 from models import FileListResult, DiffResult, FileContentResult
 
@@ -33,7 +34,20 @@ class FilesMixin:
             raise ValueError("Tree not found")
 
         ws_path = resolve_workspace(tree.root_node_id, node_id)
-        if ws_path.exists():
+
+        # For root nodes the workspace is the live project directory, which
+        # always exists. But a planted tree's root has base_commit set to a
+        # ct- commit that may not be the current HEAD of the project — in
+        # that case reading the live directory gives the wrong (main) files.
+        # Fall through to list_files_from_commit whenever the node's stored
+        # commit differs from the live HEAD.
+        use_live = ws_path.exists()
+        if use_live and node_id == tree.root_node_id and node.git_commit:
+            rc, head_sha, _ = await _run_git(ws_path, "rev-parse", "HEAD", check=False)
+            if rc == 0 and head_sha.strip() != node.git_commit:
+                use_live = False
+
+        if use_live:
             files = await list_files(ws_path)
         elif node.git_commit:
             files = await list_files_from_commit(node.git_commit)

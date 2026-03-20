@@ -1,4 +1,4 @@
-"""Repo handlers — repo info, list branches, merge to branch, update base."""
+"""Repo handlers — repo info, list branches, update base."""
 
 from pathlib import Path
 
@@ -14,16 +14,6 @@ class RepoMixin:
     async def handle_list_branches(self, data: dict):  # noqa: ARG002
         branches = await self.orch.list_branches()
         await self.send(WS.BRANCHES, branches=branches)
-
-    async def handle_merge_to_branch(self, data: dict):
-        node_id = data["node_id"]
-        target_branch = data["target_branch"]
-        # Set context for the node's tree
-        node = await self.orch.get_node(node_id)
-        if node:
-            await self._set_context_for_tree(node.tree_id)
-        result = await self.orch.merge_to_branch(node_id, target_branch)
-        await self.send(WS.MERGE_RESULT, node_id=node_id, **result)
 
     async def handle_update_base(self, data: dict):
         tree_id = data["tree_id"]
@@ -60,8 +50,7 @@ class RepoMixin:
                 await self.send(WS.BASE_UPDATED, existing_tree_id=result.existing_tree_id,
                                 tree=result.tree.model_dump(), **extra)
             else:
-                await self.send(WS.BASE_UPDATED, tree=result.tree.model_dump(),
-                                staleness=result.staleness, **extra)
+                await self.send(WS.BASE_UPDATED, tree=result.tree.model_dump(), **extra)
 
         except ValueError as e:
             await self.send(WS.ERROR, error=str(e))
