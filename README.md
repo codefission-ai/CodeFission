@@ -1,10 +1,10 @@
 # CodeFission
 
-Tree-structured AI coding assistant. Each conversation node is an isolated git worktree — branch conversations to explore alternative approaches, and each branch gets its own filesystem sandbox.
+Tree-structured AI coding assistant for exploring and experimenting with code. Each conversation node is an isolated git worktree — branch to try alternative approaches, and every branch gets its own filesystem sandbox.
 
 ## Example: research workflow
 
-The canvas works for open-ended research too: branch from a root prompt, iterate on sub-questions, and keep parallel threads visible — sticky notes and deep trees included.
+The canvas works for open-ended research: branch from a root prompt, iterate on sub-questions, and keep parallel threads visible — sticky notes and deep trees included.
 
 ![Research workflow in CodeFission: branching exploration on the canvas](assets/screenshots/example_research.png)
 
