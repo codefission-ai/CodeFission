@@ -441,14 +441,11 @@ function TreeNode({ data }: { data: { node: CNode } }) {
           </label>
           <textarea
             ref={skillTextareaRef}
-            className="root-section-input nopan nodrag nowheel"
+            className="root-section-input nopan nodrag"
             value={skillInput}
             onChange={(e) => handleSkillChange(e.target.value)}
             onFocus={() => actions.selectNode(node.id)}
-            onWheel={(e) => {
-              const ta = e.currentTarget;
-              if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
-            }}
+            onKeyDown={(e) => e.stopPropagation()}
             placeholder="System instructions for all conversations..."
             rows={1}
             disabled={hasChildren}
@@ -503,20 +500,17 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             >
               <textarea
                 ref={textareaRef}
-                className="root-section-input nopan nodrag nowheel"
+                className="root-section-input nopan nodrag"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onFocus={() => actions.selectNode(node.id)}
                 onPaste={attach.addFromPaste}
                 onKeyDown={(e) => {
+                  e.stopPropagation();
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleSend();
                   }
-                }}
-                onWheel={(e) => {
-                  const ta = e.currentTarget;
-                  if (ta.scrollHeight > ta.clientHeight) e.stopPropagation();
                 }}
                 placeholder="Type a message..."
                 rows={1}
@@ -727,21 +721,16 @@ function TreeNode({ data }: { data: { node: CNode } }) {
               >
                 <textarea
                   ref={textareaRef}
-                  className="tree-node-textarea nopan nodrag nowheel"
+                  className="tree-node-textarea nopan nodrag"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onFocus={() => actions.selectNode(node.id)}
                   onPaste={attach.addFromPaste}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       handleSend();
-                    }
-                  }}
-                  onWheel={(e) => {
-                    const ta = e.currentTarget;
-                    if (ta.scrollHeight > ta.clientHeight) {
-                      e.stopPropagation();
                     }
                   }}
                   placeholder="Follow up..."
