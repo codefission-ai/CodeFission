@@ -31,5 +31,5 @@ fi
 # Run server. Use exec so Ctrl+C goes directly to Python.
 # trap ensures cleanup even if signal handling is weird.
 trap 'echo "Caught signal"; kill %1 2>/dev/null; exit 0' INT TERM
-PYTHONPATH="$DIR/codefission" python -m codefission --port "$PORT" &
+PYTHONPATH="$DIR/codefission" python -m codefission --port "$PORT" --browser &
 wait $!

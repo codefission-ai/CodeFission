@@ -101,6 +101,49 @@ def _get_electron_binary() -> str | None:
     return None
 
 
+def _brand_electron_app(binary_path: str) -> None:
+    """On macOS, patch the Electron.app bundle so the dock shows 'CodeFission' with our icon."""
+    import platform
+    if platform.system() != "Darwin":
+        return
+
+    bp = Path(binary_path).resolve()
+
+    # Find Electron.app/Contents/ — works for both the downloaded binary
+    # (inside Electron.app/Contents/MacOS/) and npm dev installs (cli.js
+    # symlink next to dist/Electron.app/).
+    if "Electron.app" in str(bp):
+        contents_dir = bp
+        while contents_dir.name != "Electron.app":
+            contents_dir = contents_dir.parent
+        contents_dir = contents_dir / "Contents"
+    else:
+        candidate = bp.parent.parent / "electron" / "dist" / "Electron.app" / "Contents"
+        if candidate.exists():
+            contents_dir = candidate
+        else:
+            return
+
+    plist_path = contents_dir / "Info.plist"
+    if not plist_path.exists():
+        return
+
+    import plistlib, shutil
+
+    icon_src = Path(__file__).resolve().parent / "electron" / "icon.icns"
+    icon_dst = contents_dir / "Resources" / "electron.icns"
+    if icon_src.exists() and icon_dst.exists():
+        shutil.copy2(icon_src, icon_dst)
+
+    with open(plist_path, "rb") as f:
+        plist = plistlib.load(f)
+    if plist.get("CFBundleName") != "CodeFission":
+        plist["CFBundleName"] = "CodeFission"
+        plist["CFBundleDisplayName"] = "CodeFission"
+        with open(plist_path, "wb") as f:
+            plistlib.dump(plist, f)
+
+
 def _get_installed_version() -> str:
     try:
         from importlib.metadata import version
@@ -456,6 +499,7 @@ def main():
     if use_desktop:
         electron_bin = _get_electron_binary()
         if electron_bin:
+            _brand_electron_app(electron_bin)
             launch_mode = "desktop"
         elif args.desktop:
             print("Error: Failed to set up Electron.", file=sys.stderr)
