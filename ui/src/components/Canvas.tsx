@@ -559,6 +559,7 @@ function CanvasInner() {
         panOnScrollMode={PanOnScrollMode.Free}
         nodesDraggable={false}
         nodesConnectable={false}
+        nodesFocusable={false}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} color="#d0d0d6" gap={20} />

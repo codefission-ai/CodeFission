@@ -445,7 +445,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
             value={skillInput}
             onChange={(e) => handleSkillChange(e.target.value)}
             onFocus={() => actions.selectNode(node.id)}
-            onKeyDown={(e) => e.stopPropagation()}
             placeholder="System instructions for all conversations..."
             rows={1}
             disabled={hasChildren}
@@ -506,7 +505,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                 onFocus={() => actions.selectNode(node.id)}
                 onPaste={attach.addFromPaste}
                 onKeyDown={(e) => {
-                  e.stopPropagation();
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     handleSend();
@@ -727,7 +725,6 @@ function TreeNode({ data }: { data: { node: CNode } }) {
                   onFocus={() => actions.selectNode(node.id)}
                   onPaste={attach.addFromPaste}
                   onKeyDown={(e) => {
-                    e.stopPropagation();
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       handleSend();
